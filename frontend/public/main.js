@@ -4,9 +4,6 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
-import './game.js';
-import './input.js';
-import './cards.js';
 window.latestServerData = null; 
 window.gameScale = 1;
 window.gameOffsetX = 0;
