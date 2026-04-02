@@ -3,7 +3,8 @@ import { io } from 'socket.io-client'
 import './App.css'
 
 // Připojení k backendu (při lokálním vývoji běží backend na portu 3000)
-const socket = import.meta.env.DEV ? io('http://localhost:3000') : io();
+const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+const socket = io(backendUrl);
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);

@@ -8,12 +8,11 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 
-// Nastavení Socket.io s CORS
 const io = new Server(server, {
-  cors: {
-    origin: "*", // Pro produkci doporučuji nahradit polem povolených URL, např. ["https://tvojehra.onrender.com"]
-    methods: ["GET", "POST"]
-  }
+    cors: {
+        origin: "*", // Povolí připojení z jakéhokoliv frontendu
+        methods: ["GET", "POST"]
+    }
 });
 
 // Zajišťuje, že se načtou statické soubory ze složky dist (Vite build)
