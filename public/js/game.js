@@ -1,3 +1,6 @@
+// ==========================================
+// INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
+// ==========================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
@@ -172,6 +175,7 @@ window.saveCrosshairSettings = function() {
 // 2. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
 // ==========================================
 function drawBackground() {
+    if (!ctx) return;
     ctx.save();
     ctx.fillStyle = '#1e272e'; 
     ctx.fillRect(0, 0, MAP_W, MAP_H);
@@ -182,6 +186,7 @@ function drawBackground() {
 }
 
 function drawDomains(players) {
+    if (!ctx) return;
     const timePulse = Math.abs(Math.sin(Date.now() / 400)) * 0.1; 
     
     const domainStyles = {
@@ -217,6 +222,7 @@ function drawDomains(players) {
 }
 
 function drawMapObjects(obstacles, breakables) {
+    if (!ctx) return;
     ctx.save();
     if (obstacles) {
         obstacles.forEach(obs => {
@@ -477,7 +483,7 @@ function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, amm
 // 4. ENTITY A STŘELY
 // ==========================================
 function drawDecoys(decoys, players) {
-    if (!decoys || !players) return;
+    if (!ctx || !decoys || !players) return;
     const myId = typeof socket !== 'undefined' ? socket.id : null;
 
     decoys.forEach(d => {
@@ -497,6 +503,7 @@ function drawDecoys(decoys, players) {
 }
 
 function drawPlayers(players) {
+    if (!ctx) return;
     const myId = typeof socket !== 'undefined' ? socket.id : null;
 
     Object.keys(players).forEach(id => {
@@ -530,6 +537,7 @@ function drawPlayers(players) {
 }
 
 function drawBullets(bullets, players) {
+    if (!ctx) return;
     if (!bullets && !window.localBullets) return;
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
     const myId = typeof socket !== 'undefined' ? socket.id : null;
@@ -586,7 +594,7 @@ function drawBullets(bullets, players) {
 // 5. OVERLAY KARET A ENCYKLOPEDIE (TAB MENU)
 // ==========================================
 function drawTabMenu(players) {
-    if (!players) return;
+    if (!ctx || !players) return;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -808,7 +816,7 @@ window.drawGame = function(serverData) {
 
     if (serverData.gameState !== 'LOBBY') {
         if (serverData.players) drawDomains(serverData.players);
-        drawDecoys(serverData.decoys, serverData.players);
+        if (serverData.decoys) drawDecoys(serverData.decoys, serverData.players);
         if (serverData.players) drawPlayers(serverData.players);
         drawBullets(serverData.bullets, serverData.players);
         

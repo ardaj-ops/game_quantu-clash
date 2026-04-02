@@ -7,37 +7,58 @@ const playerInputs = {
     left: false,
     right: false,
     click: false,
+    rightClick: false, // Přidáno pro Dash / Rituál
+    reload: false,     // Přidáno pro přebíjení (R)
+    tab: false,        // Přidáno pro tabulku (TAB)
     aimAngle: 0
 };
 
 // --- KLÁVESNICE ---
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'w' || e.key === 'ArrowUp') playerInputs.up = true;
-    if (e.key === 's' || e.key === 'ArrowDown') playerInputs.down = true;
-    if (e.key === 'a' || e.key === 'ArrowLeft') playerInputs.left = true;
-    if (e.key === 'd' || e.key === 'ArrowRight') playerInputs.right = true;
+    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') playerInputs.up = true;
+    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') playerInputs.down = true;
+    if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') playerInputs.left = true;
+    if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') playerInputs.right = true;
+    
+    if (e.key === 'r' || e.key === 'R') playerInputs.reload = true;
+    
+    if (e.key === 'Tab') {
+        playerInputs.tab = true;
+        e.preventDefault(); // Zabrání přepínání UI elementů v prohlížeči
+    }
 });
 
 window.addEventListener('keyup', (e) => {
-    if (e.key === 'w' || e.key === 'ArrowUp') playerInputs.up = false;
-    if (e.key === 's' || e.key === 'ArrowDown') playerInputs.down = false;
-    if (e.key === 'a' || e.key === 'ArrowLeft') playerInputs.left = false;
-    if (e.key === 'd' || e.key === 'ArrowRight') playerInputs.right = false;
+    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') playerInputs.up = false;
+    if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') playerInputs.down = false;
+    if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') playerInputs.left = false;
+    if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') playerInputs.right = false;
+    
+    if (e.key === 'r' || e.key === 'R') playerInputs.reload = false;
+    if (e.key === 'Tab') playerInputs.tab = false;
 });
 
 // --- MYŠ ---
 window.addEventListener('mousedown', (e) => {
-    if (e.button === 0) playerInputs.click = true; // Levé tlačítko
+    if (e.button === 0) playerInputs.click = true;      // Levé tlačítko
+    if (e.button === 2) playerInputs.rightClick = true; // Pravé tlačítko
 });
 
 window.addEventListener('mouseup', (e) => {
     if (e.button === 0) playerInputs.click = false;
+    if (e.button === 2) playerInputs.rightClick = false;
+});
+
+// Zamezení vyskakování kontextového menu prohlížeče při pravém kliku
+window.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
 });
 
 window.addEventListener('mousemove', (e) => {
-    // Výpočet úhlu natočení myši vůči středu obrazovky (předpokládáme, že hráč je uprostřed)
-    // Pokud máš kameru, která se hýbe, budeš tu možná muset přičíst pozici kamery.
-    const canvas = document.getElementById('canvas'); // nebo jak se jmenuje tvé plátno
+    // Opraveno ID, v index.html máš <canvas id="game">
+    const canvas = document.getElementById('game'); 
+    if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
     
     const mouseX = e.clientX - rect.left;

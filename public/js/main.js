@@ -1,12 +1,17 @@
+// ==========================================
+// INICIALIZACE ZÁKLADNÍCH PROMĚNNÝCH
+// ==========================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
 
 window.latestServerData = null; 
-
 window.gameScale = 1;
 window.gameOffsetX = 0;
 window.gameOffsetY = 0;
+
+// Pojistka pro vstupy (pokud jsou definovány jinde)
+window.inputs = window.inputs || { up: false, down: false, left: false, right: false, click: false, aimAngle: 0 };
 
 // ==========================================
 // 0. LOKÁLNÍ PAMĚŤ PRO MAPU A STAV
@@ -124,6 +129,8 @@ window.updateCrosshairPreview = function() {
     const size = parseInt(sizeEl.value);
     
     const pCtx = pCanvas.getContext('2d');
+    if (!pCtx) return;
+
     pCtx.clearRect(0, 0, 60, 60);
     pCtx.strokeStyle = color;
     pCtx.fillStyle = color;
@@ -172,6 +179,7 @@ window.saveCrosshairSettings = function() {
 // 2. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
 // ==========================================
 function drawBackground() {
+    if (!ctx) return;
     ctx.save();
     ctx.fillStyle = '#1e272e'; 
     ctx.fillRect(0, 0, MAP_W, MAP_H);
@@ -182,6 +190,7 @@ function drawBackground() {
 }
 
 function drawDomains(players) {
+    if (!ctx) return;
     const timePulse = Math.abs(Math.sin(Date.now() / 400)) * 0.1; 
     
     const domainStyles = {
@@ -217,6 +226,7 @@ function drawDomains(players) {
 }
 
 function drawMapObjects(obstacles, breakables) {
+    if (!ctx) return;
     ctx.save();
     if (obstacles) {
         obstacles.forEach(obs => {
@@ -245,7 +255,7 @@ function drawMapObjects(obstacles, breakables) {
 // 3. VYKRESLENÍ KOSMETIKY A AVATARA
 // ==========================================
 function drawCosmetics(ctx, x, y, radius, cosmetic, bodyColor, aimAngle) {
-    if (!cosmetic || cosmetic === 'none') return;
+    if (!cosmetic || cosmetic === 'none' || !ctx) return;
     
     ctx.save();
     switch (cosmetic) {
@@ -342,6 +352,7 @@ function drawCosmetics(ctx, x, y, radius, cosmetic, bodyColor, aimAngle) {
 }
 
 function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, ammo, maxAmmo, name, team, isReloading, isInvisible, dashCD, domainProgress, isDomainActive, isMe) {
+    if (!ctx) return;
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
     let bodyColor = color || '#fff'; 
     
@@ -477,7 +488,7 @@ function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, amm
 // 4. ENTITY A STŘELY
 // ==========================================
 function drawDecoys(decoys, players) {
-    if (!decoys || !players) return;
+    if (!decoys || !players || !ctx) return;
     const myId = typeof socket !== 'undefined' ? socket.id : null;
 
     decoys.forEach(d => {
@@ -497,6 +508,7 @@ function drawDecoys(decoys, players) {
 }
 
 function drawPlayers(players) {
+    if (!ctx) return;
     const myId = typeof socket !== 'undefined' ? socket.id : null;
 
     Object.keys(players).forEach(id => {
@@ -530,7 +542,7 @@ function drawPlayers(players) {
 }
 
 function drawBullets(bullets, players) {
-    if (!bullets && !window.localBullets) return;
+    if ((!bullets && !window.localBullets) || !ctx) return;
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
     const myId = typeof socket !== 'undefined' ? socket.id : null;
 
@@ -586,7 +598,7 @@ function drawBullets(bullets, players) {
 // 5. OVERLAY KARET A ENCYKLOPEDIE (TAB MENU)
 // ==========================================
 function drawTabMenu(players) {
-    if (!players) return;
+    if (!players || !ctx || !canvas) return;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -668,10 +680,10 @@ function drawTabMenu(players) {
             ctx.fillText('Zatím žádné karty', cardStartX, startY);
         } else {
             allPlayerCards.forEach(cardName => {
-                let initials = cardName.substring(0, 2).toUpperCase();
+                let initials = (cardName || '').substring(0, 2).toUpperCase();
                 
                 ctx.beginPath();
-                ctx.arc(cardStartX + 10, startY - 2, 14, 0, Math.PI * 2);
+                ctx.arc(cardStartX + 10, startY - 2, 14, 0, TWO_PI);
                 
                 if (isDead) {
                     ctx.fillStyle = '#2c3e50'; 
@@ -714,7 +726,7 @@ function drawTabMenu(players) {
 
     if (window.CARD_CATALOG && window.CARD_CATALOG.length > 0) {
         window.CARD_CATALOG.forEach(card => {
-            let initials = card.name.substring(0, 2).toUpperCase();
+            let initials = (card.name || '').substring(0, 2).toUpperCase();
             let icon = '🃏'; 
             
             ctx.fillStyle = '#f1c40f';
@@ -743,7 +755,7 @@ function drawTabMenu(players) {
 function updateDOM_HUD(me) {
     if (!me) return;
 
-    // 1. Dash Ukazatel (Předpokládá ID 'dash-progress-fill' v HTML pro samotný pruh)
+    // 1. Dash Ukazatel 
     const dashFill = document.getElementById('dash-progress-fill'); 
     if (dashFill) {
         const maxDashCD = (typeof CONFIG !== 'undefined' && CONFIG.DASH_COOLDOWN) ? CONFIG.DASH_COOLDOWN : 3000;
@@ -752,14 +764,14 @@ function updateDOM_HUD(me) {
         if (currentCD > 0) {
             let percent = Math.max(0, 100 - (currentCD / maxDashCD * 100));
             dashFill.style.width = percent + '%';
-            dashFill.style.backgroundColor = '#f39c12'; // Oranžová při nabíjení
+            dashFill.style.backgroundColor = '#f39c12'; // Oranžová
         } else {
             dashFill.style.width = '100%';
-            dashFill.style.backgroundColor = '#45f3ff'; // Tyrkysová připraveno
+            dashFill.style.backgroundColor = '#45f3ff'; // Tyrkysová
         }
     }
 
-    // 2. Náboje (Předpokládá ID 'ammo-text' v HTML)
+    // 2. Náboje 
     const ammoText = document.getElementById('ammo-text');
     if (ammoText) {
         if (me.isReloading) {
@@ -779,7 +791,7 @@ function updateDOM_HUD(me) {
 // 6. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ 
 // ==========================================
 window.drawGame = function(serverData) {
-    if (!serverData || !ctx) return;
+    if (!serverData || !ctx || !canvas) return;
     window.latestServerData = serverData; 
 
     canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
@@ -849,6 +861,8 @@ window.drawGame = function(serverData) {
 
 function checkWallCollision(x, y, radius, walls) {
     if (!walls || walls.length === 0) return false;
+    let rSquared = radius * radius; // Optimalizace: Bez nutnosti používat pomalý Math.sqrt()
+    
     for (let wall of walls) {
         if (!wall || wall.destroyed) continue; 
         
@@ -858,7 +872,7 @@ function checkWallCollision(x, y, radius, walls) {
         let distX = x - testX;
         let distY = y - testY;
         
-        if (Math.sqrt((distX * distX) + (distY * distY)) <= radius) {
+        if ((distX * distX) + (distY * distY) <= rSquared) {
             return true; 
         }
     }
@@ -940,8 +954,12 @@ window.updateLocalGame = function() {
             let target = window.latestServerData.players[targetId];
             if (target.hp <= 0) continue;
 
-            let dist = Math.hypot(b.x - target.x, b.y - target.y);
-            if (dist < (target.playerRadius || 20) + b.radius) {
+            // Optimalizace: Porovnávání na druhou místo Math.hypot()
+            let distX = b.x - target.x;
+            let distY = b.y - target.y;
+            let combinedRadius = (target.playerRadius || 20) + b.radius;
+            
+            if ((distX * distX) + (distY * distY) < (combinedRadius * combinedRadius)) {
                 
                 socket.emit('bulletHitPlayer', {
                     targetId: targetId,

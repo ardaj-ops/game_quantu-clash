@@ -11,6 +11,12 @@
 </head>
 
 <body>
+    <noscript>
+        <div style="color: white; text-align: center; padding: 50px; font-family: sans-serif;">
+            <h2>Pro hraní Quantum Clash si musíš zapnout JavaScript! 🚀</h2>
+        </div>
+    </noscript>
+
     <canvas id="game"></canvas>
 
     <button id="settingsBtn" class="hud-element">⚙️ Nastavení</button>
@@ -30,17 +36,17 @@
         <div class="panel">
             <div class="input-group">
                 <label for="playerNameInput">Tvoje přezdívka:</label>
-                <input type="text" id="playerNameInput" placeholder="Napiš jméno..." maxlength="12" style="text-align: center;">
+                <input type="text" id="playerNameInput" placeholder="Napiš jméno..." maxlength="12" autocomplete="off" spellcheck="false" style="text-align: center;">
             </div>
 
             <div class="input-group">
                 <label for="playerColorInput">Základní barva postavy:</label>
-                <input type="color" id="playerColorInput" value="#ffffff">
+                <input type="color" id="playerColorInput" value="#ffffff" style="cursor: pointer;">
             </div>
 
             <div class="input-group">
                 <label for="cosmeticSelect">Kosmetika:</label>
-                <select id="cosmeticSelect" style="text-align: center;">
+                <select id="cosmeticSelect" style="text-align: center; cursor: pointer;">
                     <option value="none">Bez kosmetiky</option>
                     <option value="crown">👑 Zlatá Koruna</option>
                     <option value="halo">👼 Andělská svatozář</option>
@@ -60,7 +66,7 @@
             <div class="join-box">
                 <div class="input-group" style="margin-bottom: 10px;">
                     <label style="text-align: center; color: white; font-size: 1.2rem;">Připojit se ke hře</label>
-                    <input type="text" id="roomCodeInput" placeholder="Zadej kód (např. A7K9)" maxlength="4" style="text-transform: uppercase; text-align: center; letter-spacing: 2px;">
+                    <input type="text" id="roomCodeInput" placeholder="Zadej kód (např. A7K9)" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform: uppercase; text-align: center; letter-spacing: 2px;">
                 </div>
                 <button id="joinSubmitBtn" class="menu-btn action-join">Připojit</button>
             </div>
@@ -85,14 +91,14 @@
                     
                     <div class="input-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <label for="gameModeInput" style="margin: 0; color: white;">Herní mód:</label>
-                        <select id="gameModeInput" style="width: 180px;">
+                        <select id="gameModeInput" style="width: 180px; cursor: pointer;">
                             <option value="ffa">Všichni proti všem</option>
                             <option value="tdm">2v2 Týmy</option>
                         </select>
                     </div>
 
                     <div class="input-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 0;">
-                        <label style="margin: 0; color: white; cursor: pointer;">Gravitace:</label>
+                        <label for="gravityToggle" style="margin: 0; color: white; cursor: pointer;">Gravitace:</label>
                         <input type="checkbox" id="gravityToggle" checked style="width: 20px; height: 20px; accent-color: var(--neon-blue); cursor: pointer;">
                     </div>
                 </div>
@@ -111,7 +117,7 @@
             
             <div id="teamSelectionContainer" class="input-group" style="display: none; align-items: center; margin-top: 15px;">
                 <label for="teamSelect" style="color: white; font-size: 1.1rem;">Vyber si tým:</label>
-                <select id="teamSelect" style="width: 100%; text-align: center; font-weight: bold;">
+                <select id="teamSelect" style="width: 100%; text-align: center; font-weight: bold; cursor: pointer;">
                     <option value="red">🔴 Červený tým</option>
                     <option value="blue">🔵 Modrý tým</option>
                 </select>
@@ -138,7 +144,7 @@
 
             <div class="input-group">
                 <label for="crosshairSelect">Tvar zaměřovače:</label>
-                <select id="crosshairSelect">
+                <select id="crosshairSelect" style="cursor: pointer;">
                     <option value="cross">Křížek</option>
                     <option value="dot">Tečka</option>
                     <option value="circle">Kruh</option>

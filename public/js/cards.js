@@ -66,6 +66,7 @@ const availableCards = [
     { name: "Skleněné dělo", rarity: "epic", description: "Extrémní poškození (+40 Dmg) a rychlost. Tvé Max HP je ale sníženo o 75 %!", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 40); p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.2); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.25)); } },
     { name: "Broková stěna", rarity: "epic", description: "8 kulek. Hrozný rozptyl, -50% Dmg, pomalý pohyb a přebíjení +1s.", apply: (p) => { p.multishot = (p.multishot || 1) + 7; p.spread = 0.3; p.damage = Math.max(1, p.damage * 0.50); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.15); p.reloadTime = (p.reloadTime || 1500) + 1000; } },
     { name: "Krvavá oběť", rarity: "epic", description: "+40 Dmg, obrovské zrychlení. Ztrácíš 60 % Max HP a jsi velký terč.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 40); p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.40)); p.playerRadius = (p.playerRadius || 20) + 10; } },
+    
     // =========================================================================
     // LEGENDARY (Legendární - Masivní změna hry, zdrcující kompromisy)
     // =========================================================================
@@ -88,12 +89,12 @@ const availableCards = [
     // EXOTIC (Exotické - Naprosto absurdní a unikátní pravidla)
     // =========================================================================
     { name: "Zlatá kulka", rarity: "exotic", description: `Maximální DMG (${CFG.MAX_CAP_DAMAGE}). Průraz 10. Máš POUZE 1 náboj a přebíjíš 5 vteřin.`, apply: (p) => { p.damage = CFG.MAX_CAP_DAMAGE; p.bulletSize = Math.max(2, (p.bulletSize || 5) - 3); p.fireRate += 1000; p.pierce = (p.pierce || 0) + 10; p.maxAmmo = 1; p.ammo = 1; p.reloadTime = (p.reloadTime || 1500) + 5000; } },
-    { name: "Gambler", rarity: "exotic", description: "Každých 8 sekund náhodné staty. Můžeš být bůh nebo chcípnout na ránu.", apply: (p) => { p.isGambler = true; p.lastGamble = 0; } },
     { name: "Ruská ruleta", rarity: "exotic", description: "Máš 6 nábojů. 5 dělá 1 Dmg, 1 dává masivních +150 Dmg (Rozhoduje štěstí při každém výstřelu!)", apply: (p) => { p.isRussianRoulette = true; p.maxAmmo = 6; p.ammo = 6; } },
 
     // =========================================================================
     // TRANSCENDED (Rituály - Silné plošné efekty. Boss fáze, unikátní kompromisy)
     // =========================================================================
+    { name: "Gambler", rarity: "transcended", description: "Rituál: Hazard smrti. V doméně se losuje. Jackpot zaručí na 4.11s absolutní léčení (nesmrtelnost) a nekonečnou palbu.", apply: (p) => { p.domainType = 'GAMBLER'; p.domainRadius = 280; p.jackpotChance = 0.15; p.jackpotDuration = 4110; } },
     { name: "Kvantové Vězení", rarity: "transcended", description: "Rituál: Zmrazí čas. Extrémně zpomalí nepřátele, ale ty jsi o 30% rychlejší. DMG klesne o 20%.", apply: (p) => { p.domainType = 'QUANTUM_PRISON'; p.domainRadius = 250; p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.damage = Math.max(1, p.damage * 0.8); } },
     { name: "Závoj Šílenství", rarity: "transcended", description: "Rituál: Paralyzuje a spaluje mysl nepřátel v dosahu (5 DMG/s). Stojí tě to 30% Max HP.", apply: (p) => { p.domainType = 'MADNESS_VEIL'; p.domainRadius = 250; p.domainDamage = 5; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.7)); } },
     { name: "Krvavý Oltář", rarity: "transcended", description: "Rituál: Masivně vysává HP všemu v okolí (10 DMG/s) a léčí tě. Skoro se ale nemůžeš hýbat (-60% rychlost).", apply: (p) => { p.domainType = 'BLOOD_ALTAR'; p.domainRadius = 220; p.domainDamage = 10; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.2); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.6); } },
@@ -104,12 +105,15 @@ const availableCards = [
     // --- Vylepšení Rituálů (Upgrady domén) ---
     { name: "Prodloužený Rituál", rarity: "legendary", requiresDomain: true, description: "Tvá doména zůstane aktivní o 3 vteřiny déle.", apply: (p) => { p.domainDurationBonus = (p.domainDurationBonus || 0) + 3000; } },
     { name: "Mistr Rituálů", rarity: "mythic", requiresDomain: true, description: "Zkracuje cooldown domény o 20 %.", apply: (p) => { p.domainCooldownModifier = (p.domainCooldownModifier || 1) * 0.8; } },
+    { name: "Zmanipulovaná Ruleta", rarity: "epic", requiresDomain: true, specificDomain: "GAMBLER", description: "V doméně Gambler padá Jackpot mnohem častěji.", apply: (p) => { p.jackpotChance = (p.jackpotChance || 0.15) * 2; } },
+    { name: "Horečka Jackpotu", rarity: "legendary", requiresDomain: true, specificDomain: "GAMBLER", description: "Jackpot trvá o 3 vteřiny déle a získáš během něj masivní zrychlení.", apply: (p) => { p.jackpotDuration = (p.jackpotDuration || 4110) + 3000; p.jackpotSpeedBonus = 0.5; } },
     { name: "Krvavá Hostina", rarity: "epic", requiresDomain: true, specificDomain: "BLOOD_ALTAR", description: "Krvavý oltář dává dvojnásobné poškození a léčí ještě víc.", apply: (p) => { p.domainDamage = (p.domainDamage || 10) * 2; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.15); } },
     { name: "Horizont Událostí", rarity: "legendary", requiresDomain: true, specificDomain: "GRAVITY_COLLAPSE", description: "Gravitační kolaps vtahuje z mnohem větší dálky (+50% dosah).", apply: (p) => { p.domainRadius = (p.domainRadius || 300) * 1.5; p.gravityPull = (p.gravityPull || 5) * 1.3; } },
     { name: "Kvantové Zmrznutí", rarity: "epic", requiresDomain: true, specificDomain: "QUANTUM_PRISON", description: `Nepřátelé v doméně se prakticky zastaví (${CFG.MIN_CAP_MOVE_SPEED}).`, apply: (p) => { p.prisonSlowdown = CFG.MIN_CAP_MOVE_SPEED; } },
     { name: "Továrna na Smrt", rarity: "legendary", requiresDomain: true, specificDomain: "INFINITE_ARSENAL", description: "Nekonečný arzenál střílí o 50% rychleji s dvojnásobným DMG.", apply: (p) => { p.arsenalFireRate = (p.arsenalFireRate || 50) + 50; p.arsenalDamage = (p.arsenalDamage || 10) * 2; } },
     { name: "Tříštivé Zrcadlo", rarity: "legendary", requiresDomain: true, specificDomain: "MIRROR_SINGULARITY", description: "Odráží kulky s brutálním 300% bonusem k poškození, ale ztratíš 20% rychlosti.", apply: (p) => { p.reflectDamageMult = (p.reflectDamageMult || 1.5) + 1.5; p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.2); } }
 ];
+
 // =========================================================================
 // FUNKCE PRO FILTROVÁNÍ KARET (HLÍDÁ LOGIKU DOMÉN)
 // =========================================================================
