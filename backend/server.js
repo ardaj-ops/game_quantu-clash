@@ -9,42 +9,60 @@ const app = express();
 const server = http.createServer(app);
 
 // ==========================================
-// 1. NASTAVENÍ CORS (Pro oddělený frontend)
+// 1. NASTAVENÍ CORS A STATICKÝCH SOUBORŮ
 // ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "*", // Povolí připojení z jakéhokoliv frontendu (Static Site)
+        origin: "*", // Povolí připojení z jakéhokoliv frontendu
         methods: ["GET", "POST"]
     }
 });
 
+// ZÁSADNÍ OPRAVA PRO 404 CHYBY: 
+// Pokud se rozhodneš hostovat frontend i backend společně, toto zajistí, 
+// že server správně odešle soubory ze složky "public" (bez slova "public" v URL).
+app.use(express.static(path.join(__dirname, 'public')));
+
 // ==========================================
 // 2. KONTROLNÍ ROUTA BACKENDU
 // ==========================================
-// Už neservírujeme frontend složku dist, stará se o to Static Site na Renderu.
 app.get('/', (req, res) => {
-    res.send("Backend Quantum Clash úspěšně běží a je připraven na Socket.io spojení! 🚀");
+    // Zkusíme odeslat index.html z public složky. 
+    // Pokud tam není (protože to hostuješ odděleně), pošleme kontrolní text.
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.send("Backend Quantum Clash úspěšně běží a je připraven na Socket.io spojení! 🚀");
+    }
 });
 
 // ==========================================
 // 3. NASTAVENÍ MAPY A KONSTANTY
 // ==========================================
-let availableCards = [];
-try {
-    const rawCards = require(path.join(__dirname, 'cards.js'));
-    // Bezpečné načtení pole karet
-    availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
-    if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
-} catch (e) {
-    console.warn("⚠️ Nepodařilo se načíst cards.js z backendu. Hra poběží bez karet.", e.message);
-}
 
-let gameConfig = {};
-try {
-    gameConfig = require(path.join(__dirname, 'gameConfig.js'));
-} catch (e) {
-    console.warn("⚠️ Nepodařilo se načíst gameConfig.js. Použijí se výchozí hodnoty.", e.message);
+// Pomocná funkce pro bezpečné načtení konfiguračních souborů (zkusí kořenový adresář i public)
+const loadSharedFile = (fileName) => {
+    try {
+        return require(path.join(__dirname, fileName));
+    } catch (e) {
+        try {
+            return require(path.join(__dirname, 'public', fileName));
+        } catch (err) {
+            console.warn(`⚠️ Nepodařilo se načíst ${fileName}.`, err.message);
+            return null;
+        }
+    }
+};
+
+let availableCards = [];
+const rawCards = loadSharedFile('cards.js');
+if (rawCards) {
+    availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
 }
+if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js. Hra poběží bez karet.");
+
+let gameConfig = loadSharedFile('gameConfig.js') || {};
 
 // Destrukturalizace s defaultními hodnotami pro případ chybějícího configu
 const {
@@ -429,7 +447,6 @@ io.on('connection', (socket) => {
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
 
-        // Zkontrolujeme, zda jsou všichni (minimálně 2) připraveni
         if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
             if (room.gameMode === 'tdm') {
                 let hasRed = false, hasBlue = false;
@@ -438,13 +455,12 @@ io.on('connection', (socket) => {
                     if (room.players[id].team === 'blue') hasBlue = true;
                 }
                 if (!hasRed || !hasBlue) {
-                    room.players[socket.id].isReady = false; // Zruší ready hostovi, co to pokazil
+                    room.players[socket.id].isReady = false; 
                     broadcastLobbyUpdate(room);
                     return socket.emit('errorMsg', 'V TDM musí být alespoň jeden hráč v každém týmu!');
                 }
             }
             
-            // Inicializace před startem
             for (let id of playerIds) {
                 room.players[id].score = 0;
                 resetPlayerStatsToBase(room.players[id]);
@@ -460,9 +476,7 @@ io.on('connection', (socket) => {
         
         const room = rooms[roomCode || socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
-            // Zachování existujícího dash vstupu z eventu "Dash", pokud by klient poslal false ve standardním updatu
             let currentDash = room.players[socket.id].inputs.dash || false;
-            // Bezpečné zkopírování dat, aby klient nemohl přepsat celý objekt něčím jiným
             room.players[socket.id].inputs = {
                 ...room.players[socket.id].inputs,
                 ...data,
@@ -471,7 +485,6 @@ io.on('connection', (socket) => {
         }
     };
     
-    // Pro zpětnou kompatibilitu, kdyby klient volal P nebo p
     socket.on('PlayerInput', handleInput);
     socket.on('playerInput', handleInput);
 
@@ -488,7 +501,6 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
             let p = room.players[socket.id];
-            // Validace, že nám klient neposílá NaN nebo undefined jako pozici a nerozbije server
             if (p.hp > 0 && typeof data.x === 'number' && !isNaN(data.x) && typeof data.y === 'number' && !isNaN(data.y)) {
                 p.x = data.x;
                 p.y = data.y;
@@ -517,21 +529,18 @@ io.on('connection', (socket) => {
             let shooter = room.players[socket.id];
 
             if (target && shooter && target.hp > 0) {
-                // Prevence vícenásobného zásahu (Double-hit bug prevention)
                 if (data.bulletId) {
                     const hitHash = `${data.bulletId}-${data.targetId}`;
                     if (room.processedHits.has(hitHash)) return;
                     room.processedHits.add(hitHash);
                 }
 
-                // Ochrana: nedůvěřujeme klientovi slepě damage, zastropujeme ji max. 3x poškozením (např. crit)
                 const damageFromClient = Number(data.damage) || 0;
                 const maxAllowedDamage = shooter.damage * 3;
                 const safeDamage = Math.min(damageFromClient, maxAllowedDamage);
                 
                 target.hp -= safeDamage;
                 
-                // Lifesteal kalkulace
                 if (data.lifesteal > 0 && shooter.hp > 0) {
                     let healAmount = Math.floor(safeDamage * Number(data.lifesteal));
                     shooter.hp = Math.min(shooter.maxHp, shooter.hp + healAmount);
@@ -571,7 +580,6 @@ io.on('connection', (socket) => {
         if (card && p) {
             let oldMaxHp = p.maxHp;
             if (typeof card.apply === 'function') card.apply(p);
-            // Přepočet současného HP, pokud se změnilo maximum
             if (p.maxHp !== oldMaxHp) p.hp = Math.floor(p.maxHp * (p.hp / oldMaxHp));
             applyHardCaps(p);
         }
@@ -604,7 +612,6 @@ io.on('connection', (socket) => {
         room.upgradeQueue = (room.upgradeQueue || []).filter(id => id !== socket.id);
         const remainingPlayers = Object.keys(room.players);
 
-        // Pokud odešel poslední, znič místnost
         if (remainingPlayers.length === 0) {
             delete rooms[code];
             return;
@@ -614,14 +621,12 @@ io.on('connection', (socket) => {
             room.hostId = remainingPlayers[0];
         }
 
-        // Pokud běží hra a po odpojení zbude jen 1 hráč, ukonči hru do LOBBY
         if (remainingPlayers.length < 2 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
             room.gameState = 'LOBBY';
             if (room.players[remainingPlayers[0]]) room.players[remainingPlayers[0]].isReady = false;
             io.to(code).emit('gameStateChanged', { state: 'LOBBY', roomCode: code, scoreLimit: room.matchScoreLimit });
             broadcastLobbyUpdate(room);
         } 
-        // Pokud odešel hráč, který měl zrovna vybírat kartu
         else if (room.gameState === 'UPGRADE' && room.currentLoserId === socket.id) {
             if (room.upgradeQueue.length > 0) {
                 room.currentLoserId = room.upgradeQueue[0];
