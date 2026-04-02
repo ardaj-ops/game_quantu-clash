@@ -14,7 +14,7 @@ const io = new Server(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Catch-all: Pokud uživatel zadá jakoukoliv adresu, pošleme mu hru
-app.get('*', (req, res) => {
+app.get('/(.*)', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
