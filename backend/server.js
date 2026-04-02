@@ -2,40 +2,53 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
+
+// Nastavení Socket.io s CORS
 const io = new Server(server, {
-    cors: { origin: "*" }
+  cors: {
+    origin: "*", // Pro produkci doporučuji nahradit polem povolených URL, např. ["https://tvojehra.onrender.com"]
+    methods: ["GET", "POST"]
+  }
 });
 
-// Zajišťuje, že se načtou statické soubory ze složky public
-app.use(express.static(path.join(__dirname, 'public')));
+// Zajišťuje, že se načtou statické soubory ze složky dist (Vite build)
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDistPath));
 
-// Catch-all: Pokud uživatel zadá jakoukoliv adresu, pošleme mu hru
+// Catch-all routa pro SPA (Single Page Application)
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = path.join(frontendDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Hra se načítá nebo build frontendu ještě neexistuje. Spusťte 'npm run build' ve složce frontend.");
+    }
 });
 
 // --- NASTAVENÍ MAPY A KONSTANTY ---
-let rawCards = [];
 let availableCards = [];
 try {
-    // Bezpečnější načítání cest (Linux vs Windows)
-    rawCards = require(path.join(__dirname, 'public', 'js', 'cards.js'));
+    const rawCards = require(path.join(__dirname, 'cards.js'));
+    // Bezpečné načtení pole karet
     availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
+    if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
 } catch (e) {
-    console.warn("⚠️ Nepodařilo se načíst cards.js. Hra poběží bez karet.");
+    console.warn("⚠️ Nepodařilo se načíst cards.js z backendu. Hra poběží bez karet.", e.message);
 }
 
 let gameConfig = {};
 try {
-    gameConfig = require(path.join(__dirname, 'public', 'js', 'gameConfig.js'));
+    gameConfig = require(path.join(__dirname, 'gameConfig.js'));
 } catch (e) {
-    console.warn("⚠️ Nepodařilo se načíst gameConfig.js. Použijí se výchozí hodnoty.");
+    console.warn("⚠️ Nepodařilo se načíst gameConfig.js. Použijí se výchozí hodnoty.", e.message);
 }
 
+// Destrukturalizace s defaultními hodnotami pro případ chybějícího configu
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
@@ -46,11 +59,8 @@ const {
 } = gameConfig;
 
 const rooms = {};
-
-// Systém šancí pro karty
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
-// Katalog karet pro UI
 const uiCatalog = availableCards.map(c => ({
     name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
 }));
@@ -160,7 +170,7 @@ function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmeti
         maxAmmo: BASE_AMMO, ammo: BASE_AMMO,
         name: String(playerName || "Hráč").substring(0, 15), 
         color: String(playerColor || "#ff4757").substring(0, 7), 
-        cosmetic: playerCosmetic || "none", team: playerTeam, score: 0,
+        cosmetic: playerCosmetic || "none", team: playerTeam || "none", score: 0,
         isReady: false, isReloading: false, domainActive: false, isInvisible: false,
         cards: [],
         inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false }
@@ -219,6 +229,7 @@ function startNextRound(room) {
     if (!room) return;
     let activePlayersCount = Object.keys(room.players).length;
     
+    // Záchrana, pokud během načítání někdo odejde a zbude 1 hráč
     if (activePlayersCount < 2) {
         room.gameState = 'LOBBY';
         io.to(room.id).emit('gameStateChanged', { state: 'LOBBY', roomCode: room.id, scoreLimit: room.matchScoreLimit });
@@ -256,7 +267,7 @@ function startNextRound(room) {
 }
 
 function handleDeath(room, victimId) {
-    if (room.gameState !== 'PLAYING') return;
+    if (!room || room.gameState !== 'PLAYING') return;
 
     if (room.players[victimId]) {
         if (!room.deadPlayersThisRound.includes(victimId)) room.deadPlayersThisRound.push(victimId);
@@ -275,9 +286,10 @@ function handleDeath(room, victimId) {
             }
         }
     } else {
-        if (alive.length <= 1) roundWinnerId = alive[0];
+        if (alive.length <= 1) roundWinnerId = alive.length === 1 ? alive[0] : null;
     }
 
+    // Vyhodnocení kola
     if (alive.length <= 1 || roundWinnerTeam) {
         if (room.gameMode === 'tdm' && roundWinnerTeam) {
             room.teamScores[roundWinnerTeam] = (room.teamScores[roundWinnerTeam] || 0) + 1;
@@ -344,8 +356,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (data) => {
-        if (!data) return;
-        let code = (typeof data === 'string' ? data : data.code).toUpperCase();
+        if (!data || !data.code) return;
+        let code = String(data.code).toUpperCase();
         const room = rooms[code];
 
         if (!room) return socket.emit('errorMsg', 'Místnost neexistuje.');
@@ -364,13 +376,13 @@ io.on('connection', (socket) => {
     socket.on('toggleGravity', (data) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id) return;
-        room.gravityEnabled = (data && data.enabled !== undefined) ? data.enabled : !room.gravityEnabled;
+        room.gravityEnabled = (data && data.enabled !== undefined) ? !!data.enabled : !room.gravityEnabled;
         broadcastLobbyUpdate(room);
     });
 
     socket.on('updateRoomScoreLimit', (data) => {
         const room = rooms[socket.roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id) return;
+        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !data) return;
         let limit = parseInt(data.limit);
         if (!isNaN(limit) && limit > 0 && limit <= 50) { 
             room.matchScoreLimit = limit; 
@@ -382,7 +394,7 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !data) return;
         
-        room.gameMode = data.mode;
+        room.gameMode = data.mode === 'tdm' ? 'tdm' : 'ffa';
         let players = Object.values(room.players);
         
         if (room.gameMode === 'ffa') {
@@ -419,6 +431,7 @@ io.on('connection', (socket) => {
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
 
+        // Zkontrolujeme, zda jsou všichni (minimálně 2) připraveni
         if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
             if (room.gameMode === 'tdm') {
                 let hasRed = false, hasBlue = false;
@@ -427,12 +440,13 @@ io.on('connection', (socket) => {
                     if (room.players[id].team === 'blue') hasBlue = true;
                 }
                 if (!hasRed || !hasBlue) {
-                    room.players[socket.id].isReady = false;
+                    room.players[socket.id].isReady = false; // Zruší ready hostovi, co to pokazil
                     broadcastLobbyUpdate(room);
                     return socket.emit('errorMsg', 'V TDM musí být alespoň jeden hráč v každém týmu!');
                 }
             }
             
+            // Inicializace před startem
             for (let id of playerIds) {
                 room.players[id].score = 0;
                 resetPlayerStatsToBase(room.players[id]);
@@ -448,12 +462,18 @@ io.on('connection', (socket) => {
         
         const room = rooms[roomCode || socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
+            // Zachování existujícího dash vstupu z eventu "Dash", pokud by klient poslal false ve standardním updatu
             let currentDash = room.players[socket.id].inputs.dash || false;
-            room.players[socket.id].inputs = data;
-            room.players[socket.id].inputs.dash = currentDash;
+            // Bezpečné zkopírování dat, aby klient nemohl přepsat celý objekt něčím jiným
+            room.players[socket.id].inputs = {
+                ...room.players[socket.id].inputs,
+                ...data,
+                dash: currentDash || !!data.dash
+            };
         }
     };
     
+    // Pro zpětnou kompatibilitu, kdyby klient volal P nebo p
     socket.on('PlayerInput', handleInput);
     socket.on('playerInput', handleInput);
 
@@ -470,9 +490,10 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
             let p = room.players[socket.id];
-            if (p.hp > 0 && !isNaN(data.x) && !isNaN(data.y)) {
-                p.x = Number(data.x);
-                p.y = Number(data.y);
+            // Validace, že nám klient neposílá NaN nebo undefined jako pozici a nerozbije server
+            if (p.hp > 0 && typeof data.x === 'number' && !isNaN(data.x) && typeof data.y === 'number' && !isNaN(data.y)) {
+                p.x = data.x;
+                p.y = data.y;
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
                 p.ammo = Number(data.ammo) || p.ammo;
                 p.isReloading = !!data.isReloading;
@@ -493,20 +514,26 @@ io.on('connection', (socket) => {
     socket.on('bulletHitPlayer', (arg1, arg2) => {
         let data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-        if (room && room.gameState === 'PLAYING' && data) {
+        if (room && room.gameState === 'PLAYING' && data && data.targetId) {
             let target = room.players[data.targetId];
             let shooter = room.players[socket.id];
 
             if (target && shooter && target.hp > 0) {
+                // Prevence vícenásobného zásahu (Double-hit bug prevention)
                 if (data.bulletId) {
                     const hitHash = `${data.bulletId}-${data.targetId}`;
                     if (room.processedHits.has(hitHash)) return;
                     room.processedHits.add(hitHash);
                 }
 
-                const safeDamage = Math.min(Number(data.damage) || 0, shooter.damage * 3);
+                // Ochrana: nedůvěřujeme klientovi slepě damage, zastropujeme ji max. 3x poškozením (např. crit)
+                const damageFromClient = Number(data.damage) || 0;
+                const maxAllowedDamage = shooter.damage * 3;
+                const safeDamage = Math.min(damageFromClient, maxAllowedDamage);
+                
                 target.hp -= safeDamage;
                 
+                // Lifesteal kalkulace
                 if (data.lifesteal > 0 && shooter.hp > 0) {
                     let healAmount = Math.floor(safeDamage * Number(data.lifesteal));
                     shooter.hp = Math.min(shooter.maxHp, shooter.hp + healAmount);
@@ -533,7 +560,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('spawnDecoy', (decoyData) => {
-        socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
+        if(socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
     });
 
     socket.on('pickCard', (cardIndex) => {
@@ -546,6 +573,7 @@ io.on('connection', (socket) => {
         if (card && p) {
             let oldMaxHp = p.maxHp;
             if (typeof card.apply === 'function') card.apply(p);
+            // Přepočet současného HP, pokud se změnilo maximum
             if (p.maxHp !== oldMaxHp) p.hp = Math.floor(p.maxHp * (p.hp / oldMaxHp));
             applyHardCaps(p);
         }
@@ -578,6 +606,7 @@ io.on('connection', (socket) => {
         room.upgradeQueue = (room.upgradeQueue || []).filter(id => id !== socket.id);
         const remainingPlayers = Object.keys(room.players);
 
+        // Pokud odešel poslední, znič místnost
         if (remainingPlayers.length === 0) {
             delete rooms[code];
             return;
@@ -587,12 +616,14 @@ io.on('connection', (socket) => {
             room.hostId = remainingPlayers[0];
         }
 
+        // Pokud běží hra a po odpojení zbude jen 1 hráč, ukonči hru do LOBBY
         if (remainingPlayers.length < 2 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
             room.gameState = 'LOBBY';
             if (room.players[remainingPlayers[0]]) room.players[remainingPlayers[0]].isReady = false;
             io.to(code).emit('gameStateChanged', { state: 'LOBBY', roomCode: code, scoreLimit: room.matchScoreLimit });
             broadcastLobbyUpdate(room);
         } 
+        // Pokud odešel hráč, který měl zrovna vybírat kartu
         else if (room.gameState === 'UPGRADE' && room.currentLoserId === socket.id) {
             if (room.upgradeQueue.length > 0) {
                 room.currentLoserId = room.upgradeQueue[0];
@@ -619,10 +650,12 @@ io.on('connection', (socket) => {
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
-        if (room.gameState === 'PLAYING' && room.gravityEnabled && GRAVITY_OPTIONS && GRAVITY_OPTIONS.length > 0) {
+        if (room && room.gameState === 'PLAYING' && room.gravityEnabled && GRAVITY_OPTIONS && GRAVITY_OPTIONS.length > 0) {
             let availableOptions = GRAVITY_OPTIONS.length > 1 ? GRAVITY_OPTIONS.filter(g => g.name !== room.currentGravity?.name) : GRAVITY_OPTIONS;
-            room.currentGravity = availableOptions[Math.floor(Math.random() * availableOptions.length)];
-            io.to(roomId).emit('gravityChanged', room.currentGravity.name);
+            if(availableOptions.length > 0) {
+                room.currentGravity = availableOptions[Math.floor(Math.random() * availableOptions.length)];
+                io.to(roomId).emit('gravityChanged', room.currentGravity.name);
+            }
         }
     }
 }, GRAVITY_CHANGE_INTERVAL);
@@ -630,13 +663,15 @@ setInterval(() => {
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
-        io.to(roomId).volatile.emit('gameUpdate', {
-            players: room.players,
-            maxScore: room.matchScoreLimit,
-            teamScores: room.teamScores,
-            gameState: room.gameState,
-            gameMode: room.gameMode
-        });
+        if (room) {
+            io.to(roomId).volatile.emit('gameUpdate', {
+                players: room.players,
+                maxScore: room.matchScoreLimit,
+                teamScores: room.teamScores,
+                gameState: room.gameState,
+                gameMode: room.gameMode
+            });
+        }
     }
 }, 1000 / 20); // 20 ticků za sekundu server sync
 

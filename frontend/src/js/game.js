@@ -1,19 +1,28 @@
 // ==========================================
-// INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
+// 0. PŘIPOJENÍ K BACKENDU (PRO RENDER ARCHITEKTURU)
+// ==========================================
+// TODO: Změň tuto URL na adresu své Web Service na Renderu!
+const BACKEND_URL = "https://tvoje-hra-api.onrender.com"; 
+
+// Inicializace socketu přímo z frontendu
+const socket = (typeof io !== 'undefined') ? io(BACKEND_URL) : null;
+
+if (!socket) {
+    console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.2/socket.io.min.js'></script>");
+}
+
+// ==========================================
+// 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
 
 window.latestServerData = null; 
-
 window.gameScale = 1;
 window.gameOffsetX = 0;
 window.gameOffsetY = 0;
 
-// ==========================================
-// 0. LOKÁLNÍ PAMĚŤ PRO MAPU A STAV
-// ==========================================
 window.localObstacles = [];
 window.localBreakables = [];
 window.CARD_CATALOG = []; 
@@ -21,7 +30,16 @@ window.localBullets = [];
 let lastShotTime = 0;
 window.showTabMenu = false; 
 
-if (typeof socket !== 'undefined') {
+// Ošetření vstupů (pokud je neinicializuješ v jiném skriptu nebo HTML)
+window.inputs = window.inputs || { up: false, down: false, left: false, right: false, click: false, aimAngle: 0 };
+
+const MAP_W = (typeof CONFIG !== 'undefined' && CONFIG.MAP_WIDTH) ? CONFIG.MAP_WIDTH : 2000;
+const MAP_H = (typeof CONFIG !== 'undefined' && CONFIG.MAP_HEIGHT) ? CONFIG.MAP_HEIGHT : 2000;
+
+// ==========================================
+// 2. SÍŤOVÉ LISTENERY A KLÁVESNICE
+// ==========================================
+if (socket) {
     socket.on('mapUpdate', (data) => {
         if (data.obstacles) window.localObstacles = data.obstacles;
         if (data.breakables) window.localBreakables = data.breakables;
@@ -47,11 +65,8 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-const MAP_W = (typeof CONFIG !== 'undefined' && CONFIG.MAP_WIDTH) ? CONFIG.MAP_WIDTH : 2000;
-const MAP_H = (typeof CONFIG !== 'undefined' && CONFIG.MAP_HEIGHT) ? CONFIG.MAP_HEIGHT : 2000;
-
 // ==========================================
-// 1. ZAMĚŘOVAČ A JEHO NASTAVENÍ
+// 3. ZAMĚŘOVAČ A JEHO NASTAVENÍ
 // ==========================================
 window.crosshairConfig = { color: '#45f3ff', size: 10 };
 
@@ -172,7 +187,7 @@ window.saveCrosshairSettings = function() {
 };
 
 // ==========================================
-// 2. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
+// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
 // ==========================================
 function drawBackground() {
     if (!ctx) return;
@@ -248,7 +263,7 @@ function drawMapObjects(obstacles, breakables) {
 }
 
 // ==========================================
-// 3. VYKRESLENÍ KOSMETIKY A AVATARA
+// 5. VYKRESLOVÁNÍ AVATARŮ A KOSMETIKY
 // ==========================================
 function drawCosmetics(ctx, x, y, radius, cosmetic, bodyColor, aimAngle) {
     if (!cosmetic || cosmetic === 'none') return;
@@ -480,11 +495,11 @@ function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, amm
 }
 
 // ==========================================
-// 4. ENTITY A STŘELY
+// 6. ENTITY, HRÁČI A STŘELY
 // ==========================================
 function drawDecoys(decoys, players) {
     if (!ctx || !decoys || !players) return;
-    const myId = typeof socket !== 'undefined' ? socket.id : null;
+    const myId = socket ? socket.id : null;
 
     decoys.forEach(d => {
         let owner = players[d.ownerId];
@@ -504,7 +519,7 @@ function drawDecoys(decoys, players) {
 
 function drawPlayers(players) {
     if (!ctx) return;
-    const myId = typeof socket !== 'undefined' ? socket.id : null;
+    const myId = socket ? socket.id : null;
 
     Object.keys(players).forEach(id => {
         let p = players[id];
@@ -540,7 +555,7 @@ function drawBullets(bullets, players) {
     if (!ctx) return;
     if (!bullets && !window.localBullets) return;
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
-    const myId = typeof socket !== 'undefined' ? socket.id : null;
+    const myId = socket ? socket.id : null;
 
     let serverBullets = (bullets || []).filter(b => b.ownerId !== myId);
     let allBullets = [...serverBullets, ...(window.localBullets || [])];
@@ -591,7 +606,7 @@ function drawBullets(bullets, players) {
 }
 
 // ==========================================
-// 5. OVERLAY KARET A ENCYKLOPEDIE (TAB MENU)
+// 7. OVERLAY KARET A ENCYKLOPEDIE (TAB MENU)
 // ==========================================
 function drawTabMenu(players) {
     if (!ctx || !players) return;
@@ -746,12 +761,11 @@ function drawTabMenu(players) {
 }
 
 // ==========================================
-// 5.5 PROPOJENÍ S HTML UI (HUD) - NOVÉ
+// 8. PROPOJENÍ S HTML UI (HUD)
 // ==========================================
 function updateDOM_HUD(me) {
     if (!me) return;
 
-    // 1. Dash Ukazatel (Předpokládá ID 'dash-progress-fill' v HTML pro samotný pruh)
     const dashFill = document.getElementById('dash-progress-fill'); 
     if (dashFill) {
         const maxDashCD = (typeof CONFIG !== 'undefined' && CONFIG.DASH_COOLDOWN) ? CONFIG.DASH_COOLDOWN : 3000;
@@ -760,14 +774,13 @@ function updateDOM_HUD(me) {
         if (currentCD > 0) {
             let percent = Math.max(0, 100 - (currentCD / maxDashCD * 100));
             dashFill.style.width = percent + '%';
-            dashFill.style.backgroundColor = '#f39c12'; // Oranžová při nabíjení
+            dashFill.style.backgroundColor = '#f39c12'; 
         } else {
             dashFill.style.width = '100%';
-            dashFill.style.backgroundColor = '#45f3ff'; // Tyrkysová připraveno
+            dashFill.style.backgroundColor = '#45f3ff'; 
         }
     }
 
-    // 2. Náboje (Předpokládá ID 'ammo-text' v HTML)
     const ammoText = document.getElementById('ammo-text');
     if (ammoText) {
         if (me.isReloading) {
@@ -784,7 +797,7 @@ function updateDOM_HUD(me) {
 }
 
 // ==========================================
-// 6. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ 
+// 9. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ 
 // ==========================================
 window.drawGame = function(serverData) {
     if (!serverData || !ctx) return;
@@ -820,8 +833,7 @@ window.drawGame = function(serverData) {
         if (serverData.players) drawPlayers(serverData.players);
         drawBullets(serverData.bullets, serverData.players);
         
-        // --- ZAVOLÁNÍ DOM UI UPDATU ---
-        if (typeof socket !== 'undefined' && serverData.players) {
+        if (socket && serverData.players) {
             let myId = socket.id;
             let me = serverData.players[myId];
             updateDOM_HUD(me);
@@ -852,9 +864,8 @@ window.drawGame = function(serverData) {
 };
 
 // ==========================================
-// 7. CLIENT-AUTHORITATIVE MOZEK A FYZIKA
+// 10. CLIENT-AUTHORITATIVE MOZEK A FYZIKA
 // ==========================================
-
 function checkWallCollision(x, y, radius, walls) {
     if (!walls || walls.length === 0) return false;
     for (let wall of walls) {
@@ -875,7 +886,7 @@ function checkWallCollision(x, y, radius, walls) {
 
 window.updateLocalGame = function() {
     if (!window.latestServerData || window.latestServerData.gameState !== 'PLAYING') return;
-    if (typeof socket === 'undefined' || !window.inputs) return;
+    if (!socket || !window.inputs) return;
 
     let myId = socket.id;
     let me = window.latestServerData.players[myId];
@@ -964,4 +975,5 @@ window.updateLocalGame = function() {
     }
 };
 
+// Spuštění herní smyčky fyziky/vstupů (60x za sekundu)
 setInterval(window.updateLocalGame, 1000 / 60);
