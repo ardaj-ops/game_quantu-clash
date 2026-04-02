@@ -13,7 +13,8 @@ const io = new Server(server, {
 // Zajišťuje, že se načtou statické soubory ze složky public
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
+// Catch-all: Pokud uživatel zadá jakoukoliv adresu, pošleme mu hru
+app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -21,7 +22,8 @@ app.get('/', (req, res) => {
 let rawCards = [];
 let availableCards = [];
 try {
-    rawCards = require('./public/js/cards.js');
+    // Bezpečnější načítání cest (Linux vs Windows)
+    rawCards = require(path.join(__dirname, 'public', 'js', 'cards.js'));
     availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
 } catch (e) {
     console.warn("⚠️ Nepodařilo se načíst cards.js. Hra poběží bez karet.");
@@ -29,7 +31,7 @@ try {
 
 let gameConfig = {};
 try {
-    gameConfig = require('./public/js/gameConfig.js');
+    gameConfig = require(path.join(__dirname, 'public', 'js', 'gameConfig.js'));
 } catch (e) {
     console.warn("⚠️ Nepodařilo se načíst gameConfig.js. Použijí se výchozí hodnoty.");
 }
@@ -69,6 +71,7 @@ function broadcastLobbyUpdate(room) {
 }
 
 function applyHardCaps(p) {
+    if(!p) return;
     p.maxHp = Math.max(MIN_CAP_HP, Math.min(MAX_CAP_HP, p.maxHp || BASE_HP));
     p.hp = Math.min(p.hp, p.maxHp);
     p.damage = Math.min(MAX_CAP_DAMAGE, p.damage || BASE_DAMAGE);
@@ -79,6 +82,7 @@ function applyHardCaps(p) {
 }
 
 function resetPlayerStatsToBase(p) {
+    if(!p) return;
     p.maxHp = BASE_HP; p.hp = p.maxHp;
     p.damage = BASE_DAMAGE; p.fireRate = BASE_FIRE_RATE;
     p.bulletSpeed = BASE_BULLET_SPEED; p.moveSpeed = BASE_MOVE_SPEED;
@@ -340,6 +344,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (data) => {
+        if (!data) return;
         let code = (typeof data === 'string' ? data : data.code).toUpperCase();
         const room = rooms[code];
 
@@ -359,7 +364,7 @@ io.on('connection', (socket) => {
     socket.on('toggleGravity', (data) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id) return;
-        room.gravityEnabled = data.enabled !== undefined ? data.enabled : !room.gravityEnabled;
+        room.gravityEnabled = (data && data.enabled !== undefined) ? data.enabled : !room.gravityEnabled;
         broadcastLobbyUpdate(room);
     });
 
@@ -375,7 +380,7 @@ io.on('connection', (socket) => {
 
     socket.on('updateGameMode', (data) => {
         const room = rooms[socket.roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id) return;
+        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !data) return;
         
         room.gameMode = data.mode;
         let players = Object.values(room.players);
@@ -397,7 +402,7 @@ io.on('connection', (socket) => {
 
     socket.on('updateProfile', (data) => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return;
+        if (!room || !room.players[socket.id] || !data) return;
         let p = room.players[socket.id];
         if (data.name) p.name = String(data.name).substring(0, 15);
         if (data.color) p.color = String(data.color).substring(0, 7);
@@ -633,7 +638,7 @@ setInterval(() => {
             gameMode: room.gameMode
         });
     }
-}, 1000 / 20);
+}, 1000 / 20); // 20 ticků za sekundu server sync
 
 server.listen(PORT, () => {
     console.log(`🚀 Server běží na portu ${PORT}`);
