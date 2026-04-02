@@ -8,28 +8,27 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 
+// ==========================================
+// 1. NASTAVENÍ CORS (Pro oddělený frontend)
+// ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "*", // Povolí připojení z jakéhokoliv frontendu
+        origin: "*", // Povolí připojení z jakéhokoliv frontendu (Static Site)
         methods: ["GET", "POST"]
     }
 });
 
-// Zajišťuje, že se načtou statické soubory ze složky dist (Vite build)
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
-app.use(express.static(frontendDistPath));
-
-// Catch-all routa pro SPA (Single Page Application)
-app.get('*', (req, res) => {
-    const indexPath = path.join(frontendDistPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).send("Hra se načítá nebo build frontendu ještě neexistuje. Spusťte 'npm run build' ve složce frontend.");
-    }
+// ==========================================
+// 2. KONTROLNÍ ROUTA BACKENDU
+// ==========================================
+// Už neservírujeme frontend složku dist, stará se o to Static Site na Renderu.
+app.get('/', (req, res) => {
+    res.send("Backend Quantum Clash úspěšně běží a je připraven na Socket.io spojení! 🚀");
 });
 
-// --- NASTAVENÍ MAPY A KONSTANTY ---
+// ==========================================
+// 3. NASTAVENÍ MAPY A KONSTANTY
+// ==========================================
 let availableCards = [];
 try {
     const rawCards = require(path.join(__dirname, 'cards.js'));
