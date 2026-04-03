@@ -5,7 +5,7 @@
 const BACKEND_URL = "https://tvoje-hra-api.onrender.com"; 
 
 // Inicializace socketu přímo z frontendu
-const socket = (typeof io !== 'undefined') ? io(BACKEND_URL) : null;
+const socket = io('https://quantum-clash-backend.onrender.com');
 
 if (!socket) {
     console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.2/socket.io.min.js'></script>");

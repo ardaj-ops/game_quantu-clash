@@ -1,7 +1,6 @@
 // ==========================================
 // INICIALIZACE ZÁKLADNÍCH PROMĚNNÝCH
 // ==========================================
-const canvas = document.getElementById('gameCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
 window.latestServerData = null; 
