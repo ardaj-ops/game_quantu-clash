@@ -4,6 +4,9 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 
+// --- PŘIDÁNO: Import Domain Manageru ---
+const DomainManager = require('./domainManager');
+
 const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
@@ -13,12 +16,11 @@ const server = http.createServer(app);
 // ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "https://quantum-clash-gq1w.onrender.com", // Povolí připojení z tvého frontendu
+        origin: "https://quantum-clash-gq1w.onrender.com", 
         methods: ["GET", "POST"]
     }
 });
 
-// Statické soubory z frontendu (pro případ sdíleného hostingu)
 app.use(express.static(path.join(__dirname, '..', 'frontend', 'public')));
 
 // ==========================================
@@ -34,30 +36,22 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 3. NASTAVENÍ MAPY A KONSTANTY (OPRAVENO)
+// 3. NASTAVENÍ MAPY A KONSTANTY
 // ==========================================
-
-// Pomocná funkce pro bezpečné načtení konfiguračních souborů s chytrou detekcí cesty
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
-        path.join(__dirname, '..', 'frontend', 'public', fileName), // Přesná struktura z tvého GitHubu
-        path.join(__dirname, 'public', fileName),                   // Kdyby to bylo v backend/public
-        path.join(__dirname, fileName)                              // Kdyby to leželo rovnou u server.js
+        path.join(__dirname, '..', 'frontend', 'public', fileName), 
+        path.join(__dirname, 'public', fileName),                   
+        path.join(__dirname, fileName)                              
     ];
 
     for (let p of pathsToTry) {
         if (fs.existsSync(p)) {
             try {
-                // FÍGL NA OBEJITÍ CHYBY "require is not defined in ES module scope":
-                // Soubor nenačítáme přes require(), protože frontendový package.json to zakazuje.
-                // Místo toho ho přečteme jako text a ručně simulujeme jeho spuštění.
                 const content = fs.readFileSync(p, 'utf-8');
                 const m = { exports: {} };
-                
-                // Zabalíme obsah do funkce, čímž vytvoříme klasické CommonJS prostředí
                 const wrapper = new Function('module', 'exports', 'require', content);
                 wrapper(m, m.exports, require);
-                
                 return m.exports;
             } catch (err) {
                 console.warn(`⚠️ Soubor ${fileName} nalezen, ale obsahuje chybu a nelze načíst:`, err.message);
@@ -65,8 +59,7 @@ const loadSharedFile = (fileName) => {
             }
         }
     }
-    
-    console.warn(`⚠️ Nepodařilo se najít soubor ${fileName}. Server ho hledal zde:\n - ${pathsToTry.join('\n - ')}`);
+    console.warn(`⚠️ Nepodařilo se najít soubor ${fileName}.`);
     return null;
 };
 
@@ -79,7 +72,6 @@ if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné k
 
 let gameConfig = loadSharedFile('gameConfig.js') || {};
 
-// Destrukturalizace s defaultními hodnotami pro případ chybějícího configu
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
@@ -129,10 +121,18 @@ function resetPlayerStatsToBase(p) {
     p.bulletSpeed = BASE_BULLET_SPEED; p.moveSpeed = BASE_MOVE_SPEED;
     p.maxAmmo = BASE_AMMO; p.ammo = p.maxAmmo;
     p.reloadTime = BASE_RELOAD_TIME;
-    p.isReloading = false; p.domainType = undefined; p.multishot = 1;
+    p.isReloading = false; 
+    p.multishot = 1;
     p.spread = 0.1; p.bounces = 0; p.pierce = 0; p.lifesteal = 0;
     p.cards = [];
     p.inputs = { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false };
+    
+    // --- PŘIDÁNO: Reset doménových proměnných ---
+    p.domainType = undefined; 
+    p.domainActive = false;
+    p.domainTimer = 0;
+    p.domainCooldown = 0;
+    p.isJackpotActive = false;
 }
 
 function checkRectCollision(x, y, radius, rect) {
@@ -202,9 +202,16 @@ function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmeti
         name: String(playerName || "Hráč").substring(0, 15), 
         color: String(playerColor || "#ff4757").substring(0, 7), 
         cosmetic: playerCosmetic || "none", team: playerTeam || "none", score: 0,
-        isReady: false, isReloading: false, domainActive: false, isInvisible: false,
+        isReady: false, isReloading: false, isInvisible: false,
         cards: [],
-        inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false }
+        inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false },
+        
+        // --- PŘIDÁNO: Proměnné pro doménu v templatu ---
+        domainType: undefined,
+        domainActive: false,
+        domainTimer: 0,
+        domainCooldown: 0,
+        isJackpotActive: false
     };
 }
 
@@ -260,7 +267,6 @@ function startNextRound(room) {
     if (!room) return;
     let activePlayersCount = Object.keys(room.players).length;
     
-    // Záchrana, pokud během načítání někdo odejde a zbude 1 hráč
     if (activePlayersCount < 2) {
         room.gameState = 'LOBBY';
         io.to(room.id).emit('gameStateChanged', { state: 'LOBBY', roomCode: room.id, scoreLimit: room.matchScoreLimit });
@@ -303,6 +309,8 @@ function handleDeath(room, victimId) {
     if (room.players[victimId]) {
         if (!room.deadPlayersThisRound.includes(victimId)) room.deadPlayersThisRound.push(victimId);
         room.players[victimId].hp = 0;
+        // PŘIDÁNO: Deaktivace domény při smrti
+        room.players[victimId].domainActive = false;
     }
 
     let alive = Object.keys(room.players).filter(id => room.players[id].hp > 0);
@@ -320,7 +328,6 @@ function handleDeath(room, victimId) {
         if (alive.length <= 1) roundWinnerId = alive.length === 1 ? alive[0] : null;
     }
 
-    // Vyhodnocení kola
     if (alive.length <= 1 || roundWinnerTeam) {
         if (room.gameMode === 'tdm' && roundWinnerTeam) {
             room.teamScores[roundWinnerTeam] = (room.teamScores[roundWinnerTeam] || 0) + 1;
@@ -485,6 +492,16 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- PŘIDÁNO: Event pro aktivaci domény z frontendu ---
+    socket.on('activateDomain', () => {
+        const room = rooms[socket.roomId];
+        if (room && room.gameState === 'PLAYING' && room.players[socket.id]) {
+            let p = room.players[socket.id];
+            // Zavolá manager, předáváme i room kvůli přístupu k ostatním hráčům
+            DomainManager.activateDomain(p, room); 
+        }
+    });
+
     const handleInput = (arg1, arg2) => {
         let roomCode = typeof arg1 === 'string' ? arg1 : socket.roomId;
         let data = typeof arg1 === 'object' ? arg1 : arg2;
@@ -522,7 +539,10 @@ io.on('connection', (socket) => {
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
                 p.ammo = Number(data.ammo) || p.ammo;
                 p.isReloading = !!data.isReloading;
-                p.domainActive = !!data.domainActive;
+                // Pozor: p.domainActive už updatujeme primárně server-side (přes manager), 
+                // ale pokud to frontendu nějak utíká, raději to tu necháme synchronizovat opatrně
+                // (ideálně by frontend na domainActive neměl mít absolutní slovo)
+                if (data.domainActive !== undefined) p.domainActive = !!data.domainActive;
                 p.isInvisible = !!data.isInvisible;
             }
         }
@@ -678,10 +698,18 @@ setInterval(() => {
     }
 }, GRAVITY_CHANGE_INTERVAL);
 
+// --- PŘIDÁNO: Update interval (20Hz) ---
+const TICK_RATE = 1000 / 20; 
+
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
         if (room) {
+            // Logika pro domény běží jen když se hraje
+            if (room.gameState === 'PLAYING') {
+                DomainManager.updateDomains(room.players, room, TICK_RATE);
+            }
+
             io.to(roomId).volatile.emit('gameUpdate', {
                 players: room.players,
                 maxScore: room.matchScoreLimit,
@@ -691,7 +719,7 @@ setInterval(() => {
             });
         }
     }
-}, 1000 / 20); // 20 ticků za sekundu server sync
+}, TICK_RATE); 
 
 server.listen(PORT, () => {
     console.log(`🚀 Server běží na portu ${PORT}`);
