@@ -1,7 +1,6 @@
 // ==========================================
 // INICIALIZACE ZÁKLADNÍCH PROMĚNNÝCH
 // ==========================================
-const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
 window.latestServerData = null; 
 window.gameScale = 1;
 window.gameOffsetX = 0;
