@@ -68,7 +68,7 @@ const availableCards = [
     { name: "Krvavá oběť", rarity: "epic", description: "+40 Dmg, obrovské zrychlení. Ztrácíš 60 % Max HP a jsi velký terč.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 40); p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.40)); p.playerRadius = (p.playerRadius || 20) + 10; } },
     
     // =========================================================================
-    // LEGENDARY (Legendární - Masivní změna hry, zdrcující kompromisy)
+    // LEGENDARY
     // =========================================================================
     { name: "Minigun", rarity: "legendary", description: "Extrémní rychlost, +40 Ammo. Dmg -80%, hrozný rozptyl, rychlost -15%.", apply: (p) => { p.fireRate = Math.max(CFG.MIN_CAP_FIRE_RATE, p.fireRate * 0.2); p.spread = 0.25; p.damage = Math.max(1, p.damage * 0.20); p.bulletSize = Math.max(2, (p.bulletSize || 5) - 3); p.maxAmmo = Math.min(CFG.MAX_CAP_AMMO, (p.maxAmmo || 10) + 40); p.ammo = p.maxAmmo; p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.15); } },
     { name: "Hromová rána", rarity: "legendary", description: "Obří kulka, +65 Dmg. Pomalá střelba, Přebíjení +2s. Kapacita: Max 3 Ammo.", apply: (p) => { p.bulletSize = (p.bulletSize || 5) + 15; p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 65); p.fireRate += 350; p.reloadTime = (p.reloadTime || 1500) + 2000; p.maxAmmo = Math.min(3, p.maxAmmo); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
@@ -78,7 +78,7 @@ const availableCards = [
     { name: "Hyper-jádro", rarity: "legendary", description: "Střílíš jako šílený, přebíjíš téměř okamžitě. Dmg klesá o 70%, Max HP -40%.", apply: (p) => { p.fireRate = Math.max(CFG.MIN_CAP_FIRE_RATE, p.fireRate - 200); p.reloadTime = Math.max(200, (p.reloadTime || 1500) - 1000); p.damage = Math.max(1, p.damage * 0.30); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.60)); } },
 
     // =========================================================================
-    // MYTHIC (Mýtické - Ultimátní síla za ultimátní cenu)
+    // MYTHIC
     // =========================================================================
     { name: "Matrix", rarity: "mythic", description: "Průraz 5, extrémní rychlost, bleskové přebíjení. -50% Max HP, Dmg -40%.", apply: (p) => { p.playerRadius = Math.max(8, (p.playerRadius || 20) - 8); p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.pierce = (p.pierce || 0) + 5; p.reloadTime = Math.max(300, (p.reloadTime || 1500) - 800); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.50)); p.damage = Math.max(2, p.damage * 0.6); } },
     { name: "Bůh krve", rarity: "mythic", description: "Lifesteal 10%, rychlopalba, +10 Dmg. -50% Max HP, Max Ammo fixováno na 3.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 10); p.fireRate = Math.max(CFG.MIN_CAP_FIRE_RATE, p.fireRate - 120); p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.10); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.50)); p.maxAmmo = Math.min(3, p.maxAmmo); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
@@ -86,15 +86,15 @@ const availableCards = [
     { name: "Absolutní Ticho", rarity: "mythic", description: "Průraz 7, 5 odrazů, +20 Dmg. Pohybuješ se v mrákotách (-40% rychlost) a max ammo je 2.", apply: (p) => { p.pierce = (p.pierce || 0) + 7; p.bounces = Math.min(CFG.MAX_CAP_BOUNCES, (p.bounces || 0) + 5); p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 20); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.40); p.maxAmmo = Math.min(2, p.maxAmmo); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
 
     // =========================================================================
-    // EXOTIC (Exotické - Naprosto absurdní a unikátní pravidla)
+    // EXOTIC
     // =========================================================================
     { name: "Zlatá kulka", rarity: "exotic", description: `Maximální DMG (${CFG.MAX_CAP_DAMAGE}). Průraz 10. Máš POUZE 1 náboj a přebíjíš 5 vteřin.`, apply: (p) => { p.damage = CFG.MAX_CAP_DAMAGE; p.bulletSize = Math.max(2, (p.bulletSize || 5) - 3); p.fireRate += 1000; p.pierce = (p.pierce || 0) + 10; p.maxAmmo = 1; p.ammo = 1; p.reloadTime = (p.reloadTime || 1500) + 5000; } },
     { name: "Ruská ruleta", rarity: "exotic", description: "Máš 6 nábojů. 5 dělá 1 Dmg, 1 dává masivních +150 Dmg (Rozhoduje štěstí při každém výstřelu!)", apply: (p) => { p.isRussianRoulette = true; p.maxAmmo = 6; p.ammo = 6; } },
 
     // =========================================================================
-    // TRANSCENDED (Rituály - Silné plošné efekty. Boss fáze, unikátní kompromisy)
+    // TRANSCENDED
     // =========================================================================
-    { name: "Gambler", rarity: "transcended", description: "Rituál: Hazard smrti. V doméně se losuje. Jackpot zaručí na 4.11s absolutní léčení (nesmrtelnost) a nekonečnou palbu.", apply: (p) => { p.domainType = 'GAMBLER'; p.domainRadius = 280; p.jackpotChance = 0.15; p.jackpotDuration = 4110; } },
+    { name: "Gambler", rarity: "transcended", description: "Rituál: Hazard smrti. V doméně se losuje. Jackpot dává na 4.11s absolutní nesmrtelnost a nekonečno munice.", apply: (p) => { p.domainType = 'GAMBLER'; p.domainRadius = 280; p.jackpotChance = 0.15; p.jackpotDuration = 4110; p.isJackpotActive = false; p.jackpotPity = 0; } },
     { name: "Kvantové Vězení", rarity: "transcended", description: "Rituál: Zmrazí čas. Extrémně zpomalí nepřátele, ale ty jsi o 30% rychlejší. DMG klesne o 20%.", apply: (p) => { p.domainType = 'QUANTUM_PRISON'; p.domainRadius = 250; p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.damage = Math.max(1, p.damage * 0.8); } },
     { name: "Závoj Šílenství", rarity: "transcended", description: "Rituál: Paralyzuje a spaluje mysl nepřátel v dosahu (5 DMG/s). Stojí tě to 30% Max HP.", apply: (p) => { p.domainType = 'MADNESS_VEIL'; p.domainRadius = 250; p.domainDamage = 5; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.7)); } },
     { name: "Krvavý Oltář", rarity: "transcended", description: "Rituál: Masivně vysává HP všemu v okolí (10 DMG/s) a léčí tě. Skoro se ale nemůžeš hýbat (-60% rychlost).", apply: (p) => { p.domainType = 'BLOOD_ALTAR'; p.domainRadius = 220; p.domainDamage = 10; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.2); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.6); } },
@@ -105,8 +105,11 @@ const availableCards = [
     // --- Vylepšení Rituálů (Upgrady domén) ---
     { name: "Prodloužený Rituál", rarity: "legendary", requiresDomain: true, description: "Tvá doména zůstane aktivní o 3 vteřiny déle.", apply: (p) => { p.domainDurationBonus = (p.domainDurationBonus || 0) + 3000; } },
     { name: "Mistr Rituálů", rarity: "mythic", requiresDomain: true, description: "Zkracuje cooldown domény o 20 %.", apply: (p) => { p.domainCooldownModifier = (p.domainCooldownModifier || 1) * 0.8; } },
-    { name: "Zmanipulovaná Ruleta", rarity: "epic", requiresDomain: true, specificDomain: "GAMBLER", description: "V doméně Gambler padá Jackpot mnohem častěji.", apply: (p) => { p.jackpotChance = (p.jackpotChance || 0.15) * 2; } },
-    { name: "Horečka Jackpotu", rarity: "legendary", requiresDomain: true, specificDomain: "GAMBLER", description: "Jackpot trvá o 3 vteřiny déle a získáš během něj masivní zrychlení.", apply: (p) => { p.jackpotDuration = (p.jackpotDuration || 4110) + 3000; p.jackpotSpeedBonus = 0.5; } },
+    
+    // Upravené Hakari Upgrady
+    { name: "Zmanipulovaná Ruleta", rarity: "epic", requiresDomain: true, specificDomain: "GAMBLER", description: "V doméně Gambler se šance na Jackpot zvyšuje rychleji (Pity x3).", apply: (p) => { p.jackpotChance = (p.jackpotChance || 0.15) * 1.5; p.jackpotPityMultiplier = 3; } },
+    { name: "Horečka Jackpotu", rarity: "legendary", requiresDomain: true, specificDomain: "GAMBLER", description: "Jackpot trvá o 4 vteřiny déle a získáš během něj masivní rychlost a poškození.", apply: (p) => { p.jackpotDuration = (p.jackpotDuration || 4110) + 4000; p.jackpotSpeedBonus = 0.5; p.jackpotDamageBonus = 20; } },
+    
     { name: "Krvavá Hostina", rarity: "epic", requiresDomain: true, specificDomain: "BLOOD_ALTAR", description: "Krvavý oltář dává dvojnásobné poškození a léčí ještě víc.", apply: (p) => { p.domainDamage = (p.domainDamage || 10) * 2; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.15); } },
     { name: "Horizont Událostí", rarity: "legendary", requiresDomain: true, specificDomain: "GRAVITY_COLLAPSE", description: "Gravitační kolaps vtahuje z mnohem větší dálky (+50% dosah).", apply: (p) => { p.domainRadius = (p.domainRadius || 300) * 1.5; p.gravityPull = (p.gravityPull || 5) * 1.3; } },
     { name: "Kvantové Zmrznutí", rarity: "epic", requiresDomain: true, specificDomain: "QUANTUM_PRISON", description: `Nepřátelé v doméně se prakticky zastaví (${CFG.MIN_CAP_MOVE_SPEED}).`, apply: (p) => { p.prisonSlowdown = CFG.MIN_CAP_MOVE_SPEED; } },
@@ -119,38 +122,26 @@ const availableCards = [
 // =========================================================================
 function getValidCardsForPlayer(player) {
     return availableCards.filter(card => {
-        // 1. ZÁKLADNÍ DOMÉNA (rarita transcended bez requiresDomain)
         if (card.rarity === 'transcended' && !card.requiresDomain) {
-            // Lze vzít pouze, pokud hráč ještě žádnou doménu nemá
             if (player.domainType) return false;
         }
 
-        // 2. OBECNÁ VYLEPŠENÍ DOMÉNY (requiresDomain: true, ale žádná specificDomain)
         if (card.requiresDomain && !card.specificDomain) {
-            // Lze vzít pouze, pokud hráč doménu už má
             if (!player.domainType) return false;
         }
 
-        // 3. SPECIFICKÁ VYLEPŠENÍ (specificDomain je nastavena)
         if (card.specificDomain) {
-            // Lze vzít pouze, pokud se hráčova doména shoduje s požadovanou
             if (player.domainType !== card.specificDomain) return false;
         }
 
-        // Pokud karta projde všemi kontrolami, může ji hráč dostat
         return true;
     });
 }
 
 // --- EXPORT PRO SERVER I KLIENT ---
 if (typeof module !== 'undefined' && module.exports) {
-    // Pro běh v Node.js
-    module.exports = {
-        availableCards,
-        getValidCardsForPlayer
-    };
+    module.exports = { availableCards, getValidCardsForPlayer };
 } else if (typeof window !== 'undefined') {
-    // Pro běh v prohlížeči
     window.availableCards = availableCards;
     window.getValidCardsForPlayer = getValidCardsForPlayer;
 }

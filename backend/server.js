@@ -39,7 +39,6 @@ app.get('/', (req, res) => {
 
 // Pomocná funkce pro bezpečné načtení konfiguračních souborů s chytrou detekcí cesty
 const loadSharedFile = (fileName) => {
-    // Cesty, kde server zkusí soubory najít (od přesné cesty na Renderu po lokální zálohy)
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'public', fileName), // Přesná struktura z tvého GitHubu
         path.join(__dirname, 'public', fileName),                   // Kdyby to bylo v backend/public
@@ -49,7 +48,17 @@ const loadSharedFile = (fileName) => {
     for (let p of pathsToTry) {
         if (fs.existsSync(p)) {
             try {
-                return require(p);
+                // FÍGL NA OBEJITÍ CHYBY "require is not defined in ES module scope":
+                // Soubor nenačítáme přes require(), protože frontendový package.json to zakazuje.
+                // Místo toho ho přečteme jako text a ručně simulujeme jeho spuštění.
+                const content = fs.readFileSync(p, 'utf-8');
+                const m = { exports: {} };
+                
+                // Zabalíme obsah do funkce, čímž vytvoříme klasické CommonJS prostředí
+                const wrapper = new Function('module', 'exports', 'require', content);
+                wrapper(m, m.exports, require);
+                
+                return m.exports;
             } catch (err) {
                 console.warn(`⚠️ Soubor ${fileName} nalezen, ale obsahuje chybu a nelze načíst:`, err.message);
                 return null;
