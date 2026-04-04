@@ -13,7 +13,7 @@ const server = http.createServer(app);
 // ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "*", // Povolí připojení z jakéhokoliv frontendu
+        origin: "https://quantum-clash-gq1w.onrender.com", // Povolí připojení z jakéhokoliv frontendu
         methods: ["GET", "POST"]
     }
 });
