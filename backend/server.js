@@ -13,23 +13,19 @@ const server = http.createServer(app);
 // ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "https://quantum-clash-gq1w.onrender.com", // Povolí připojení z jakéhokoliv frontendu
+        origin: "https://quantum-clash-gq1w.onrender.com", // Povolí připojení z tvého frontendu
         methods: ["GET", "POST"]
     }
 });
 
-// ZÁSADNÍ OPRAVA PRO 404 CHYBY: 
-// Pokud se rozhodneš hostovat frontend i backend společně, toto zajistí, 
-// že server správně odešle soubory ze složky "public" (bez slova "public" v URL).
-app.use(express.static(path.join(__dirname, 'public')));
+// Statické soubory z frontendu (pro případ sdíleného hostingu)
+app.use(express.static(path.join(__dirname, '..', 'frontend', 'public')));
 
 // ==========================================
 // 2. KONTROLNÍ ROUTA BACKENDU
 // ==========================================
 app.get('/', (req, res) => {
-    // Zkusíme odeslat index.html z public složky. 
-    // Pokud tam není (protože to hostuješ odděleně), pošleme kontrolní text.
-    const indexPath = path.join(__dirname, 'public', 'index.html');
+    const indexPath = path.join(__dirname, '..', 'frontend', 'public', 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
@@ -38,21 +34,31 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 3. NASTAVENÍ MAPY A KONSTANTY
+// 3. NASTAVENÍ MAPY A KONSTANTY (OPRAVENO)
 // ==========================================
 
-// Pomocná funkce pro bezpečné načtení konfiguračních souborů (zkusí kořenový adresář i public)
+// Pomocná funkce pro bezpečné načtení konfiguračních souborů s chytrou detekcí cesty
 const loadSharedFile = (fileName) => {
-    try {
-        return require(path.join(__dirname, fileName));
-    } catch (e) {
-        try {
-            return require(path.join(__dirname, 'public', fileName));
-        } catch (err) {
-            console.warn(`⚠️ Nepodařilo se načíst ${fileName}.`, err.message);
-            return null;
+    // Cesty, kde server zkusí soubory najít (od přesné cesty na Renderu po lokální zálohy)
+    const pathsToTry = [
+        path.join(__dirname, '..', 'frontend', 'public', fileName), // Přesná struktura z tvého GitHubu
+        path.join(__dirname, 'public', fileName),                   // Kdyby to bylo v backend/public
+        path.join(__dirname, fileName)                              // Kdyby to leželo rovnou u server.js
+    ];
+
+    for (let p of pathsToTry) {
+        if (fs.existsSync(p)) {
+            try {
+                return require(p);
+            } catch (err) {
+                console.warn(`⚠️ Soubor ${fileName} nalezen, ale obsahuje chybu a nelze načíst:`, err.message);
+                return null;
+            }
         }
     }
+    
+    console.warn(`⚠️ Nepodařilo se najít soubor ${fileName}. Server ho hledal zde:\n - ${pathsToTry.join('\n - ')}`);
+    return null;
 };
 
 let availableCards = [];
