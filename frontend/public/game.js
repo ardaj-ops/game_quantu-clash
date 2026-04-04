@@ -2,7 +2,7 @@
 // 0. PŘIPOJENÍ K BACKENDU (PRO RENDER ARCHITEKTURU)
 // ==========================================
 // TODO: Sem vlož PŘESNOU adresu tvého backendu na Renderu (bez lomítka na konci!)
-const BACKEND_URL = "https://TVUJ-RENDER-BACKEND-URL.onrender.com"; 
+const BACKEND_URL = "https://quantum-clash-backend.onrender.com"; 
 
 // Inicializace socketu přímo z frontendu
 const socket = io(BACKEND_URL);
