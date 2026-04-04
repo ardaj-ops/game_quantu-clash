@@ -1,20 +1,21 @@
 // ==========================================
 // 0. PŘIPOJENÍ K BACKENDU (PRO RENDER ARCHITEKTURU)
 // ==========================================
-// TODO: Změň tuto URL na adresu své Web Service na Renderu!
-const BACKEND_URL = "https://tvoje-hra-api.onrender.com"; 
+// TODO: Sem vlož PŘESNOU adresu tvého backendu na Renderu (bez lomítka na konci!)
+const BACKEND_URL = "https://TVUJ-RENDER-BACKEND-URL.onrender.com"; 
 
 // Inicializace socketu přímo z frontendu
-const socket = io('https://quantum-clash-backend.onrender.com');
+const socket = io(BACKEND_URL);
 
 if (!socket) {
-    console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.2/socket.io.min.js'></script>");
+    console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.4/socket.io.min.js'></script>");
 }
 
 // ==========================================
 // 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
-const canvas = document.getElementById('gameCanvas');
+// OPRAVA: Změněno z 'gameCanvas' na 'game', aby to odpovídalo tvému index.html
+const canvas = document.getElementById('game');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
 
