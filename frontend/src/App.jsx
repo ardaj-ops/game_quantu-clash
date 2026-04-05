@@ -19,13 +19,23 @@ function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [currentView, setCurrentView] = useState('menu'); // 'menu', 'lobby', 'game'
 
-  // --- NOVÉ STAVY PRO LOBBY ---
+  // --- STAVY PRO LOBBY ---
   const [roomCode, setRoomCode] = useState('');
   const [players, setPlayers] = useState({});
   const [isHost, setIsHost] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  
+  // Stav pro zobrazení hlášky "Zkopírováno"
+  const [copied, setCopied] = useState(false);
 
-  // Automatické ukládání do LocalStorage
+  // --- STAVY PRO NASTAVENÍ HRY ---
+  const [gameSettings, setGameSettings] = useState({
+      gameMode: 'FFA',      // 'FFA' nebo 'TDM'
+      maxRounds: 5,         // Výchozí počet kol
+      gravityTwist: false   // Měnící se gravitace zap/vyp
+  });
+
+  // Automatické ukládání postavy do LocalStorage
   useEffect(() => {
     localStorage.setItem('qc_nickname', nickname);
     localStorage.setItem('qc_color', color);
@@ -46,11 +56,13 @@ function App() {
       setIsConnected(false);
     });
 
-    // --- NOVÉ LISTENERy PRO LOBBY ---
+    // Listenery pro Lobby
     socket.on('roomCreated', (data) => {
       setRoomCode(data.code);
       setIsHost(data.isHost);
       setCurrentView('lobby');
+      // Reset nastavení při vytvoření nové hry
+      setGameSettings({ gameMode: 'FFA', maxRounds: 5, gravityTwist: false });
     });
 
     socket.on('roomJoined', (data) => {
@@ -61,19 +73,19 @@ function App() {
 
     socket.on('lobbyUpdated', (data) => {
       setPlayers(data.players);
-      // Pokud server oznámí, že jsme zpět v lobby (např. někdo zrušil ready)
-      // a náš aktuální hráč (podle socket.id) není ready, srovnáme si lokální stav
       if (data.players[socket.id]) {
           setIsReady(data.players[socket.id].isReady);
       }
     });
 
+    // Listener pro aktualizaci nastavení od Hosta
+    socket.on('settingsUpdated', (newSettings) => {
+        setGameSettings(newSettings);
+    });
+
     socket.on('errorMsg', (msg) => {
       setErrorMsg(msg);
-      // Pokud dojde k chybě při připojování, vrátíme se do menu
-      if (currentView === 'lobby') {
-         setCurrentView('menu');
-      }
+      if (currentView === 'lobby') setCurrentView('menu');
     });
 
     socket.on('gameStateChanged', (data) => {
@@ -81,7 +93,7 @@ function App() {
             setCurrentView('game');
         } else if (data.state === 'LOBBY') {
             setCurrentView('lobby');
-            setIsReady(false); // Reset ready stavu
+            setIsReady(false);
         }
     });
 
@@ -91,6 +103,7 @@ function App() {
       socket.off('roomCreated');
       socket.off('roomJoined');
       socket.off('lobbyUpdated');
+      socket.off('settingsUpdated');
       socket.off('errorMsg');
       socket.off('gameStateChanged');
     };
@@ -103,7 +116,6 @@ function App() {
       return;
     }
     setErrorMsg('');
-    
     const playerData = { name: nickname, color, cosmetics };
     socket.emit('createRoom', playerData);
   };
@@ -119,21 +131,34 @@ function App() {
       return;
     }
     setErrorMsg('');
-
-    const playerData = { 
-      name: nickname, 
-      color, 
-      cosmetics, 
-      code: roomCodeInput.toUpperCase() // OPRAVA: backend čeká 'code', ne 'roomCode'
-    };
+    const playerData = { name: nickname, color, cosmetics, code: roomCodeInput.toUpperCase() };
     socket.emit('joinRoom', playerData);
   };
 
-  // Handler pro přepínání stavu připravenosti
+  // Handler pro přepínání připravenosti
   const toggleReady = () => {
       const newStatus = !isReady;
       setIsReady(newStatus);
       socket.emit('toggleReady', newStatus);
+  };
+
+  // Handler pro změnu nastavení (pouze Host)
+  const handleSettingChange = (key, value) => {
+      if (!isHost) return; 
+      
+      const newSettings = { ...gameSettings, [key]: value };
+      setGameSettings(newSettings); 
+      socket.emit('updateSettings', newSettings);
+  };
+
+  // Handler pro zkopírování kódu
+  const copyToClipboard = () => {
+    if (!roomCode) return;
+    navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   };
 
   return (
@@ -151,21 +176,15 @@ function App() {
             <div className="input-group">
               <label>Tvoje přezdívka:</label>
               <input 
-                type="text" 
-                value={nickname} 
-                onChange={(e) => setNickname(e.target.value)} 
-                placeholder="Napiš jméno..." 
-                maxLength="12" 
-                style={{ textAlign: 'center' }}
+                type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} 
+                placeholder="Napiš jméno..." maxLength="12" style={{ textAlign: 'center' }}
               />
             </div>
 
             <div className="input-group">
               <label>Základní barva postavy:</label>
               <input 
-                type="color" 
-                value={color} 
-                onChange={(e) => setColor(e.target.value)} 
+                type="color" value={color} onChange={(e) => setColor(e.target.value)} 
                 style={{ cursor: 'pointer' }}
               />
             </div>
@@ -173,8 +192,7 @@ function App() {
             <div className="input-group">
               <label>Kosmetika:</label>
               <select 
-                value={cosmetics} 
-                onChange={(e) => setCosmetics(e.target.value)}
+                value={cosmetics} onChange={(e) => setCosmetics(e.target.value)}
                 style={{ textAlign: 'center', cursor: 'pointer' }}
               >
                 <option value="none">Bez kosmetiky</option>
@@ -197,11 +215,8 @@ function App() {
               <div className="input-group" style={{ marginBottom: '10px' }}>
                 <label style={{ textAlign: 'center', color: 'white', fontSize: '1.2rem' }}>Připojit se ke hře</label>
                 <input 
-                  type="text" 
-                  value={roomCodeInput} 
-                  onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} 
-                  placeholder="Zadej kód (např. A7K9)" 
-                  maxLength="4" 
+                  type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} 
+                  placeholder="Zadej kód (např. A7K9)" maxLength="4" 
                   style={{ textTransform: 'uppercase', textAlign: 'center', letterSpacing: '2px' }}
                 />
               </div>
@@ -220,12 +235,107 @@ function App() {
       {/* Lobby View */}
       {currentView === 'lobby' && (
         <div id="lobbyUI" className="overlay">
-          <div className="panel" style={{ minWidth: '400px' }}>
+          <div className="panel" style={{ minWidth: '450px' }}>
             <h1 className="game-title" style={{ fontSize: '2.5rem', marginBottom: '10px' }}>Lobby</h1>
             
-            <h2 style={{ color: 'white', letterSpacing: '2px', marginBottom: '20px' }}>
-              Kód: <span style={{ color: 'var(--neon-blue)', fontSize: '1.5em' }}>{roomCode}</span>
+            <h2 style={{ color: 'white', letterSpacing: '2px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              Kód: 
+              <span 
+                onClick={copyToClipboard}
+                title="Klikni pro zkopírování do schránky"
+                style={{ 
+                  color: 'var(--neon-blue)', 
+                  fontSize: '1.5em', 
+                  marginLeft: '10px',
+                  cursor: 'pointer',
+                  borderBottom: '2px dashed var(--neon-blue)',
+                  paddingBottom: '2px'
+                }}
+              >
+                {roomCode}
+              </span>
+              {copied && (
+                <span style={{ 
+                  color: 'var(--neon-green)', 
+                  fontSize: '0.6em', 
+                  marginLeft: '15px'
+                }}>
+                  Zkopírováno! ✓
+                </span>
+              )}
             </h2>
+
+            {/* PANEL NASTAVENÍ HRY */}
+            <div className="settings-panel" style={{ background: 'rgba(0,0,0,0.5)', padding: '15px', borderRadius: '10px', marginBottom: '20px', textAlign: 'left' }}>
+              <h3 style={{ color: 'var(--neon-blue)', marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '5px' }}>
+                Nastavení hry {isHost ? '👑' : '🔒'}
+              </h3>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label style={{ color: 'white' }}>Herní mód:</label>
+                  <select 
+                      value={gameSettings.gameMode} 
+                      onChange={(e) => handleSettingChange('gameMode', e.target.value)}
+                      disabled={!isHost}
+                      style={{ 
+                        background: isHost ? '#222' : 'transparent', 
+                        color: 'white', 
+                        border: isHost ? '1px solid var(--neon-blue)' : 'none', 
+                        padding: '5px',
+                        cursor: isHost ? 'pointer' : 'default',
+                        appearance: isHost ? 'auto' : 'none'
+                      }}
+                  >
+                      <option value="FFA">⚔️ Všichni proti všem (FFA)</option>
+                      <option value="TDM">🛡️ Týmový Deathmatch (TDM)</option>
+                  </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label style={{ color: 'white' }}>Počet kol (Max):</label>
+                  <input 
+                      type="number" min="1" max="50" 
+                      value={gameSettings.maxRounds} 
+                      onChange={(e) => handleSettingChange('maxRounds', parseInt(e.target.value) || 1)}
+                      disabled={!isHost}
+                      style={{ 
+                        background: isHost ? '#222' : 'transparent', 
+                        color: 'white', 
+                        border: isHost ? '1px solid var(--neon-blue)' : 'none', 
+                        padding: '5px', 
+                        width: '60px', 
+                        textAlign: 'center',
+                        fontWeight: 'bold'
+                      }}
+                  />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ color: 'white' }}>Twist: Změny gravitace</label>
+                  <button 
+                      onClick={() => handleSettingChange('gravityTwist', !gameSettings.gravityTwist)}
+                      disabled={!isHost}
+                      style={{ 
+                          background: gameSettings.gravityTwist ? 'var(--neon-green)' : '#555', 
+                          color: 'black', 
+                          fontWeight: 'bold',
+                          border: 'none', 
+                          borderRadius: '5px', 
+                          padding: '5px 15px',
+                          cursor: isHost ? 'pointer' : 'default',
+                          transition: 'all 0.3s ease'
+                      }}
+                  >
+                      {gameSettings.gravityTwist ? 'ZAPNUTO' : 'VYPNUTO'}
+                  </button>
+              </div>
+
+              {!isHost && (
+                <p style={{ fontSize: '0.8rem', color: 'gray', marginTop: '15px', textAlign: 'center', fontStyle: 'italic' }}>
+                  Pouze Host (zakladatel) může měnit nastavení.
+                </p>
+              )}
+            </div>
             
             <div className="players-list" style={{ textAlign: 'left', background: 'rgba(0,0,0,0.5)', padding: '15px', borderRadius: '10px', marginBottom: '20px' }}>
               <h3 style={{ color: 'var(--neon-green)', marginTop: 0 }}>Připojení hráči ({Object.keys(players).length}/6):</h3>
@@ -233,20 +343,13 @@ function App() {
                 {Object.values(players).map((player, index) => (
                   <li key={index} style={{ margin: '10px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '5px' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ 
-                            color: player.color, 
-                            textShadow: `0 0 5px ${player.color}`,
-                            marginRight: '10px',
-                            fontSize: '1.5em'
-                        }}>●</span> 
-                        <span style={{ color: 'white', fontSize: '1.2em' }}>{player.name}</span>
-                        {player.cosmetic !== 'none' && <span style={{ marginLeft: '5px' }}>{/* Tady můžeš renderovat emoji podle kosmetiky, pokud chceš */}</span>}
+                        <span style={{ color: player.color, textShadow: `0 0 5px ${player.color}`, marginRight: '10px', fontSize: '1.5em' }}>●</span> 
+                        <span style={{ color: 'white', fontSize: '1.2em' }}>
+                          {player.name} {player.isHost && '👑'}
+                        </span>
                     </div>
                     <div>
-                        <span style={{ 
-                            color: player.isReady ? 'var(--neon-green)' : 'var(--neon-pink)',
-                            fontWeight: 'bold'
-                        }}>
+                        <span style={{ color: player.isReady ? 'var(--neon-green)' : 'var(--neon-pink)', fontWeight: 'bold' }}>
                             {player.isReady ? 'PŘIPRAVEN' : 'ČEKÁ'}
                         </span>
                     </div>
@@ -256,22 +359,18 @@ function App() {
             </div>
 
             <button 
-                onClick={toggleReady} 
-                className="menu-btn" 
-                style={{ 
-                    backgroundColor: isReady ? 'var(--neon-pink)' : 'var(--neon-green)',
-                    marginBottom: '10px',
-                    width: '100%'
-                }}
+                onClick={toggleReady} className="menu-btn" 
+                style={{ backgroundColor: isReady ? 'var(--neon-pink)' : 'var(--neon-green)', marginBottom: '10px', width: '100%' }}
             >
                 {isReady ? 'ZRUŠIT PŘIPRAVENOST' : 'JSEM PŘIPRAVEN!'}
             </button>
 
             <button 
                 onClick={() => {
-                    // Ideálně bys tu měl odpojit hráče z roomky přes socket
                     setCurrentView('menu');
                     setIsReady(false);
+                    socket.disconnect();
+                    setTimeout(() => socket.connect(), 500);
                 }} 
                 className="menu-btn" 
                 style={{ width: '100%', backgroundColor: 'transparent', border: '1px solid white' }}
@@ -282,7 +381,6 @@ function App() {
         </div>
       )}
 
-      {/* Tady bude tvé herní plátno - ukazuje se jen když je currentView === 'game' */}
       {currentView === 'game' && (
           <div style={{ color: 'white', textAlign: 'center', paddingTop: '20vh' }}>
               <h1>Hra probíhá!</h1>

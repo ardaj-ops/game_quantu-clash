@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 
-// --- PŘIDÁNO: Import Domain Manageru ---
+// --- Import Domain Manageru ---
 const DomainManager = require('./domainManager');
 
 const PORT = process.env.PORT || 3000;
@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'public', fileName), 
-        path.join(__dirname, 'public', fileName),                   
+        path.join(__dirname, 'public', fileName),                  
         path.join(__dirname, fileName)                              
     ];
 
@@ -96,9 +96,6 @@ function broadcastLobbyUpdate(room) {
     if (!room) return;
     io.to(room.id).emit('lobbyUpdated', {
         hostId: room.hostId, 
-        gameMode: room.gameMode, 
-        limit: room.matchScoreLimit, 
-        gravityEnabled: room.gravityEnabled, 
         players: room.players
     });
 }
@@ -127,7 +124,7 @@ function resetPlayerStatsToBase(p) {
     p.cards = [];
     p.inputs = { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false };
     
-    // --- PŘIDÁNO: Reset doménových proměnných ---
+    // Reset doménových proměnných
     p.domainType = undefined; 
     p.domainActive = false;
     p.domainTimer = 0;
@@ -193,7 +190,7 @@ function generateRoomCode() {
     return Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 }
 
-function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmetic) {
+function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmetic, isHost = false) {
     return {
         x: 0, y: 0, aimAngle: 0,
         hp: BASE_HP, maxHp: BASE_HP,
@@ -202,11 +199,10 @@ function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmeti
         name: String(playerName || "Hráč").substring(0, 15), 
         color: String(playerColor || "#ff4757").substring(0, 7), 
         cosmetic: playerCosmetic || "none", team: playerTeam || "none", score: 0,
-        isReady: false, isReloading: false, isInvisible: false,
+        isReady: false, isReloading: false, isInvisible: false, isHost: isHost,
         cards: [],
         inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false },
         
-        // --- PŘIDÁNO: Proměnné pro doménu v templatu ---
         domainType: undefined,
         domainActive: false,
         domainTimer: 0,
@@ -269,7 +265,7 @@ function startNextRound(room) {
     
     if (activePlayersCount < 2) {
         room.gameState = 'LOBBY';
-        io.to(room.id).emit('gameStateChanged', { state: 'LOBBY', roomCode: room.id, scoreLimit: room.matchScoreLimit });
+        io.to(room.id).emit('gameStateChanged', { state: 'LOBBY', roomCode: room.id });
         Object.values(room.players).forEach(p => p.isReady = false);
         broadcastLobbyUpdate(room);
         return;
@@ -295,7 +291,7 @@ function startNextRound(room) {
 
     room.gameState = 'PLAYING';
 
-    if (room.gravityEnabled && GRAVITY_OPTIONS.length > 0) {
+    if (room.settings.gravityTwist && GRAVITY_OPTIONS.length > 0) {
         room.currentGravity = GRAVITY_OPTIONS[Math.floor(Math.random() * GRAVITY_OPTIONS.length)];
         io.to(room.id).emit('gravityChanged', room.currentGravity.name);
     }
@@ -309,7 +305,6 @@ function handleDeath(room, victimId) {
     if (room.players[victimId]) {
         if (!room.deadPlayersThisRound.includes(victimId)) room.deadPlayersThisRound.push(victimId);
         room.players[victimId].hp = 0;
-        // PŘIDÁNO: Deaktivace domény při smrti
         room.players[victimId].domainActive = false;
     }
 
@@ -317,7 +312,7 @@ function handleDeath(room, victimId) {
     let roundWinnerTeam = null;
     let roundWinnerId = null;
 
-    if (room.gameMode === 'tdm') {
+    if (room.settings.gameMode === 'TDM') {
         if (alive.length > 0) {
             let firstAliveTeam = room.players[alive[0]].team;
             if (firstAliveTeam !== "none" && alive.every(id => room.players[id].team === firstAliveTeam)) {
@@ -329,16 +324,16 @@ function handleDeath(room, victimId) {
     }
 
     if (alive.length <= 1 || roundWinnerTeam) {
-        if (room.gameMode === 'tdm' && roundWinnerTeam) {
+        if (room.settings.gameMode === 'TDM' && roundWinnerTeam) {
             room.teamScores[roundWinnerTeam] = (room.teamScores[roundWinnerTeam] || 0) + 1;
-            if (room.teamScores[roundWinnerTeam] >= room.matchScoreLimit) {
+            if (room.teamScores[roundWinnerTeam] >= room.settings.maxRounds) {
                 room.gameState = 'GAMEOVER';
                 io.to(room.id).emit('gameStateChanged', { state: 'GAMEOVER', winnerName: "Tým " + roundWinnerTeam.toUpperCase() });
                 return;
             }
-        } else if (room.gameMode === 'ffa' && roundWinnerId) {
+        } else if (room.settings.gameMode === 'FFA' && roundWinnerId) {
             room.players[roundWinnerId].score += 1;
-            if (room.players[roundWinnerId].score >= room.matchScoreLimit) {
+            if (room.players[roundWinnerId].score >= room.settings.maxRounds) {
                 room.gameState = 'GAMEOVER';
                 io.to(room.id).emit('gameStateChanged', { state: 'GAMEOVER', winnerName: room.players[roundWinnerId].name });
                 return;
@@ -349,8 +344,8 @@ function handleDeath(room, victimId) {
         let allPlayers = Object.keys(room.players);
 
         room.upgradeQueue = allPlayers.filter(id => {
-            if (room.gameMode === 'tdm' && roundWinnerTeam) return room.players[id].team !== roundWinnerTeam;
-            if (room.gameMode === 'ffa' && roundWinnerId) return id !== roundWinnerId;
+            if (room.settings.gameMode === 'TDM' && roundWinnerTeam) return room.players[id].team !== roundWinnerTeam;
+            if (room.settings.gameMode === 'FFA' && roundWinnerId) return id !== roundWinnerId;
             return true;
         });
 
@@ -378,8 +373,8 @@ io.on('connection', (socket) => {
         
         rooms[code] = {
             id: code, hostId: socket.id, players: {}, upgradeQueue: [],
-            gameState: 'LOBBY', gameMode: 'ffa', matchScoreLimit: 5, teamScores: {},
-            deadPlayersThisRound: [], gravityEnabled: true,
+            gameState: 'LOBBY', teamScores: {}, deadPlayersThisRound: [], 
+            settings: { gameMode: 'FFA', maxRounds: 5, gravityTwist: false }, // Sjednocené nastavení pro frontend
             currentGravity: GRAVITY_OPTIONS.length ? GRAVITY_OPTIONS[0] : { name: "Normal", x: 0, y: 0 },
             obstacles: mapData.obstacles, breakables: mapData.breakables,
             processedHits: new Set()
@@ -387,9 +382,10 @@ io.on('connection', (socket) => {
         
         socket.join(code); 
         socket.roomId = code;
-        rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, "none", data.cosmetic);
+        rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, "none", data.cosmetic, true);
 
-        socket.emit('roomCreated', { code, isHost: true, scoreLimit: rooms[code].matchScoreLimit, gravityEnabled: rooms[code].gravityEnabled });
+        socket.emit('roomCreated', { code, isHost: true });
+        socket.emit('settingsUpdated', rooms[code].settings);
         broadcastLobbyUpdate(rooms[code]);
     });
 
@@ -404,49 +400,42 @@ io.on('connection', (socket) => {
 
         socket.join(code); 
         socket.roomId = code;
-        let pTeam = (data.team && room.gameMode !== 'ffa') ? data.team : "none";
-        room.players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic);
+        let pTeam = (data.team && room.settings.gameMode !== 'FFA') ? data.team : "none";
+        room.players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
 
-        socket.emit('roomJoined', { code, isHost: false, scoreLimit: room.matchScoreLimit, gravityEnabled: room.gravityEnabled });
+        socket.emit('roomJoined', { code, isHost: false });
+        socket.emit('settingsUpdated', room.settings); // Ihned synchronizovat nastavení připojenému hráči
         broadcastLobbyUpdate(room);
     });
 
-    socket.on('toggleGravity', (data) => {
+    // --- NOVÉ UNIVERZÁLNÍ NASTAVENÍ HRY (komunikuje s gameSettings v App.jsx) ---
+    socket.on('updateSettings', (newSettings) => {
         const room = rooms[socket.roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id) return;
-        room.gravityEnabled = (data && data.enabled !== undefined) ? !!data.enabled : !room.gravityEnabled;
-        broadcastLobbyUpdate(room);
-    });
+        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !newSettings) return;
 
-    socket.on('updateRoomScoreLimit', (data) => {
-        const room = rooms[socket.roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !data) return;
-        let limit = parseInt(data.limit);
-        if (!isNaN(limit) && limit > 0 && limit <= 50) { 
-            room.matchScoreLimit = limit; 
-            broadcastLobbyUpdate(room); 
-        }
-    });
+        room.settings = { ...room.settings, ...newSettings };
 
-    socket.on('updateGameMode', (data) => {
-        const room = rooms[socket.roomId];
-        if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !data) return;
-        
-        room.gameMode = data.mode === 'tdm' ? 'tdm' : 'ffa';
-        let players = Object.values(room.players);
-        
-        if (room.gameMode === 'ffa') {
-            players.forEach(p => p.team = "none");
-        } else if (room.gameMode === 'tdm') {
-            let redCount = players.filter(p => p.team === "red").length;
-            let blueCount = players.filter(p => p.team === "blue").length;
-            for (let p of players) {
+        // Rozřazení týmů pokud se zapne TDM
+        if (room.settings.gameMode === 'TDM') {
+            let redCount = 0, blueCount = 0;
+            let players = Object.values(room.players);
+            
+            players.forEach(p => {
+                if (p.team === 'red') redCount++;
+                else if (p.team === 'blue') blueCount++;
+            });
+            
+            players.forEach(p => {
                 if (p.team !== "red" && p.team !== "blue") {
                     if (redCount <= blueCount) { p.team = "red"; redCount++; } 
                     else { p.team = "blue"; blueCount++; }
                 }
-            }
+            });
+        } else {
+            Object.values(room.players).forEach(p => p.team = "none");
         }
+
+        io.to(room.id).emit('settingsUpdated', room.settings);
         broadcastLobbyUpdate(room);
     });
 
@@ -457,7 +446,7 @@ io.on('connection', (socket) => {
         if (data.name) p.name = String(data.name).substring(0, 15);
         if (data.color) p.color = String(data.color).substring(0, 7);
         if (data.cosmetic !== undefined) p.cosmetic = data.cosmetic;
-        if (data.team !== undefined) p.team = (room.gameMode !== 'ffa') ? data.team : "none";
+        if (data.team !== undefined) p.team = (room.settings.gameMode !== 'FFA') ? data.team : "none";
         broadcastLobbyUpdate(room);
     });
 
@@ -470,7 +459,7 @@ io.on('connection', (socket) => {
         broadcastLobbyUpdate(room);
 
         if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
-            if (room.gameMode === 'tdm') {
+            if (room.settings.gameMode === 'TDM') {
                 let hasRed = false, hasBlue = false;
                 for (let id of playerIds) {
                     if (room.players[id].team === 'red') hasRed = true;
@@ -492,12 +481,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- PŘIDÁNO: Event pro aktivaci domény z frontendu ---
     socket.on('activateDomain', () => {
         const room = rooms[socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id]) {
             let p = room.players[socket.id];
-            // Zavolá manager, předáváme i room kvůli přístupu k ostatním hráčům
             DomainManager.activateDomain(p, room); 
         }
     });
@@ -539,9 +526,6 @@ io.on('connection', (socket) => {
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
                 p.ammo = Number(data.ammo) || p.ammo;
                 p.isReloading = !!data.isReloading;
-                // Pozor: p.domainActive už updatujeme primárně server-side (přes manager), 
-                // ale pokud to frontendu nějak utíká, raději to tu necháme synchronizovat opatrně
-                // (ideálně by frontend na domainActive neměl mít absolutní slovo)
                 if (data.domainActive !== undefined) p.domainActive = !!data.domainActive;
                 p.isInvisible = !!data.isInvisible;
             }
@@ -654,12 +638,13 @@ io.on('connection', (socket) => {
 
         if (wasHost) {
             room.hostId = remainingPlayers[0];
+            room.players[remainingPlayers[0]].isHost = true; // Nastavíme nového hosta i do dat
         }
 
         if (remainingPlayers.length < 2 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
             room.gameState = 'LOBBY';
             if (room.players[remainingPlayers[0]]) room.players[remainingPlayers[0]].isReady = false;
-            io.to(code).emit('gameStateChanged', { state: 'LOBBY', roomCode: code, scoreLimit: room.matchScoreLimit });
+            io.to(code).emit('gameStateChanged', { state: 'LOBBY', roomCode: code });
             broadcastLobbyUpdate(room);
         } 
         else if (room.gameState === 'UPGRADE' && room.currentLoserId === socket.id) {
@@ -688,7 +673,7 @@ io.on('connection', (socket) => {
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
-        if (room && room.gameState === 'PLAYING' && room.gravityEnabled && GRAVITY_OPTIONS && GRAVITY_OPTIONS.length > 0) {
+        if (room && room.gameState === 'PLAYING' && room.settings.gravityTwist && GRAVITY_OPTIONS && GRAVITY_OPTIONS.length > 0) {
             let availableOptions = GRAVITY_OPTIONS.length > 1 ? GRAVITY_OPTIONS.filter(g => g.name !== room.currentGravity?.name) : GRAVITY_OPTIONS;
             if(availableOptions.length > 0) {
                 room.currentGravity = availableOptions[Math.floor(Math.random() * availableOptions.length)];
@@ -698,24 +683,23 @@ setInterval(() => {
     }
 }, GRAVITY_CHANGE_INTERVAL);
 
-// --- PŘIDÁNO: Update interval (20Hz) ---
+// Update interval (20Hz)
 const TICK_RATE = 1000 / 20; 
 
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
         if (room) {
-            // Logika pro domény běží jen když se hraje
             if (room.gameState === 'PLAYING') {
                 DomainManager.updateDomains(room.players, room, TICK_RATE);
             }
 
             io.to(roomId).volatile.emit('gameUpdate', {
                 players: room.players,
-                maxScore: room.matchScoreLimit,
+                maxScore: room.settings.maxRounds,
                 teamScores: room.teamScores,
                 gameState: room.gameState,
-                gameMode: room.gameMode
+                gameMode: room.settings.gameMode
             });
         }
     }
