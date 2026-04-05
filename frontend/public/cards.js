@@ -1,8 +1,11 @@
 // cards.js
+// Zajištění kompatibility napříč Frontendem (window) a Backendem (require)
 const CFG = typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig');
 
 const availableCards = [
-    // === COMMON ===
+    // =========================================================================
+    // COMMON
+    // =========================================================================
     { name: "Gumové projektily", rarity: "common", description: "Kulky se jednou odrazí. -1 Dmg.", apply: (p) => { p.bounces = Math.min(CFG.MAX_CAP_BOUNCES, (p.bounces || 0) + 1); p.damage = Math.max(1, p.damage - 1); } },
     { name: "Svačina", rarity: "common", description: "+20 % Max HP. Jsi o malinko pomalejší.", apply: (p) => { p.maxHp = Math.min(CFG.MAX_CAP_HP, Math.floor(p.maxHp * 1.20)); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.02); } },
     { name: "Těžká munice", rarity: "common", description: "Větší kulky, +6 Dmg, -2 Max Ammo", apply: (p) => { p.bulletSize = (p.bulletSize || 5) + 3; p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 6); p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 2); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
@@ -10,18 +13,20 @@ const availableCards = [
     { name: "Běžecké boty", rarity: "common", description: "Rychlejší pohyb. -10 % Max HP.", apply: (p) => { p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.15); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.90)); } },
     { name: "Promazání", rarity: "common", description: "Rychlejší střelba. Přebíjíš o chlup déle.", apply: (p) => { p.fireRate = Math.max(CFG.MIN_CAP_FIRE_RATE, p.fireRate - 30); p.reloadTime = (p.reloadTime || 1500) + 100; } },
     { name: "Štít z popelnice", rarity: "common", description: "+25 % Max HP. Jsi znatelně pomalejší.", apply: (p) => { p.maxHp = Math.min(CFG.MAX_CAP_HP, Math.floor(p.maxHp * 1.25)); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.08); } },
-    { name: "Větší kapsy", rarity: "common", description: "+4 Dmg a +4 Max Ammo. -10% rychlost pohybu.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 4); p.maxAmmo = Math.min(CFG.MAX_CAP_AMMO, (p.maxAmmo || 10) + 4); p.ammo = p.maxAmmo; p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.05); } },
+    { name: "Větší kapsy", rarity: "common", description: "+4 Dmg a +4 Max Ammo. -10% rychlost pohybu.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 4); p.maxAmmo = Math.min(CFG.MAX_CAP_AMMO, (p.maxAmmo || 10) + 4); p.ammo = Math.min(p.ammo, p.maxAmmo); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.05); } },
     { name: "Špičaté náboje", rarity: "common", description: "Kulky projdou skrz 1 nepřítele. -2 Dmg.", apply: (p) => { p.pierce = (p.pierce || 0) + 1; p.damage = Math.max(1, p.damage - 2); } },
     { name: "Káva", rarity: "common", description: "Rychlejší pohyb i střelba. -2 Max Ammo.", apply: (p) => { p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.1); p.fireRate = Math.max(CFG.MIN_CAP_FIRE_RATE, p.fireRate - 15); p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 2); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
     { name: "Zpevněná hlaveň", rarity: "common", description: "+5 Dmg. Kulky létají trochu pomaleji.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 5); p.bulletSpeed = Math.max(3, p.bulletSpeed - 1); } },
     { name: "Lehká váha", rarity: "common", description: "Jsi menší. Máš o 15 % méně Max HP.", apply: (p) => { p.playerRadius = Math.max(8, (p.playerRadius || 20) - 3); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.85)); } },
     { name: "Lékárnička", rarity: "common", description: "Uzdraví 30 HP a přidá 10 % Max HP.", apply: (p) => { p.maxHp = Math.min(CFG.MAX_CAP_HP, Math.floor(p.maxHp * 1.10)); p.hp += 30; } },
     { name: "Odhodlání", rarity: "common", description: "+8 Dmg, ale kulky letí pomaleji a pomaleji střílíš.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 8); p.bulletSpeed = Math.max(3, p.bulletSpeed - 2); p.fireRate += 30; } },
-    { name: "Rozšířený zásobník", rarity: "common", description: "+6 Max Ammo. Přebíjení trvá o 0.3s déle.", apply: (p) => { p.maxAmmo = Math.min(CFG.MAX_CAP_AMMO, (p.maxAmmo || 10) + 6); p.ammo = p.maxAmmo; p.reloadTime = (p.reloadTime || 1500) + 300; } },
+    { name: "Rozšířený zásobník", rarity: "common", description: "+6 Max Ammo. Přebíjení trvá o 0.3s déle.", apply: (p) => { p.maxAmmo = Math.min(CFG.MAX_CAP_AMMO, (p.maxAmmo || 10) + 6); p.ammo = Math.min(p.ammo, p.maxAmmo); p.reloadTime = (p.reloadTime || 1500) + 300; } },
     { name: "Pružný krok", rarity: "common", description: "Jsi lehčí na nohou. +10% rychlost pohybu, -5% Max HP.", apply: (p) => { p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.1); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.95)); } },
     { name: "Plastové lahve", rarity: "common", description: "Kulky letí rychleji, ale jsou menší a dávají -2 Dmg.", apply: (p) => { p.bulletSpeed = Math.min(CFG.MAX_CAP_BULLET_SPEED, p.bulletSpeed + 4); p.bulletSize = Math.max(2, (p.bulletSize || 5) - 2); p.damage = Math.max(1, p.damage - 2); } },
 
-    // === UNCOMMON ===
+    // =========================================================================
+    // UNCOMMON
+    // =========================================================================
     { name: "Brokovnice", rarity: "uncommon", description: "3 kulky naráz. -30% Dmg. Rychlé vyprázdnění (-3 Ammo).", apply: (p) => { p.multishot = (p.multishot || 1) + 2; p.spread = 0.1; p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 3); p.ammo = Math.min(p.ammo, p.maxAmmo); p.damage = Math.max(2, p.damage * 0.70); } },
     { name: "Hřebíky", rarity: "uncommon", description: "Kulky projdou skrz 2 nepřátele. Střílíš pomaleji.", apply: (p) => { p.pierce = (p.pierce || 0) + 2; p.fireRate += 50; } },
     { name: "Flubber", rarity: "uncommon", description: "Kulky se odrazí 3x. Dmg se snižuje o 20%.", apply: (p) => { p.bounces = Math.min(CFG.MAX_CAP_BOUNCES, (p.bounces || 0) + 3); p.damage = Math.max(2, p.damage * 0.80); } },
@@ -37,7 +42,9 @@ const availableCards = [
     { name: "Recyklace", rarity: "uncommon", description: "+15 % Max HP. Tvé zbraně jsou trochu přesnější (menší rozptyl).", apply: (p) => { p.maxHp = Math.min(CFG.MAX_CAP_HP, Math.floor(p.maxHp * 1.15)); p.spread = Math.max(0, (p.spread || 0) - 0.05); } },
     { name: "Těžká olovnice", rarity: "uncommon", description: "+8 Dmg, kulky jsou větší, ale letí mnohem pomaleji a ty se vlečeš.", apply: (p) => { p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 8); p.bulletSize = (p.bulletSize || 5) + 4; p.bulletSpeed = Math.max(2, p.bulletSpeed - 3); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.1); } },
 
-    // === RARE ===
+    // =========================================================================
+    // RARE
+    // =========================================================================
     { name: "Upír", rarity: "rare", description: "Sání životů (5%). Jsi pomalejší a křehčí (-15 % Max HP).", apply: (p) => { p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.05); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.05); p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.85)); } },
     { name: "Ještěří krev", rarity: "rare", description: "Extrémně pomalu regeneruješ životy (+1 HP/s). -10 % Max HP.", apply: (p) => { p.hpRegen = (p.hpRegen || 0) + 1; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.90)); } },
     { name: "Dvojče", rarity: "rare", description: "Střílíš 2 kulky vedle sebe. -20% Dmg, -4 Max Ammo.", apply: (p) => { p.multishot = (p.multishot === 1 ? 2 : p.multishot + 1); p.spread = 0.05; p.damage = Math.max(2, p.damage * 0.80); p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 4); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
@@ -52,7 +59,9 @@ const availableCards = [
     { name: "Vysavač duší", rarity: "rare", description: "Lifesteal +4%. Přebíjení trvá o 0.6s déle a ztrácíš -15 % Max HP.", apply: (p) => { p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.04); p.reloadTime = (p.reloadTime || 1500) + 600; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.85)); } },
     { name: "Trojitý průraz", rarity: "rare", description: "Průraz skrz 3 cíle, +5 Dmg. Ztrácíš 3 Ammo z kapacity a pálíš pomaleji.", apply: (p) => { p.pierce = (p.pierce || 0) + 3; p.damage = Math.min(CFG.MAX_CAP_DAMAGE, p.damage + 5); p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 3); p.ammo = Math.min(p.ammo, p.maxAmmo); p.fireRate += 100; } },
 
-    // === EPIC ===
+    // =========================================================================
+    // EPIC
+    // =========================================================================
     { name: "Stínový Dash", rarity: "epic", description: "Dash přidá neviditelnost (zruší se výstřelem). Trvale ztrácíš 25 % Max HP a -2 Ammo.", apply: (p) => { p.invisOnDash = true; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.75)); p.maxAmmo = Math.max(1, (p.maxAmmo || 10) - 2); p.ammo = Math.min(p.ammo, p.maxAmmo); } },
     { name: "Holografický Klon", rarity: "epic", description: "Dash zanechá klon. Rychlost pohybu i střelby klesá o 10%.", apply: (p) => { p.cloneOnDash = true; p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.08); p.fireRate += 40; } },
     { name: "Bumerang", rarity: "epic", description: "Kulky se odrazí 3x. Pomalá střelba, dlouhé přebíjení (+0.8s) a -20% Dmg.", apply: (p) => { p.bounces = Math.min(CFG.MAX_CAP_BOUNCES, (p.bounces || 0) + 3); p.fireRate += 50; p.reloadTime = (p.reloadTime || 1500) + 800; p.damage = Math.max(2, p.damage * 0.80); } },
@@ -88,32 +97,31 @@ const availableCards = [
     // =========================================================================
     // EXOTIC
     // =========================================================================
-    { name: "Zlatá kulka", rarity: "exotic", description: `Maximální DMG (${CFG.MAX_CAP_DAMAGE}). Průraz 10. Máš POUZE 1 náboj a přebíjíš 5 vteřin.`, apply: (p) => { p.damage = CFG.MAX_CAP_DAMAGE; p.bulletSize = Math.max(2, (p.bulletSize || 5) - 3); p.fireRate += 1000; p.pierce = (p.pierce || 0) + 10; p.maxAmmo = 1; p.ammo = 1; p.reloadTime = (p.reloadTime || 1500) + 5000; } },
+    { name: "Zlatá kulka", rarity: "exotic", description: `Maximální DMG (${typeof CFG !== 'undefined' ? CFG.MAX_CAP_DAMAGE : 999}). Průraz 10. Máš POUZE 1 náboj a přebíjíš 5 vteřin.`, apply: (p) => { p.damage = CFG.MAX_CAP_DAMAGE; p.bulletSize = Math.max(2, (p.bulletSize || 5) - 3); p.fireRate += 1000; p.pierce = (p.pierce || 0) + 10; p.maxAmmo = 1; p.ammo = 1; p.reloadTime = (p.reloadTime || 1500) + 5000; } },
     { name: "Ruská ruleta", rarity: "exotic", description: "Máš 6 nábojů. 5 dělá 1 Dmg, 1 dává masivních +150 Dmg (Rozhoduje štěstí při každém výstřelu!)", apply: (p) => { p.isRussianRoulette = true; p.maxAmmo = 6; p.ammo = 6; } },
 
     // =========================================================================
     // TRANSCENDED
     // =========================================================================
-        { name: "Gambler", rarity: "transcended", description: "Rituál: Hazard smrti. V doméně se losuje. Jackpot dává na 4.11s absolutní nesmrtelnost a nekonečno munice.", apply: (p) => { p.domainType = 'GAMBLER'; p.domainRadius = 280; p.jackpotChance = 0.15; p.jackpotDuration = 4110; p.isJackpotActive = false; p.jackpotPity = 0; } },
-        { name: "Kvantové Vězení", rarity: "transcended", description: "Rituál: Zmrazí čas. Extrémně zpomalí nepřátele, ale ty jsi o 30% rychlejší. DMG klesne o 20%.", apply: (p) => { p.domainType = 'QUANTUM_PRISON'; p.domainRadius = 250; p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.damage = Math.max(1, p.damage * 0.8); } },
-        { name: "Závoj Šílenství", rarity: "transcended", description: "Rituál: Paralyzuje a spaluje mysl nepřátel v dosahu (5 DMG/s). Stojí tě to 30% Max HP.", apply: (p) => { p.domainType = 'MADNESS_VEIL'; p.domainRadius = 250; p.domainDamage = 5; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.7)); } },
-        { name: "Krvavý Oltář", rarity: "transcended", description: "Rituál: Masivně vysává HP všemu v okolí (10 DMG/s) a léčí tě. Skoro se ale nemůžeš hýbat (-60% rychlost).", apply: (p) => { p.domainType = 'BLOOD_ALTAR'; p.domainRadius = 220; p.domainDamage = 10; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.2); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.6); } },
-        { name: "Gravitační Kolaps", rarity: "transcended", description: "Rituál: Drtivá černá díra. Silně vtahuje a drtí nepřátele (15 DMG/s). Přebíjíš o 2s déle.", apply: (p) => { p.domainType = 'GRAVITY_COLLAPSE'; p.domainRadius = 300; p.gravityPull = 5; p.domainDamage = 15; p.reloadTime = (p.reloadTime || 1500) + 2000; } },
-        { name: "Zrcadlová Singularita", rarity: "transcended", description: "Rituál: Absolutní obrana. Odráží cizí kulky zpět s +50% poškozením. Přijdeš o všechny náboje (nemůžeš střílet).", apply: (p) => { p.domainType = 'MIRROR_SINGULARITY'; p.domainRadius = 180; p.reflectDamageMult = 1.5; p.maxAmmo = 0; p.ammo = 0; } },
-        { name: "Nekonečný Arzenál", rarity: "transcended", description: "Rituál: Doména střílí všude kolem tebe za tebe. Tvé vlastní zbraně dělají -80% DMG.", apply: (p) => { p.domainType = 'INFINITE_ARSENAL'; p.domainRadius = 250; p.arsenalFireRate = 50; p.arsenalDamage = 10; p.damage = Math.max(1, p.damage * 0.2); } },
+    { name: "Gambler", rarity: "transcended", description: "Rituál: Hazard smrti. V doméně se losuje. Jackpot dává na 4.11s absolutní nesmrtelnost a nekonečno munice.", apply: (p) => { p.domainType = 'GAMBLER'; p.domainRadius = 280; p.jackpotChance = 0.15; p.jackpotDuration = 4110; p.isJackpotActive = false; p.jackpotPity = 0; } },
+    { name: "Kvantové Vězení", rarity: "transcended", description: "Rituál: Zmrazí čas. Extrémně zpomalí nepřátele, ale ty jsi o 30% rychlejší. DMG klesne o 20%.", apply: (p) => { p.domainType = 'QUANTUM_PRISON'; p.domainRadius = 250; p.moveSpeed = Math.min(CFG.MAX_CAP_MOVE_SPEED, p.moveSpeed + 0.3); p.damage = Math.max(1, p.damage * 0.8); } },
+    { name: "Závoj Šílenství", rarity: "transcended", description: "Rituál: Paralyzuje a spaluje mysl nepřátel v dosahu (5 DMG/s). Stojí tě to 30% Max HP.", apply: (p) => { p.domainType = 'MADNESS_VEIL'; p.domainRadius = 250; p.domainDamage = 5; p.maxHp = Math.max(CFG.MIN_CAP_HP, Math.floor(p.maxHp * 0.7)); } },
+    { name: "Krvavý Oltář", rarity: "transcended", description: "Rituál: Masivně vysává HP všemu v okolí (10 DMG/s) a léčí tě. Skoro se ale nemůžeš hýbat (-60% rychlost).", apply: (p) => { p.domainType = 'BLOOD_ALTAR'; p.domainRadius = 220; p.domainDamage = 10; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.2); p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.6); } },
+    { name: "Gravitační Kolaps", rarity: "transcended", description: "Rituál: Drtivá černá díra. Silně vtahuje a drtí nepřátele (15 DMG/s). Přebíjíš o 2s déle.", apply: (p) => { p.domainType = 'GRAVITY_COLLAPSE'; p.domainRadius = 300; p.gravityPull = 5; p.domainDamage = 15; p.reloadTime = (p.reloadTime || 1500) + 2000; } },
+    { name: "Zrcadlová Singularita", rarity: "transcended", description: "Rituál: Absolutní obrana. Odráží cizí kulky zpět s +50% poškozením. Přijdeš o všechny náboje (nemůžeš střílet).", apply: (p) => { p.domainType = 'MIRROR_SINGULARITY'; p.domainRadius = 180; p.reflectDamageMult = 1.5; p.maxAmmo = 0; p.ammo = 0; } },
+    { name: "Nekonečný Arzenál", rarity: "transcended", description: "Rituál: Doména střílí všude kolem tebe za tebe. Tvé vlastní zbraně dělají -80% DMG.", apply: (p) => { p.domainType = 'INFINITE_ARSENAL'; p.domainRadius = 250; p.arsenalFireRate = 50; p.arsenalDamage = 10; p.damage = Math.max(1, p.damage * 0.2); } },
 
     // --- Vylepšení Rituálů (Upgrady domén) ---
     { name: "Prodloužený Rituál", rarity: "legendary", requiresDomain: true, description: "Tvá doména zůstane aktivní o 3 vteřiny déle.", apply: (p) => { p.domainDurationBonus = (p.domainDurationBonus || 0) + 3000; } },
     { name: "Mistr Rituálů", rarity: "mythic", requiresDomain: true, description: "Zkracuje cooldown domény o 20 %.", apply: (p) => { p.domainCooldownModifier = (p.domainCooldownModifier || 1) * 0.8; } },
     
-    // Upravené Hakari Upgrady
-    { name: "Zmanipulovaná Ruleta", rarity: "epic", requiresDomain: true, specificDomain: "GAMBLER", description: "V doméně Gambler se šance na Jackpot zvyšuje rychleji (Pity x3).", apply: (p) => { p.jackpotChance = (p.jackpotChance || 0.15) * 1.5; p.jackpotPityMultiplier = 3; } },
+    // Upravené Specifické Upgrady
+    { name: "Zmanipulovaná Ruleta", rarity: "epic", requiresDomain: true, specificDomain: "GAMBLER", description: "V doméně Gambler se šance na Jackpot zvyšuje rychleji (Pity x3).", apply: (p) => { p.jackpotChance = (p.jackpotChance || 0.15) * 1.5; p.jackpotPityStep = 0.15; } },
     { name: "Horečka Jackpotu", rarity: "legendary", requiresDomain: true, specificDomain: "GAMBLER", description: "Jackpot trvá o 4 vteřiny déle a získáš během něj masivní rychlost a poškození.", apply: (p) => { p.jackpotDuration = (p.jackpotDuration || 4110) + 4000; p.jackpotSpeedBonus = 0.5; p.jackpotDamageBonus = 20; } },
-    
     { name: "Krvavá Hostina", rarity: "epic", requiresDomain: true, specificDomain: "BLOOD_ALTAR", description: "Krvavý oltář dává dvojnásobné poškození a léčí ještě víc.", apply: (p) => { p.domainDamage = (p.domainDamage || 10) * 2; p.lifesteal = Math.min(CFG.MAX_CAP_LIFESTEAL, (p.lifesteal || 0) + 0.15); } },
     { name: "Horizont Událostí", rarity: "legendary", requiresDomain: true, specificDomain: "GRAVITY_COLLAPSE", description: "Gravitační kolaps vtahuje z mnohem větší dálky (+50% dosah).", apply: (p) => { p.domainRadius = (p.domainRadius || 300) * 1.5; p.gravityPull = (p.gravityPull || 5) * 1.3; } },
-    { name: "Kvantové Zmrznutí", rarity: "epic", requiresDomain: true, specificDomain: "QUANTUM_PRISON", description: `Nepřátelé v doméně se prakticky zastaví (${CFG.MIN_CAP_MOVE_SPEED}).`, apply: (p) => { p.prisonSlowdown = CFG.MIN_CAP_MOVE_SPEED; } },
-    { name: "Továrna na Smrt", rarity: "legendary", requiresDomain: true, specificDomain: "INFINITE_ARSENAL", description: "Nekonečný arzenál střílí o 50% rychleji s dvojnásobným DMG.", apply: (p) => { p.arsenalFireRate = (p.arsenalFireRate || 50) + 50; p.arsenalDamage = (p.arsenalDamage || 10) * 2; } },
+    { name: "Kvantové Zmrznutí", rarity: "epic", requiresDomain: true, specificDomain: "QUANTUM_PRISON", description: `Nepřátelé v doméně se prakticky zastaví (${typeof CFG !== 'undefined' ? CFG.MIN_CAP_MOVE_SPEED : 0.2}).`, apply: (p) => { p.prisonSlowdown = CFG.MIN_CAP_MOVE_SPEED; } },
+    { name: "Továrna na Smrt", rarity: "legendary", requiresDomain: true, specificDomain: "INFINITE_ARSENAL", description: "Nekonečný arzenál střílí o 50% rychleji s dvojnásobným DMG.", apply: (p) => { p.arsenalFireRate = Math.max(10, Math.floor((p.arsenalFireRate || 50) * 0.66)); p.arsenalDamage = (p.arsenalDamage || 10) * 2; } },
     { name: "Tříštivé Zrcadlo", rarity: "legendary", requiresDomain: true, specificDomain: "MIRROR_SINGULARITY", description: "Odráží kulky s brutálním 300% bonusem k poškození, ale ztratíš 20% rychlosti.", apply: (p) => { p.reflectDamageMult = (p.reflectDamageMult || 1.5) + 1.5; p.moveSpeed = Math.max(CFG.MIN_CAP_MOVE_SPEED, p.moveSpeed - 0.2); } }
 ];
 
@@ -138,7 +146,9 @@ function getValidCardsForPlayer(player) {
     });
 }
 
-// --- EXPORT PRO SERVER I KLIENT ---
+// =========================================================================
+// EXPORT PRO SERVER I KLIENT
+// =========================================================================
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { availableCards, getValidCardsForPlayer };
 } else if (typeof window !== 'undefined') {
