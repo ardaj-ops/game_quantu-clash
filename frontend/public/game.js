@@ -1,7 +1,7 @@
 // ==========================================
 // 0. PŘIPOJENÍ K BACKENDU (PRO RENDER ARCHITEKTURU)
 // ==========================================
-// TODO: Sem vlož PŘESNOU adresu tvého backendu na Renderu (bez lomítka na konci!)
+// TODO: Zde vlož PŘESNOU adresu tvého backendu na Renderu (bez lomítka na konci!)
 const BACKEND_URL = "https://quantum-clash-backend.onrender.com"; 
 
 // Inicializace socketu přímo z frontendu
@@ -132,12 +132,12 @@ window.updateCrosshairPreview = function() {
     const size = parseInt(sizeEl.value);
     
     const pCtx = pCanvas.getContext('2d');
-    pCtx.clearRect(0, 0, 60, 60);
+    pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
     pCtx.strokeStyle = color;
     pCtx.fillStyle = color;
     pCtx.lineWidth = 2;
     
-    const x = 30, y = 30;
+    const x = pCanvas.width / 2, y = pCanvas.height / 2;
     pCtx.beginPath();
     if (shape === 'circle') {
         pCtx.arc(x, y, size, 0, TWO_PI);
@@ -947,7 +947,7 @@ function checkWallCollision(x, y, radius, walls) {
 
 window.updateLocalGame = function() {
     if (!window.latestServerData || window.latestServerData.gameState !== 'PLAYING') return;
-    if (!socket || !window.playerInputs) return; // Kontrola našeho nového objektu z input.js
+    if (!socket || !window.playerInputs) return; // Kontrola našeho objektu z input.js
 
     let myId = socket.id;
     let me = window.latestServerData.players[myId];

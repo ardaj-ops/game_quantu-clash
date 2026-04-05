@@ -26,13 +26,18 @@ const io = new Server(server, {
     }
 });
 
-app.use(express.static(path.join(__dirname, '..', 'frontend', 'public')));
+// Podpora pro produkční build (dist) i vývojový (public)
+const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
+const frontendPublicPath = path.join(__dirname, '..', 'frontend', 'public');
+const staticPath = fs.existsSync(frontendDistPath) ? frontendDistPath : frontendPublicPath;
+
+app.use(express.static(staticPath));
 
 // ==========================================
 // 2. KONTROLNÍ ROUTA BACKENDU
 // ==========================================
 app.get('/', (req, res) => {
-    const indexPath = path.join(__dirname, '..', 'frontend', 'public', 'index.html');
+    const indexPath = path.join(staticPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
@@ -45,7 +50,8 @@ app.get('/', (req, res) => {
 // ==========================================
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
-        path.join(__dirname, '..', 'frontend', 'public', fileName), 
+        path.join(frontendDistPath, fileName),
+        path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
         path.join(__dirname, fileName)                              
     ];
@@ -96,11 +102,9 @@ const {
 const rooms = {};
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
-
 // ==========================================
 // 4. POMOCNÉ FUNKCE 
 // ==========================================
-
 function broadcastLobbyUpdate(room) {
     if (!room) return;
     io.to(room.id).emit('lobbyUpdated', {
@@ -133,7 +137,6 @@ function resetPlayerStatsToBase(p) {
     p.cards = [];
     p.inputs = { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false };
     
-    // Reset doménových proměnných
     p.domainType = undefined; 
     p.domainActive = false;
     p.domainTimer = 0;
@@ -155,7 +158,6 @@ function generateMap() {
     ];
     let breakables = [];
 
-    // Generování pevných překážek
     for (let i = 0; i < 7; i++) {
         let width = Math.floor(Math.random() * 150) + 80;
         let height = Math.floor(Math.random() * 150) + 80;
@@ -164,7 +166,6 @@ function generateMap() {
         obstacles.push({ x, y, width, height });
     }
 
-    // Generování zničitelných zdí
     for (let i = 0; i < 8; i++) {
         let isHorizontal = Math.random() > 0.5;
         let width = isHorizontal ? 150 : 30;
@@ -266,11 +267,9 @@ function generateCardsForPlayer(player) {
     return cardsToSend;
 }
 
-
 // ==========================================
 // 5. HERNÍ LOGIKA PRO KOLA A SMRT
 // ==========================================
-
 function startNextRound(room) {
     if (!room) return;
     let activePlayersCount = Object.keys(room.players).length;
@@ -371,11 +370,9 @@ function handleDeath(room, victimId) {
     }
 }
 
-
 // ==========================================
 // 6. SOCKET.IO EVENTY
 // ==========================================
-
 io.on('connection', (socket) => {
     socket.emit('mapData', { mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT });
     socket.emit('initCatalog', uiCatalog);
@@ -569,7 +566,6 @@ io.on('connection', (socket) => {
                 }
 
                 const damageFromClient = Number(data.damage) || 0;
-                // Ochrana proti podvádění z klienta (damage check)
                 const maxAllowedDamage = shooter.damage * 3;
                 const safeDamage = Math.min(damageFromClient, maxAllowedDamage);
                 
@@ -684,7 +680,6 @@ io.on('connection', (socket) => {
 // ==========================================
 // 7. GLOBÁLNÍ INTERVALY HER (TICK RATE)
 // ==========================================
-
 setInterval(() => {
     for (let roomId in rooms) {
         let room = rooms[roomId];
@@ -709,6 +704,7 @@ setInterval(() => {
                 DomainManager.updateDomains(room.players, room, TICK_RATE);
             }
 
+            // Volatile emit - zahodí se, pokud klient zrovna nestíhá (ideální pro pozice)
             io.to(roomId).volatile.emit('gameUpdate', {
                 players: room.players,
                 maxScore: room.settings.maxRounds,
