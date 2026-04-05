@@ -179,8 +179,65 @@
         <h2 id="winnerText" style="font-size: 3rem; color: white; margin-bottom: 50px; text-transform: uppercase; letter-spacing: 2px;">Vítěz: ???</h2>
         <button id="returnToLobbyBtn" class="menu-btn" style="max-width: 300px; background: rgba(255,255,255,0.1); border-color: white;">Zpět do Hlavního menu</button>
     </div>    
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 
+    <script id="menu-logic">
+        document.addEventListener("DOMContentLoaded", () => {
+            const nameInput = document.getElementById("playerNameInput");
+            const colorInput = document.getElementById("playerColorInput");
+            const cosmeticSelect = document.getElementById("cosmeticSelect");
+            const createBtn = document.getElementById("createBtn");
+            const joinBtn = document.getElementById("joinSubmitBtn");
+            const roomInput = document.getElementById("roomCodeInput");
+            const errorMsg = document.getElementById("errorMsg");
+
+            // 1. Načtení uložených dat
+            if (localStorage.getItem("qc_nickname")) nameInput.value = localStorage.getItem("qc_nickname");
+            if (localStorage.getItem("qc_color")) colorInput.value = localStorage.getItem("qc_color");
+            if (localStorage.getItem("qc_cosmetics")) cosmeticSelect.value = localStorage.getItem("qc_cosmetics");
+
+            // 2. Automatické ukládání při změně
+            const saveSettings = () => {
+                localStorage.setItem("qc_nickname", nameInput.value);
+                localStorage.setItem("qc_color", colorInput.value);
+                localStorage.setItem("qc_cosmetics", cosmeticSelect.value);
+            };
+
+            nameInput.addEventListener("input", saveSettings);
+            colorInput.addEventListener("input", saveSettings);
+            cosmeticSelect.addEventListener("change", saveSettings);
+
+            // 3. Logika tlačítek v menu
+            createBtn.addEventListener("click", () => {
+                if (!nameInput.value.trim()) {
+                    errorMsg.textContent = "Musíš zadat přezdívku!";
+                    return;
+                }
+                errorMsg.textContent = "";
+                console.log("Vytvářím hru...", { jmeno: nameInput.value, barva: colorInput.value, kosmetika: cosmeticSelect.value });
+                
+                // Zde později napojíš socket.io přes game.js k odeslání na server
+                // document.getElementById('mainMenuUI').classList.add('hidden');
+                // document.getElementById('lobbyUI').classList.remove('hidden');
+            });
+
+            joinBtn.addEventListener("click", () => {
+                if (!nameInput.value.trim()) {
+                    errorMsg.textContent = "Musíš zadat přezdívku!";
+                    return;
+                }
+                if (!roomInput.value.trim()) {
+                    errorMsg.textContent = "Musíš zadat kód místnosti!";
+                    return;
+                }
+                errorMsg.textContent = "";
+                console.log("Připojuji do hry s kódem:", roomInput.value.toUpperCase());
+                
+                // Zde později napojíš socket.io přes game.js
+            });
+        });
+    </script>
+
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <script src="/gameConfig.js"></script>
     <script src="/cards.js"></script>
     <script src="/input.js"></script>
