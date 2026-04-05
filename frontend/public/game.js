@@ -16,7 +16,7 @@ if (!socket) {
 // ==========================================
 const canvas = document.getElementById('game');
 const ctx = canvas ? canvas.getContext('2d') : null;
-const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
+const TWO_PI = Math.PI * 2;
 
 window.latestServerData = null; 
 window.gameScale = 1;
@@ -28,16 +28,12 @@ window.localBreakables = [];
 window.CARD_CATALOG = []; 
 window.localBullets = []; 
 let lastShotTime = 0;
-window.showTabMenu = false; 
-
-// Ošetření vstupů 
-window.inputs = window.inputs || { up: false, down: false, left: false, right: false, click: false, aimAngle: 0 };
 
 const MAP_W = (typeof CONFIG !== 'undefined' && CONFIG.MAP_WIDTH) ? CONFIG.MAP_WIDTH : 2000;
 const MAP_H = (typeof CONFIG !== 'undefined' && CONFIG.MAP_HEIGHT) ? CONFIG.MAP_HEIGHT : 2000;
 
 // ==========================================
-// 2. SÍŤOVÉ LISTENERY A KLÁVESNICE
+// 2. SÍŤOVÉ LISTENERY A MYŠ PRO KRESLENÍ
 // ==========================================
 if (socket) {
     socket.on('mapUpdate', (data) => {
@@ -51,18 +47,12 @@ if (socket) {
     });
 }
 
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
-        e.preventDefault();
-        window.showTabMenu = true;
-    }
-});
-
-window.addEventListener('keyup', (e) => {
-    if (e.key === 'Tab') {
-        e.preventDefault();
-        window.showTabMenu = false;
-    }
+// Ukládáme pozici myši jen pro vykreslení vizuálního zaměřovače (úhel počítá input.js)
+window.addEventListener('mousemove', (e) => {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    window.currentMouseX = e.clientX - rect.left;
+    window.currentMouseY = e.clientY - rect.top;
 });
 
 // ==========================================
@@ -187,7 +177,7 @@ window.saveCrosshairSettings = function() {
 };
 
 // ==========================================
-// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ (NOVÉ DOMÉNY)
+// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ (DOMÉNY)
 // ==========================================
 function drawGrid(ctx, size) {
     ctx.beginPath();
@@ -206,7 +196,6 @@ function drawBackground(players) {
     if (!ctx) return;
     ctx.save();
 
-    // Zjistíme, jestli má někdo aktivní doménu
     let activeDomain = null;
     if (players) {
         for (let id in players) {
@@ -218,60 +207,49 @@ function drawBackground(players) {
     }
 
     if (activeDomain) {
-        // === MÁME DOMÉNU: ÚPLNÁ ZMĚNA MAPY ===
         if (activeDomain === 'GAMBLER') {
-            ctx.fillStyle = '#2b0033'; // Temně fialové kasino
+            ctx.fillStyle = '#2b0033'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.2)'; // Zlatá mřížka
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.2)'; 
             ctx.lineWidth = 2;
             drawGrid(ctx, 50);
-
         } else if (activeDomain === 'BLOOD_ALTAR') {
-            ctx.fillStyle = '#4a0000'; // Krvavě červená
+            ctx.fillStyle = '#4a0000'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-            ctx.fillStyle = `rgba(255, 0, 0, ${Math.abs(Math.sin(Date.now() / 300)) * 0.2})`; // Pulzování
+            ctx.fillStyle = `rgba(255, 0, 0, ${Math.abs(Math.sin(Date.now() / 300)) * 0.2})`; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-
         } else if (activeDomain === 'QUANTUM_PRISON') {
-            ctx.fillStyle = '#001122'; // Kybernetická tma
+            ctx.fillStyle = '#001122'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)'; // Neonově modrá mřížka
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)'; 
             ctx.lineWidth = 2;
             drawGrid(ctx, 100);
-
         } else if (activeDomain === 'MIRROR_SINGULARITY') {
-            ctx.fillStyle = '#e6f7ff'; // Zrcadlová dimenze
+            ctx.fillStyle = '#e6f7ff'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-
         } else if (activeDomain === 'MADNESS_VEIL') {
-            ctx.fillStyle = '#0a1a0a'; // Toxická tma
+            ctx.fillStyle = '#0a1a0a'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-            ctx.fillStyle = `rgba(0, 255, 0, ${Math.random() * 0.1})`; // Statický "šum" šílenství
+            ctx.fillStyle = `rgba(0, 255, 0, ${Math.random() * 0.1})`; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
-
         } else if (activeDomain === 'INFINITE_ARSENAL') {
-            ctx.fillStyle = '#1a1a1a'; // Temně šedá zbrojnice
+            ctx.fillStyle = '#1a1a1a'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
             ctx.strokeStyle = 'rgba(255, 140, 0, 0.1)';
             ctx.lineWidth = 1;
             drawGrid(ctx, 40);
-
         } else if (activeDomain === 'GRAVITY_COLLAPSE') {
-            ctx.fillStyle = '#000000'; // Černá díra
+            ctx.fillStyle = '#000000'; 
             ctx.fillRect(0, 0, MAP_W, MAP_H);
         } else {
-            // Fallback pro jistotu
             ctx.fillStyle = '#111111';
             ctx.fillRect(0, 0, MAP_W, MAP_H);
         }
 
-        // Bariéra domény (okraj mapy)
         ctx.strokeStyle = '#ffffff'; 
         ctx.lineWidth = 15;
         ctx.strokeRect(0, 0, MAP_W, MAP_H);
-
     } else {
-        // === NIKDO NEMÁ DOMÉNU: NORMÁLNÍ MAPA ===
         ctx.fillStyle = '#1e272e'; 
         ctx.fillRect(0, 0, MAP_W, MAP_H);
         ctx.strokeStyle = '#ff3f34'; 
@@ -903,7 +881,6 @@ window.drawGame = function(serverData) {
     ctx.translate(window.gameOffsetX, window.gameOffsetY);
     ctx.scale(window.gameScale, window.gameScale);
 
-    // !! TADY JE TA HLAVNÍ ZMĚNA: PŘEDÁVÁME HRÁČE DO POZADÍ !!
     drawBackground(serverData.players);
     
     const obstacles = window.localObstacles;
@@ -926,7 +903,8 @@ window.drawGame = function(serverData) {
     ctx.restore();
 
     if (serverData.gameState === 'PLAYING') {
-        if (!window.showTabMenu) {
+        // Používáme klávesu TAB z input.js
+        if (!window.playerInputs || !window.playerInputs.tab) {
             drawCrosshair(); 
         } else {
             drawTabMenu(serverData.players);
@@ -969,7 +947,7 @@ function checkWallCollision(x, y, radius, walls) {
 
 window.updateLocalGame = function() {
     if (!window.latestServerData || window.latestServerData.gameState !== 'PLAYING') return;
-    if (!socket || !window.inputs) return;
+    if (!socket || !window.playerInputs) return; // Kontrola našeho nového objektu z input.js
 
     let myId = socket.id;
     let me = window.latestServerData.players[myId];
@@ -982,30 +960,40 @@ window.updateLocalGame = function() {
     let nextX = me.x;
     let nextY = me.y;
 
-    if (window.inputs.up) nextY -= speed;
-    if (window.inputs.down) nextY += speed;
+    // Aplikace pohybu z window.playerInputs
+    if (window.playerInputs.up) nextY -= speed;
+    if (window.playerInputs.down) nextY += speed;
+    
+    // Omezení mapy (Y)
+    nextY = Math.max(pRadius, Math.min(MAP_H - pRadius, nextY));
     if (!checkWallCollision(me.x, nextY, pRadius, allWalls)) {
         me.y = nextY;
     }
 
-    if (window.inputs.left) nextX -= speed;
-    if (window.inputs.right) nextX += speed;
+    if (window.playerInputs.left) nextX -= speed;
+    if (window.playerInputs.right) nextX += speed;
+    
+    // Omezení mapy (X)
+    nextX = Math.max(pRadius, Math.min(MAP_W - pRadius, nextX));
     if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) {
         me.x = nextX;
     }
 
+    // Odeslání pozice, úhlu a dalších stavových informací (R, Dash) na server
     socket.emit('clientSync', {
         x: me.x,
         y: me.y,
-        aimAngle: window.inputs.aimAngle,
+        aimAngle: window.playerInputs.aimAngle,
         ammo: me.ammo,
-        isReloading: me.isReloading
+        isReloading: window.playerInputs.reload, // Předáváme držení klávesy R
+        dashRequested: window.playerInputs.rightClick // Předáváme pravé tlačítko
     });
 
     let now = Date.now();
     let fireRate = me.fireRate || 200;
     
-    if (window.inputs.click && now - lastShotTime > fireRate && me.ammo > 0 && me.maxAmmo > 0 && !me.isReloading) {
+    // Střelba levým tlačítkem
+    if (window.playerInputs.click && now - lastShotTime > fireRate && me.ammo > 0 && me.maxAmmo > 0 && !me.isReloading) {
         lastShotTime = now;
         me.ammo--; 
 
@@ -1013,10 +1001,10 @@ window.updateLocalGame = function() {
         let bullet = {
             id: Math.random().toString(36).substring(2, 9), 
             ownerId: myId,
-            x: me.x + Math.cos(window.inputs.aimAngle) * (pRadius + 5),
-            y: me.y + Math.sin(window.inputs.aimAngle) * (pRadius + 5),
-            vx: Math.cos(window.inputs.aimAngle) * bSpeed,
-            vy: Math.sin(window.inputs.aimAngle) * bSpeed,
+            x: me.x + Math.cos(window.playerInputs.aimAngle) * (pRadius + 5),
+            y: me.y + Math.sin(window.playerInputs.aimAngle) * (pRadius + 5),
+            vx: Math.cos(window.playerInputs.aimAngle) * bSpeed,
+            vy: Math.sin(window.playerInputs.aimAngle) * bSpeed,
             damage: me.damage || 10,
             radius: 5,
             color: me.color
@@ -1040,7 +1028,7 @@ window.updateLocalGame = function() {
             if (targetId === myId) continue; 
             
             let target = window.latestServerData.players[targetId];
-            if (target.hp <= 0) continue;
+            if (!target || target.hp <= 0) continue;
 
             let dist = Math.hypot(b.x - target.x, b.y - target.y);
             if (dist < (target.playerRadius || 20) + b.radius) {

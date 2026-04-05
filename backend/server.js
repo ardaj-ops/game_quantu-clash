@@ -16,7 +16,12 @@ const server = http.createServer(app);
 // ==========================================
 const io = new Server(server, {
     cors: {
-        origin: "https://quantum-clash-gq1w.onrender.com", 
+        // Povolení jak produkce, tak lokálního vývoje
+        origin: [
+            "https://quantum-clash-gq1w.onrender.com", 
+            "http://localhost:5173", 
+            "http://localhost:3000"
+        ], 
         methods: ["GET", "POST"]
     }
 });
@@ -36,7 +41,7 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 3. NASTAVENÍ MAPY A KONSTANTY
+// 3. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ A KONFIGURACE
 // ==========================================
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
@@ -59,10 +64,11 @@ const loadSharedFile = (fileName) => {
             }
         }
     }
-    console.warn(`⚠️ Nepodařilo se najít soubor ${fileName}.`);
+    console.warn(`⚠️ Nepodařilo se najít sdílený soubor ${fileName}.`);
     return null;
 };
 
+// Načtení karet
 let availableCards = [];
 const rawCards = loadSharedFile('cards.js');
 if (rawCards) {
@@ -70,6 +76,11 @@ if (rawCards) {
 }
 if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js. Hra poběží bez karet.");
 
+const uiCatalog = availableCards.map(c => ({
+    name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
+}));
+
+// Načtení herní konfigurace
 let gameConfig = loadSharedFile('gameConfig.js') || {};
 
 const {
@@ -81,15 +92,13 @@ const {
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
+// Globální stav místností
 const rooms = {};
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
-const uiCatalog = availableCards.map(c => ({
-    name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
-}));
 
 // ==========================================
-// POMOCNÉ FUNKCE 
+// 4. POMOCNÉ FUNKCE 
 // ==========================================
 
 function broadcastLobbyUpdate(room) {
@@ -101,7 +110,7 @@ function broadcastLobbyUpdate(room) {
 }
 
 function applyHardCaps(p) {
-    if(!p) return;
+    if (!p) return;
     p.maxHp = Math.max(MIN_CAP_HP, Math.min(MAX_CAP_HP, p.maxHp || BASE_HP));
     p.hp = Math.min(p.hp, p.maxHp);
     p.damage = Math.min(MAX_CAP_DAMAGE, p.damage || BASE_DAMAGE);
@@ -112,7 +121,7 @@ function applyHardCaps(p) {
 }
 
 function resetPlayerStatsToBase(p) {
-    if(!p) return;
+    if (!p) return;
     p.maxHp = BASE_HP; p.hp = p.maxHp;
     p.damage = BASE_DAMAGE; p.fireRate = BASE_FIRE_RATE;
     p.bulletSpeed = BASE_BULLET_SPEED; p.moveSpeed = BASE_MOVE_SPEED;
@@ -146,6 +155,7 @@ function generateMap() {
     ];
     let breakables = [];
 
+    // Generování pevných překážek
     for (let i = 0; i < 7; i++) {
         let width = Math.floor(Math.random() * 150) + 80;
         let height = Math.floor(Math.random() * 150) + 80;
@@ -154,6 +164,7 @@ function generateMap() {
         obstacles.push({ x, y, width, height });
     }
 
+    // Generování zničitelných zdí
     for (let i = 0; i < 8; i++) {
         let isHorizontal = Math.random() > 0.5;
         let width = isHorizontal ? 150 : 30;
@@ -255,8 +266,9 @@ function generateCardsForPlayer(player) {
     return cardsToSend;
 }
 
+
 // ==========================================
-// HERNÍ LOGIKA
+// 5. HERNÍ LOGIKA PRO KOLA A SMRT
 // ==========================================
 
 function startNextRound(room) {
@@ -359,8 +371,9 @@ function handleDeath(room, victimId) {
     }
 }
 
+
 // ==========================================
-// SOCKET.IO EVENTY
+// 6. SOCKET.IO EVENTY
 // ==========================================
 
 io.on('connection', (socket) => {
@@ -374,7 +387,7 @@ io.on('connection', (socket) => {
         rooms[code] = {
             id: code, hostId: socket.id, players: {}, upgradeQueue: [],
             gameState: 'LOBBY', teamScores: {}, deadPlayersThisRound: [], 
-            settings: { gameMode: 'FFA', maxRounds: 5, gravityTwist: false }, // Sjednocené nastavení pro frontend
+            settings: { gameMode: 'FFA', maxRounds: 5, gravityTwist: false }, 
             currentGravity: GRAVITY_OPTIONS.length ? GRAVITY_OPTIONS[0] : { name: "Normal", x: 0, y: 0 },
             obstacles: mapData.obstacles, breakables: mapData.breakables,
             processedHits: new Set()
@@ -404,18 +417,16 @@ io.on('connection', (socket) => {
         room.players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
 
         socket.emit('roomJoined', { code, isHost: false });
-        socket.emit('settingsUpdated', room.settings); // Ihned synchronizovat nastavení připojenému hráči
+        socket.emit('settingsUpdated', room.settings);
         broadcastLobbyUpdate(room);
     });
 
-    // --- NOVÉ UNIVERZÁLNÍ NASTAVENÍ HRY (komunikuje s gameSettings v App.jsx) ---
     socket.on('updateSettings', (newSettings) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !newSettings) return;
 
         room.settings = { ...room.settings, ...newSettings };
 
-        // Rozřazení týmů pokud se zapne TDM
         if (room.settings.gameMode === 'TDM') {
             let redCount = 0, blueCount = 0;
             let players = Object.values(room.players);
@@ -442,11 +453,13 @@ io.on('connection', (socket) => {
     socket.on('updateProfile', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id] || !data) return;
+        
         let p = room.players[socket.id];
         if (data.name) p.name = String(data.name).substring(0, 15);
         if (data.color) p.color = String(data.color).substring(0, 7);
         if (data.cosmetic !== undefined) p.cosmetic = data.cosmetic;
         if (data.team !== undefined) p.team = (room.settings.gameMode !== 'FFA') ? data.team : "none";
+        
         broadcastLobbyUpdate(room);
     });
 
@@ -484,16 +497,15 @@ io.on('connection', (socket) => {
     socket.on('activateDomain', () => {
         const room = rooms[socket.roomId];
         if (room && room.gameState === 'PLAYING' && room.players[socket.id]) {
-            let p = room.players[socket.id];
-            DomainManager.activateDomain(p, room); 
+            DomainManager.activateDomain(room.players[socket.id], room); 
         }
     });
 
     const handleInput = (arg1, arg2) => {
         let roomCode = typeof arg1 === 'string' ? arg1 : socket.roomId;
         let data = typeof arg1 === 'object' ? arg1 : arg2;
-        
         const room = rooms[roomCode || socket.roomId];
+        
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
             let currentDash = room.players[socket.id].inputs.dash || false;
             room.players[socket.id].inputs = {
@@ -518,9 +530,10 @@ io.on('connection', (socket) => {
     socket.on('clientSync', (arg1, arg2) => {
         let data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-        if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
+        
+        if (room && room.gameState === 'PLAYING' && data) {
             let p = room.players[socket.id];
-            if (p.hp > 0 && typeof data.x === 'number' && !isNaN(data.x) && typeof data.y === 'number' && !isNaN(data.y)) {
+            if (p && p.hp > 0 && typeof data.x === 'number' && typeof data.y === 'number') {
                 p.x = data.x;
                 p.y = data.y;
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
@@ -543,6 +556,7 @@ io.on('connection', (socket) => {
     socket.on('bulletHitPlayer', (arg1, arg2) => {
         let data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
+        
         if (room && room.gameState === 'PLAYING' && data && data.targetId) {
             let target = room.players[data.targetId];
             let shooter = room.players[socket.id];
@@ -555,6 +569,7 @@ io.on('connection', (socket) => {
                 }
 
                 const damageFromClient = Number(data.damage) || 0;
+                // Ochrana proti podvádění z klienta (damage check)
                 const maxAllowedDamage = shooter.damage * 3;
                 const safeDamage = Math.min(damageFromClient, maxAllowedDamage);
                 
@@ -586,7 +601,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('spawnDecoy', (decoyData) => {
-        if(socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
+        if (socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
     });
 
     socket.on('pickCard', (cardIndex) => {
@@ -638,7 +653,7 @@ io.on('connection', (socket) => {
 
         if (wasHost) {
             room.hostId = remainingPlayers[0];
-            room.players[remainingPlayers[0]].isHost = true; // Nastavíme nového hosta i do dat
+            room.players[remainingPlayers[0]].isHost = true; 
         }
 
         if (remainingPlayers.length < 2 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
@@ -667,7 +682,7 @@ io.on('connection', (socket) => {
 });
 
 // ==========================================
-// GLOBÁLNÍ INTERVALY
+// 7. GLOBÁLNÍ INTERVALY HER (TICK RATE)
 // ==========================================
 
 setInterval(() => {
@@ -675,7 +690,7 @@ setInterval(() => {
         let room = rooms[roomId];
         if (room && room.gameState === 'PLAYING' && room.settings.gravityTwist && GRAVITY_OPTIONS && GRAVITY_OPTIONS.length > 0) {
             let availableOptions = GRAVITY_OPTIONS.length > 1 ? GRAVITY_OPTIONS.filter(g => g.name !== room.currentGravity?.name) : GRAVITY_OPTIONS;
-            if(availableOptions.length > 0) {
+            if (availableOptions.length > 0) {
                 room.currentGravity = availableOptions[Math.floor(Math.random() * availableOptions.length)];
                 io.to(roomId).emit('gravityChanged', room.currentGravity.name);
             }
@@ -706,5 +721,5 @@ setInterval(() => {
 }, TICK_RATE); 
 
 server.listen(PORT, () => {
-    console.log(`🚀 Server běží na portu ${PORT}`);
+    console.log(`🚀 Backend Quantum Clash bezpečně běží na portu ${PORT}`);
 });
