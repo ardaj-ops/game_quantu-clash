@@ -14,7 +14,6 @@ if (!socket) {
 // ==========================================
 // 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
-// OPRAVA: Změněno z 'gameCanvas' na 'game', aby to odpovídalo tvému index.html
 const canvas = document.getElementById('game');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const TWO_PI = Math.PI * 2; // Optimalizace pro kreslení kruhů
@@ -31,7 +30,7 @@ window.localBullets = [];
 let lastShotTime = 0;
 window.showTabMenu = false; 
 
-// Ošetření vstupů (pokud je neinicializuješ v jiném skriptu nebo HTML)
+// Ošetření vstupů 
 window.inputs = window.inputs || { up: false, down: false, left: false, right: false, click: false, aimAngle: 0 };
 
 const MAP_W = (typeof CONFIG !== 'undefined' && CONFIG.MAP_WIDTH) ? CONFIG.MAP_WIDTH : 2000;
@@ -188,16 +187,98 @@ window.saveCrosshairSettings = function() {
 };
 
 // ==========================================
-// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
+// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ (NOVÉ DOMÉNY)
 // ==========================================
-function drawBackground() {
+function drawGrid(ctx, size) {
+    ctx.beginPath();
+    for (let x = 0; x <= MAP_W; x += size) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, MAP_H);
+    }
+    for (let y = 0; y <= MAP_H; y += size) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(MAP_W, y);
+    }
+    ctx.stroke();
+}
+
+function drawBackground(players) {
     if (!ctx) return;
     ctx.save();
-    ctx.fillStyle = '#1e272e'; 
-    ctx.fillRect(0, 0, MAP_W, MAP_H);
-    ctx.strokeStyle = '#ff3f34'; 
-    ctx.lineWidth = 10;
-    ctx.strokeRect(0, 0, MAP_W, MAP_H);
+
+    // Zjistíme, jestli má někdo aktivní doménu
+    let activeDomain = null;
+    if (players) {
+        for (let id in players) {
+            if (players[id].domainActive) {
+                activeDomain = players[id].domainType;
+                break; 
+            }
+        }
+    }
+
+    if (activeDomain) {
+        // === MÁME DOMÉNU: ÚPLNÁ ZMĚNA MAPY ===
+        if (activeDomain === 'GAMBLER') {
+            ctx.fillStyle = '#2b0033'; // Temně fialové kasino
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.2)'; // Zlatá mřížka
+            ctx.lineWidth = 2;
+            drawGrid(ctx, 50);
+
+        } else if (activeDomain === 'BLOOD_ALTAR') {
+            ctx.fillStyle = '#4a0000'; // Krvavě červená
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+            ctx.fillStyle = `rgba(255, 0, 0, ${Math.abs(Math.sin(Date.now() / 300)) * 0.2})`; // Pulzování
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+        } else if (activeDomain === 'QUANTUM_PRISON') {
+            ctx.fillStyle = '#001122'; // Kybernetická tma
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)'; // Neonově modrá mřížka
+            ctx.lineWidth = 2;
+            drawGrid(ctx, 100);
+
+        } else if (activeDomain === 'MIRROR_SINGULARITY') {
+            ctx.fillStyle = '#e6f7ff'; // Zrcadlová dimenze
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+        } else if (activeDomain === 'MADNESS_VEIL') {
+            ctx.fillStyle = '#0a1a0a'; // Toxická tma
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+            ctx.fillStyle = `rgba(0, 255, 0, ${Math.random() * 0.1})`; // Statický "šum" šílenství
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+        } else if (activeDomain === 'INFINITE_ARSENAL') {
+            ctx.fillStyle = '#1a1a1a'; // Temně šedá zbrojnice
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+            ctx.strokeStyle = 'rgba(255, 140, 0, 0.1)';
+            ctx.lineWidth = 1;
+            drawGrid(ctx, 40);
+
+        } else if (activeDomain === 'GRAVITY_COLLAPSE') {
+            ctx.fillStyle = '#000000'; // Černá díra
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+        } else {
+            // Fallback pro jistotu
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(0, 0, MAP_W, MAP_H);
+        }
+
+        // Bariéra domény (okraj mapy)
+        ctx.strokeStyle = '#ffffff'; 
+        ctx.lineWidth = 15;
+        ctx.strokeRect(0, 0, MAP_W, MAP_H);
+
+    } else {
+        // === NIKDO NEMÁ DOMÉNU: NORMÁLNÍ MAPA ===
+        ctx.fillStyle = '#1e272e'; 
+        ctx.fillRect(0, 0, MAP_W, MAP_H);
+        ctx.strokeStyle = '#ff3f34'; 
+        ctx.lineWidth = 10;
+        ctx.strokeRect(0, 0, MAP_W, MAP_H);
+    }
+
     ctx.restore();
 }
 
@@ -822,7 +903,8 @@ window.drawGame = function(serverData) {
     ctx.translate(window.gameOffsetX, window.gameOffsetY);
     ctx.scale(window.gameScale, window.gameScale);
 
-    drawBackground();
+    // !! TADY JE TA HLAVNÍ ZMĚNA: PŘEDÁVÁME HRÁČE DO POZADÍ !!
+    drawBackground(serverData.players);
     
     const obstacles = window.localObstacles;
     const breakables = window.localBreakables;
