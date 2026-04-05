@@ -7,7 +7,6 @@
     <title>Quantum Clash</title>
 
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E🎯%3C/text%3E%3C/svg%3E">
-    
     <link rel="stylesheet" href="/style.css">
 </head>
 
@@ -17,6 +16,8 @@
             <h2>Pro hraní Quantum Clash si musíš zapnout JavaScript! 🚀</h2>
         </div>
     </noscript>
+
+    <div id="root"></div>
 
     <canvas id="game"></canvas>
 
@@ -29,103 +30,6 @@
 
     <div id="ammoContainer" class="hud-element hidden">
         Munice: <span id="ammoDisplay">-- / --</span>
-    </div>
-
-    <div id="mainMenuUI" class="overlay">
-        <h1 class="game-title">Quantum Clash</h1>
-
-        <div class="panel">
-            <div class="input-group">
-                <label for="playerNameInput">Tvoje přezdívka:</label>
-                <input type="text" id="playerNameInput" placeholder="Napiš jméno..." maxlength="12" autocomplete="off" spellcheck="false" style="text-align: center;">
-            </div>
-
-            <div class="input-group">
-                <label for="playerColorInput">Základní barva postavy:</label>
-                <input type="color" id="playerColorInput" value="#ffffff" style="cursor: pointer;">
-            </div>
-
-            <div class="input-group">
-                <label for="cosmeticSelect">Kosmetika:</label>
-                <select id="cosmeticSelect" style="text-align: center; cursor: pointer;">
-                    <option value="none">Bez kosmetiky</option>
-                    <option value="crown">👑 Zlatá Koruna</option>
-                    <option value="halo">👼 Andělská svatozář</option>
-                    <option value="horns">👿 Démonské rohy</option>
-                    <option value="cat_ears">🐱 Kočičí uši</option>
-                    <option value="wizard_hat">🧙‍♂️ Čarodějův klobouk</option>
-                    <option value="sunglasses">🕶️ Sluneční brýle</option>
-                    <option value="ninja_headband">🥷 Ninja čelenka</option>
-                    <option value="top_hat">🎩 Elegantní cylindr</option>
-                    <option value="flower">🌸 Květina do vlasů</option>
-                    <option value="mohawk">🎸 Ohnivé číro</option>
-                </select>
-            </div>
-
-            <button id="createBtn" class="menu-btn">Vytvořit novou hru</button>
-
-            <div class="join-box">
-                <div class="input-group" style="margin-bottom: 10px;">
-                    <label style="text-align: center; color: white; font-size: 1.2rem;">Připojit se ke hře</label>
-                    <input type="text" id="roomCodeInput" placeholder="Zadej kód (např. A7K9)" maxlength="4" autocomplete="off" spellcheck="false" style="text-transform: uppercase; text-align: center; letter-spacing: 2px;">
-                </div>
-                <button id="joinSubmitBtn" class="menu-btn action-join">Připojit</button>
-            </div>
-            
-            <p id="errorMsg" style="color: var(--neon-pink); margin-top: 15px; font-weight: bold; min-height: 20px;"></p>
-        </div>
-    </div>
-
-    <div id="lobbyUI" class="overlay hidden">
-        <div class="panel" style="min-width: 400px;">
-            <h1 class="game-title" style="font-size: 2.5rem; margin-bottom: 10px;">Lobby</h1>
-            <h2 style="color: var(--text-muted); margin-top: 0;">Kód místnosti: <span id="displayRoomCode" style="color: var(--neon-blue); cursor: pointer;" title="Kliknutím zkopíruješ">----</span></h2>
-
-            <div id="lobbySettings" class="hidden" style="background: rgba(0, 0, 0, 0.4); padding: 15px; border-radius: 8px; border: 1px solid var(--glass-border); margin-bottom: 20px;">
-                <p id="hostNotice" style="color: var(--neon-yellow); font-size: 0.9rem; margin-top: 0; margin-bottom: 15px; display: none;">👑 Jsi hostitel. Můžeš měnit nastavení.</p>
-
-                <div id="host-controls" style="display: none;">
-                    <div class="input-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <label for="maxScoreInput" style="margin: 0; color: white;">Hraje se do (bodů):</label>
-                        <input type="number" id="maxScoreInput" min="1" max="50" value="5" style="width: 80px; text-align: center;">
-                    </div>
-                    
-                    <div class="input-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <label for="gameModeInput" style="margin: 0; color: white;">Herní mód:</label>
-                        <select id="gameModeInput" style="width: 180px; cursor: pointer;">
-                            <option value="ffa">Všichni proti všem</option>
-                            <option value="tdm">2v2 Týmy</option>
-                        </select>
-                    </div>
-
-                    <div class="input-group" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 0;">
-                        <label for="gravityToggle" style="margin: 0; color: white; cursor: pointer;">Gravitace:</label>
-                        <input type="checkbox" id="gravityToggle" checked style="width: 20px; height: 20px; accent-color: var(--neon-blue); cursor: pointer;">
-                    </div>
-                </div>
-
-                <div id="guest-view" style="display: none; color: white;">
-                    <p style="margin: 5px 0;">Cíl: <strong id="guestScoreDisplay" style="color: var(--neon-blue);">5</strong> bodů</p>
-                    <p style="margin: 5px 0;">Mód: <strong id="guestModeDisplay" style="color: var(--neon-blue);">FFA</strong></p>
-                    <p style="margin: 5px 0;">Gravitace: <strong id="guestGravityDisplay" style="color: var(--neon-blue);">Zapnuta</strong></p>
-                </div>
-            </div>
-
-            <div id="playerListBox" style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; border: 1px solid var(--neon-blue-light); text-align: left; min-height: 100px;">
-            </div>
-            
-            <p id="waitingDataText" style="color: var(--text-muted); font-size: 0.9rem;">Čekání na data ze serveru...</p>
-            
-            <div id="teamSelectionContainer" class="input-group" style="display: none; align-items: center; margin-top: 15px;">
-                <label for="teamSelect" style="color: white; font-size: 1.1rem;">Vyber si tým:</label>
-                <select id="teamSelect" style="width: 100%; text-align: center; font-weight: bold; cursor: pointer;">
-                    <option value="red">🔴 Červený tým</option>
-                    <option value="blue">🔵 Modrý tým</option>
-                </select>
-            </div>
-
-            <button id="readyBtn" class="menu-btn action-ready">JSEM PŘIPRAVEN!</button>
-        </div>
     </div>
 
     <div id="settingsUI" class="overlay hidden" style="z-index: 300;">
@@ -180,62 +84,7 @@
         <button id="returnToLobbyBtn" class="menu-btn" style="max-width: 300px; background: rgba(255,255,255,0.1); border-color: white;">Zpět do Hlavního menu</button>
     </div>    
 
-    <script id="menu-logic">
-        document.addEventListener("DOMContentLoaded", () => {
-            const nameInput = document.getElementById("playerNameInput");
-            const colorInput = document.getElementById("playerColorInput");
-            const cosmeticSelect = document.getElementById("cosmeticSelect");
-            const createBtn = document.getElementById("createBtn");
-            const joinBtn = document.getElementById("joinSubmitBtn");
-            const roomInput = document.getElementById("roomCodeInput");
-            const errorMsg = document.getElementById("errorMsg");
-
-            // 1. Načtení uložených dat
-            if (localStorage.getItem("qc_nickname")) nameInput.value = localStorage.getItem("qc_nickname");
-            if (localStorage.getItem("qc_color")) colorInput.value = localStorage.getItem("qc_color");
-            if (localStorage.getItem("qc_cosmetics")) cosmeticSelect.value = localStorage.getItem("qc_cosmetics");
-
-            // 2. Automatické ukládání při změně
-            const saveSettings = () => {
-                localStorage.setItem("qc_nickname", nameInput.value);
-                localStorage.setItem("qc_color", colorInput.value);
-                localStorage.setItem("qc_cosmetics", cosmeticSelect.value);
-            };
-
-            nameInput.addEventListener("input", saveSettings);
-            colorInput.addEventListener("input", saveSettings);
-            cosmeticSelect.addEventListener("change", saveSettings);
-
-            // 3. Logika tlačítek v menu
-            createBtn.addEventListener("click", () => {
-                if (!nameInput.value.trim()) {
-                    errorMsg.textContent = "Musíš zadat přezdívku!";
-                    return;
-                }
-                errorMsg.textContent = "";
-                console.log("Vytvářím hru...", { jmeno: nameInput.value, barva: colorInput.value, kosmetika: cosmeticSelect.value });
-                
-                // Zde později napojíš socket.io přes game.js k odeslání na server
-                // document.getElementById('mainMenuUI').classList.add('hidden');
-                // document.getElementById('lobbyUI').classList.remove('hidden');
-            });
-
-            joinBtn.addEventListener("click", () => {
-                if (!nameInput.value.trim()) {
-                    errorMsg.textContent = "Musíš zadat přezdívku!";
-                    return;
-                }
-                if (!roomInput.value.trim()) {
-                    errorMsg.textContent = "Musíš zadat kód místnosti!";
-                    return;
-                }
-                errorMsg.textContent = "";
-                console.log("Připojuji do hry s kódem:", roomInput.value.toUpperCase());
-                
-                // Zde později napojíš socket.io přes game.js
-            });
-        });
-    </script>
+    <script type="module" src="/src/main.jsx"></script>
 
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <script src="/gameConfig.js"></script>
