@@ -6,7 +6,11 @@ const BACKEND_URL = "https://quantum-clash-backend.onrender.com";
 
 // Inicializace socketu přímo z frontendu
 const socket = io(BACKEND_URL);
-
+// Přidej toto k ostatním socket.on listenerům:
+socket.on('gameState', (serverData) => { 
+    // Tímto se konečně spustí hlavní smyčka a plátno se roztáhne!
+    window.drawGame(serverData); 
+});
 if (!socket) {
     console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.4/socket.io.min.js'></script>");
 }
