@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 // --- Import Domain Manageru ---
-const DomainManager = require('./domainManager');
+const DomainManager = require('./domainManager.js');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -41,7 +41,7 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
+// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ (OPRAVENO)
 // ==========================================
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
@@ -57,8 +57,26 @@ const loadSharedFile = (fileName) => {
                 console.log(`📄 Načítám sdílený soubor z: ${p}`);
                 const content = fs.readFileSync(p, 'utf-8');
                 const m = { exports: {} };
+                
+                // OPRAVA: Vlastní require, který hledá závislosti ve stejné složce jako aktuální soubor
+                const fileDir = path.dirname(p);
+                const customRequire = (moduleName) => {
+                    if (moduleName.startsWith('.')) {
+                        let resolvedPath = path.join(fileDir, moduleName);
+                        // Pokud chybí přípona .js, doplníme ji
+                        if (!resolvedPath.endsWith('.js')) resolvedPath += '.js';
+                        
+                        // Zkusíme soubor načíst pomocí standardního require Node.js, pokud existuje
+                        if (fs.existsSync(resolvedPath)) {
+                            return require(resolvedPath);
+                        }
+                    }
+                    // Fallback na standardní require (pro systémové moduly atd.)
+                    return require(moduleName);
+                };
+
                 const wrapper = new Function('module', 'exports', 'require', content);
-                wrapper(m, m.exports, require);
+                wrapper(m, m.exports, customRequire);
                 return m.exports;
             } catch (err) {
                 console.warn(`⚠️ Soubor ${fileName} nelze načíst:`, err.message);
@@ -70,6 +88,18 @@ const loadSharedFile = (fileName) => {
     return null;
 };
 
+// Nejdříve načteme gameConfig, aby byl dostupný, pokud ho cards.js potřebují
+let gameConfig = loadSharedFile('gameConfig.js') || {};
+const {
+    MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
+    BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
+    BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
+    MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
+    MAX_CAP_MOVE_SPEED = 2.8, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 45, MAX_CAP_AMMO = 50,
+    GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
+} = gameConfig;
+
+// Poté načteme karty (teď už bezpečně najdou gameConfig)
 let availableCards = [];
 const rawCards = loadSharedFile('cards.js');
 if (rawCards) {
@@ -81,16 +111,6 @@ const uiCatalog = availableCards.map(c => ({
     name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
 }));
 
-let gameConfig = loadSharedFile('gameConfig.js') || {};
-const {
-    MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
-    BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
-    BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
-    MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
-    MAX_CAP_MOVE_SPEED = 2.8, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 45, MAX_CAP_AMMO = 50,
-    GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
-} = gameConfig;
-
 const rooms = {};
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
@@ -99,7 +119,6 @@ const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 }
 // ==========================================
 function broadcastLobbyUpdate(room) {
     if (!room) return;
-    // LOBBY UPDATE: Zde můžeme posílat celé hráče, v lobby to nevadí
     io.to(room.id).emit('lobbyUpdated', { hostId: room.hostId, players: room.players });
 }
 
@@ -516,7 +535,6 @@ io.on('connection', (socket) => {
                     if (room.processedHits.has(hitHash)) return;
                     room.processedHits.add(hitHash);
                     
-                    // POJISTKA PAMĚTI: Proti OOM killu (pokud by se v dlouhém kole nastřádaly tisíce střel)
                     if (room.processedHits.size > 2000) {
                         const iterator = room.processedHits.values();
                         for (let i = 0; i < 500; i++) room.processedHits.delete(iterator.next().value);
@@ -645,15 +663,12 @@ setInterval(() => {
                 }
             }
 
-            // --- OPTIMALIZACE PRO RENDER FREE TIER ---
-            // Namísto odesílání celého "room.players" (včetně polí karet a inputs) vytvoříme ořezaný objekt,
-            // který posílá jen to, co frontend nutně potřebuje k nakreslení snímku (ušetří to ~60-80 % datového toku).
             let leanPlayers = {};
             for (let id in room.players) {
                 let p = room.players[id];
                 leanPlayers[id] = {
                     name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                    x: Math.round(p.x), // Zaokrouhlení zmenší JSON velikost
+                    x: Math.round(p.x), 
                     y: Math.round(p.y),
                     hp: Math.round(p.hp), 
                     maxHp: p.maxHp,
@@ -661,7 +676,6 @@ setInterval(() => {
                     ammo: p.ammo, maxAmmo: p.maxAmmo,
                     isReloading: p.isReloading, isInvisible: p.isInvisible, 
                     domainActive: p.domainActive, score: p.score
-                    // Záměrně VYNECHÁVÁME: "cards" a "inputs", které frontend pro vykreslení cizích hráčů nepotřebuje
                 };
             }
 
