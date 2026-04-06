@@ -1,19 +1,14 @@
 // ==========================================
 // 0. PŘIPOJENÍ K BACKENDU (PRO RENDER ARCHITEKTURU)
 // ==========================================
-// TODO: Zde vlož PŘESNOU adresu tvého backendu na Renderu (bez lomítka na konci!)
 const BACKEND_URL = "https://quantum-clash-backend.onrender.com"; 
 
-// Inicializace socketu přímo z frontendu
-const socket = io(BACKEND_URL);
-// Přidej toto k ostatním socket.on listenerům:
-socket.on('gameState', (serverData) => { 
-    // Tímto se konečně spustí hlavní smyčka a plátno se roztáhne!
-    window.drawGame(serverData); 
-});
+const socket = typeof io !== 'undefined' ? io(BACKEND_URL) : null;
+
 if (!socket) {
-    console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.4/socket.io.min.js'></script>");
+    console.error("❌ Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.4/socket.io.min.js'></script>");
 }
+
 // Diagnostika připojení
 socket.on('connect', () => {
     console.log('✅ ÚSPĚCH: Připojeno k serveru! Moje ID:', socket.id);
@@ -23,17 +18,16 @@ socket.on('connect_error', (err) => {
     console.error('❌ CHYBA: Nelze se spojit se serverem! Zkontroluj BACKEND_URL.', err);
 });
 
-// Zkusíme chytat 'gameState'
+// Chytáme hlavní herní data
 socket.on('gameState', (serverData) => { 
-    console.log('📦 Dostal jsem data (gameState)!', serverData);
-    window.drawGame(serverData); 
+    window.latestServerData = serverData; 
 });
 
-// Zkusíme chytat 'update' (pro jistotu, kdyby se to na backendu jmenovalo takto)
+// Pro jistotu chytáme i 'update', kdyby to backend posílal pod tímto jménem
 socket.on('update', (serverData) => { 
-    console.log('📦 Dostal jsem data (update)!', serverData);
-    window.drawGame(serverData); 
+    window.latestServerData = serverData; 
 });
+
 // ==========================================
 // 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
@@ -284,7 +278,7 @@ function drawBackground(players) {
 }
 
 function drawDomains(players) {
-    if (!ctx) return;
+    if (!ctx || !players) return;
     const timePulse = Math.abs(Math.sin(Date.now() / 400)) * 0.1; 
     
     const domainStyles = {
@@ -447,7 +441,7 @@ function drawCosmetics(ctx, x, y, radius, cosmetic, bodyColor, aimAngle) {
 
 function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, ammo, maxAmmo, name, team, isReloading, isInvisible, dashCD, domainProgress, isDomainActive, isMe) {
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
-    let bodyColor = color || '#fff'; 
+    let bodyColor = color || '#ffffff'; // Fallback for lean data
     
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, TWO_PI);
@@ -484,9 +478,9 @@ function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, amm
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    const actualMaxHp = Math.max(maxHp || 100, hp);
+    const actualMaxHp = Math.max(maxHp || 100, hp || 0); // Failsafe
     const hpBarWidth = Math.min(100, Math.max(30, 40 + (actualMaxHp - 100) * 0.15));
-    const hpRatio = Math.min(1, Math.max(0, hp / actualMaxHp)); 
+    const hpRatio = Math.min(1, Math.max(0, (hp || 0) / actualMaxHp)); 
     
     ctx.fillStyle = '#eb4d4b';
     ctx.fillRect(x - hpBarWidth / 2, y + radius + 10, hpBarWidth, 6);
@@ -592,8 +586,8 @@ function drawDecoys(decoys, players) {
         ctx.globalAlpha = (d.ownerId === myId) ? 0.4 : 1.0;
         drawAvatar(
             ctx, d.x, d.y, d.radius || 20, 
-            owner.color, owner.cosmetic, owner.aimAngle, 
-            d.hp, owner.maxHp, owner.ammo, owner.maxAmmo, owner.name, owner.team, false, false,
+            owner.color || '#ffffff', owner.cosmetic, owner.aimAngle, 
+            d.hp, owner.maxHp || 100, owner.ammo, owner.maxAmmo, owner.name, owner.team, false, false,
             undefined, undefined, false, false
         );
         ctx.restore();
@@ -601,12 +595,12 @@ function drawDecoys(decoys, players) {
 }
 
 function drawPlayers(players) {
-    if (!ctx) return;
+    if (!ctx || !players) return;
     const myId = socket ? socket.id : null;
 
     Object.keys(players).forEach(id => {
         let p = players[id];
-        if (p.hp <= 0) return; 
+        if (!p || p.hp <= 0) return; 
 
         ctx.save();
         let isMe = (id === myId);
@@ -626,8 +620,8 @@ function drawPlayers(players) {
 
         drawAvatar(
             ctx, p.x, p.y, p.playerRadius || 20, 
-            p.color, p.cosmetic, p.aimAngle, 
-            p.hp, p.maxHp, p.ammo, p.maxAmmo, displayName, p.team, p.isReloading, (p.isInvisible && isMe),
+            p.color || '#ffffff', p.cosmetic, p.aimAngle, 
+            p.hp, p.maxHp || 100, p.ammo, p.maxAmmo, displayName, p.team, p.isReloading, (p.isInvisible && isMe),
             p.dashCooldown, p.domainProgress, p.domainActive, isMe
         );
         ctx.restore();
@@ -653,7 +647,7 @@ function drawBullets(bullets, players) {
             bSize += 3;
         } else if (players && b.ownerId && players[b.ownerId]) {
             let owner = players[b.ownerId];
-            bulletColor = owner.color || '#fff';
+            bulletColor = owner.color || '#ffffff';
             
             if (gameMode === 'tdm') {
                 if (owner.team === 'red') bulletColor = '#ff4757';
@@ -873,25 +867,28 @@ function updateDOM_HUD(me) {
             ammoText.innerText = "∞ / ∞";
             ammoText.style.color = "#f1c40f";
         } else {
-            ammoText.innerText = `${me.ammo} / ${me.maxAmmo}`;
+            ammoText.innerText = `${me.ammo || 0} / ${me.maxAmmo || 0}`;
             ammoText.style.color = (me.ammo === 0) ? "#e74c3c" : "#fff";
         }
     }
 }
 
 // ==========================================
-// 9. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ 
+// 9. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ (přes requestAnimationFrame)
 // ==========================================
 window.drawGame = function(serverData) {
-    if (!serverData || !ctx) return;
-    window.latestServerData = serverData; 
+    if (!serverData || !ctx || !canvas) return;
+    
+    // Klíčová změna: Preferujeme optimalizovaná data leanPlayers
+    const playersData = serverData.leanPlayers || serverData.players || {};
 
     canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
 
-   if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
+    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -903,33 +900,30 @@ window.drawGame = function(serverData) {
     ctx.translate(window.gameOffsetX, window.gameOffsetY);
     ctx.scale(window.gameScale, window.gameScale);
 
-    drawBackground(serverData.players);
+    drawBackground(playersData);
     
     const obstacles = window.localObstacles;
     const breakables = window.localBreakables;
     drawMapObjects(obstacles, breakables);
 
     if (serverData.gameState !== 'LOBBY') {
-        if (serverData.players) drawDomains(serverData.players);
-        if (serverData.decoys) drawDecoys(serverData.decoys, serverData.players);
-        if (serverData.players) drawPlayers(serverData.players);
-        drawBullets(serverData.bullets, serverData.players);
+        drawDomains(playersData);
+        if (serverData.decoys) drawDecoys(serverData.decoys, playersData);
+        drawPlayers(playersData);
+        drawBullets(serverData.bullets, playersData);
         
-        if (socket && serverData.players) {
-            let myId = socket.id;
-            let me = serverData.players[myId];
-            updateDOM_HUD(me);
+        if (socket && playersData[socket.id]) {
+            updateDOM_HUD(playersData[socket.id]);
         }
     }
     
     ctx.restore();
 
     if (serverData.gameState === 'PLAYING') {
-        // Používáme klávesu TAB z input.js
         if (!window.playerInputs || !window.playerInputs.tab) {
             drawCrosshair(); 
         } else {
-            drawTabMenu(serverData.players);
+            drawTabMenu(playersData);
         }
     }
 
@@ -945,6 +939,14 @@ window.drawGame = function(serverData) {
         ctx.shadowBlur = 0; 
     } 
 };
+
+function renderLoop() {
+    if (window.latestServerData) {
+        window.drawGame(window.latestServerData);
+    }
+    requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
 
 // ==========================================
 // 10. CLIENT-AUTHORITATIVE MOZEK A FYZIKA
@@ -969,10 +971,13 @@ function checkWallCollision(x, y, radius, walls) {
 
 window.updateLocalGame = function() {
     if (!window.latestServerData || window.latestServerData.gameState !== 'PLAYING') return;
-    if (!socket || !window.playerInputs) return; // Kontrola našeho objektu z input.js
+    if (!socket || !window.playerInputs) return;
 
+    // Failsafe pro optimalizovaná data
+    let playersData = window.latestServerData.leanPlayers || window.latestServerData.players || {};
     let myId = socket.id;
-    let me = window.latestServerData.players[myId];
+    let me = playersData[myId];
+    
     if (!me || me.hp <= 0) return;
 
     let speed = me.moveSpeed || 5;
@@ -982,11 +987,9 @@ window.updateLocalGame = function() {
     let nextX = me.x;
     let nextY = me.y;
 
-    // Aplikace pohybu z window.playerInputs
     if (window.playerInputs.up) nextY -= speed;
     if (window.playerInputs.down) nextY += speed;
     
-    // Omezení mapy (Y)
     nextY = Math.max(pRadius, Math.min(MAP_H - pRadius, nextY));
     if (!checkWallCollision(me.x, nextY, pRadius, allWalls)) {
         me.y = nextY;
@@ -995,26 +998,25 @@ window.updateLocalGame = function() {
     if (window.playerInputs.left) nextX -= speed;
     if (window.playerInputs.right) nextX += speed;
     
-    // Omezení mapy (X)
     nextX = Math.max(pRadius, Math.min(MAP_W - pRadius, nextX));
     if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) {
         me.x = nextX;
     }
 
-    // Odeslání pozice, úhlu a dalších stavových informací (R, Dash) na server
+    // Odeslání dat na server
     socket.emit('clientSync', {
         x: me.x,
         y: me.y,
         aimAngle: window.playerInputs.aimAngle,
         ammo: me.ammo,
-        isReloading: window.playerInputs.reload, // Předáváme držení klávesy R
-        dashRequested: window.playerInputs.rightClick // Předáváme pravé tlačítko
+        isReloading: window.playerInputs.reload,
+        dashRequested: window.playerInputs.rightClick
     });
 
     let now = Date.now();
     let fireRate = me.fireRate || 200;
     
-    // Střelba levým tlačítkem
+    // Střelba
     if (window.playerInputs.click && now - lastShotTime > fireRate && me.ammo > 0 && me.maxAmmo > 0 && !me.isReloading) {
         lastShotTime = now;
         me.ammo--; 
@@ -1029,13 +1031,14 @@ window.updateLocalGame = function() {
             vy: Math.sin(window.playerInputs.aimAngle) * bSpeed,
             damage: me.damage || 10,
             radius: 5,
-            color: me.color
+            color: me.color || '#ffffff'
         };
 
         window.localBullets.push(bullet);
         socket.emit('playerShot', [bullet]); 
     }
 
+    // Fyzika střel klienta
     for (let i = window.localBullets.length - 1; i >= 0; i--) {
         let b = window.localBullets[i];
         b.x += b.vx;
@@ -1046,10 +1049,10 @@ window.updateLocalGame = function() {
             continue;
         }
 
-        for (let targetId in window.latestServerData.players) {
+        for (let targetId in playersData) {
             if (targetId === myId) continue; 
             
-            let target = window.latestServerData.players[targetId];
+            let target = playersData[targetId];
             if (!target || target.hp <= 0) continue;
 
             let dist = Math.hypot(b.x - target.x, b.y - target.y);
@@ -1068,5 +1071,6 @@ window.updateLocalGame = function() {
     }
 };
 
-// Spuštění herní smyčky fyziky/vstupů (60x za sekundu)
+// Spuštění herní smyčky fyziky/vstupů
+// OPRAVA: Původně tu bylo 1000 / 15 (15 FPS), opraveno na 60 FPS pro plynulý pohyb
 setInterval(window.updateLocalGame, 1000 / 60);
