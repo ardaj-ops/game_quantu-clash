@@ -23,7 +23,6 @@ socket.on('gameState', (serverData) => {
     window.latestServerData = serverData; 
 });
 
-// Pro jistotu chytáme i 'update', kdyby to backend posílal pod tímto jménem
 socket.on('update', (serverData) => { 
     window.latestServerData = serverData; 
 });
@@ -31,8 +30,9 @@ socket.on('update', (serverData) => {
 // ==========================================
 // 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
-const canvas = document.getElementById('game');
-const ctx = canvas ? canvas.getContext('2d') : null;
+// OPRAVA: Canvas hledáme dynamicky (Lazy load), aby to fungovalo s Reactem i HTML
+let canvas = null;
+let ctx = null;
 const TWO_PI = Math.PI * 2;
 
 window.latestServerData = null; 
@@ -64,8 +64,9 @@ if (socket) {
     });
 }
 
-// Ukládáme pozici myši jen pro vykreslení vizuálního zaměřovače (úhel počítá input.js)
+// Ukládáme pozici myši jen pro vykreslení vizuálního zaměřovače
 window.addEventListener('mousemove', (e) => {
+    if (!canvas) canvas = document.getElementById('game'); // Lazy load
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     window.currentMouseX = e.clientX - rect.left;
@@ -125,6 +126,7 @@ function drawCrosshair() {
 }
 
 window.screenToWorld = function(screenX, screenY) {
+    if (!canvas) canvas = document.getElementById('game'); // Lazy load
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const xOnCanvas = screenX - rect.left;
@@ -194,7 +196,7 @@ window.saveCrosshairSettings = function() {
 };
 
 // ==========================================
-// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ (DOMÉNY)
+// 4. VYKRESLOVÁNÍ MAPY A PROSTŘEDÍ
 // ==========================================
 function drawGrid(ctx, size) {
     ctx.beginPath();
@@ -441,7 +443,7 @@ function drawCosmetics(ctx, x, y, radius, cosmetic, bodyColor, aimAngle) {
 
 function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, ammo, maxAmmo, name, team, isReloading, isInvisible, dashCD, domainProgress, isDomainActive, isMe) {
     const gameMode = window.latestServerData ? window.latestServerData.gameMode : 'ffa';
-    let bodyColor = color || '#ffffff'; // Fallback for lean data
+    let bodyColor = color || '#ffffff'; 
     
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, TWO_PI);
@@ -478,7 +480,7 @@ function drawAvatar(ctx, x, y, radius, color, cosmetic, aimAngle, hp, maxHp, amm
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    const actualMaxHp = Math.max(maxHp || 100, hp || 0); // Failsafe
+    const actualMaxHp = Math.max(maxHp || 100, hp || 0); 
     const hpBarWidth = Math.min(100, Math.max(30, 40 + (actualMaxHp - 100) * 0.15));
     const hpRatio = Math.min(1, Math.max(0, (hp || 0) / actualMaxHp)); 
     
@@ -877,9 +879,15 @@ function updateDOM_HUD(me) {
 // 9. HLAVNÍ LOOP PRO VYKRESLOVÁNÍ (přes requestAnimationFrame)
 // ==========================================
 window.drawGame = function(serverData) {
+    // OPRAVA: Dynamické načtení canvasu. Tohle zachrání React i divné načítání HTML!
+    if (!canvas) {
+        canvas = document.getElementById('game');
+        if (canvas) ctx = canvas.getContext('2d');
+    }
+
+    // Pokud canvas pořád neexistuje (např. komponenta se ještě nevykreslila), prostě přeskočíme frame.
     if (!serverData || !ctx || !canvas) return;
     
-    // Klíčová změna: Preferujeme optimalizovaná data leanPlayers
     const playersData = serverData.leanPlayers || serverData.players || {};
 
     canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
@@ -973,7 +981,6 @@ window.updateLocalGame = function() {
     if (!window.latestServerData || window.latestServerData.gameState !== 'PLAYING') return;
     if (!socket || !window.playerInputs) return;
 
-    // Failsafe pro optimalizovaná data
     let playersData = window.latestServerData.leanPlayers || window.latestServerData.players || {};
     let myId = socket.id;
     let me = playersData[myId];
@@ -1071,6 +1078,5 @@ window.updateLocalGame = function() {
     }
 };
 
-// Spuštění herní smyčky fyziky/vstupů
-// OPRAVA: Původně tu bylo 1000 / 15 (15 FPS), opraveno na 60 FPS pro plynulý pohyb
+// Spuštění herní smyčky fyziky/vstupů na 60 FPS
 setInterval(window.updateLocalGame, 1000 / 60);
