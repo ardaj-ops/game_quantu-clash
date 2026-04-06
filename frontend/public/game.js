@@ -14,7 +14,26 @@ socket.on('gameState', (serverData) => {
 if (!socket) {
     console.error("Socket.IO není načten! Nezapomeň do HTML přidat: <script src='https://cdn.socket.io/4.7.4/socket.io.min.js'></script>");
 }
+// Diagnostika připojení
+socket.on('connect', () => {
+    console.log('✅ ÚSPĚCH: Připojeno k serveru! Moje ID:', socket.id);
+});
 
+socket.on('connect_error', (err) => {
+    console.error('❌ CHYBA: Nelze se spojit se serverem! Zkontroluj BACKEND_URL.', err);
+});
+
+// Zkusíme chytat 'gameState'
+socket.on('gameState', (serverData) => { 
+    console.log('📦 Dostal jsem data (gameState)!', serverData);
+    window.drawGame(serverData); 
+});
+
+// Zkusíme chytat 'update' (pro jistotu, kdyby se to na backendu jmenovalo takto)
+socket.on('update', (serverData) => { 
+    console.log('📦 Dostal jsem data (update)!', serverData);
+    window.drawGame(serverData); 
+});
 // ==========================================
 // 1. INICIALIZACE CANVASU A GLOBÁLNÍCH PROMĚNNÝCH
 // ==========================================
@@ -869,11 +888,10 @@ window.drawGame = function(serverData) {
 
     canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
 
-    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-
+   if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 

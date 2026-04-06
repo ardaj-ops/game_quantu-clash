@@ -51,14 +51,12 @@ body {
 ========================================== */
 #game {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1;
-    background-color: #111;
-    border: 2px solid var(--neon-blue);
-    border-radius: 15px;
-    box-shadow: 0 0 30px rgba(69, 243, 255, 0.2), inset 0 0 20px rgba(0, 0, 0, 0.8);
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    z-index: 10; /* Zajistí, že bude nad pozadím */
 }
 
 /* ==========================================
