@@ -88,7 +88,7 @@ const loadSharedFile = (fileName) => {
 };
 
 // Nejdříve načteme gameConfig
-let gameConfig = loadSharedFile('gameConfig.js') || {};
+let gameConfig = require('../frontend/src/game/gameConfig.js') || {};
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
@@ -100,7 +100,7 @@ const {
 
 // Poté načteme karty
 let availableCards = [];
-const rawCards = loadSharedFile('cards.js');
+const rawCards = require('../frontend/src/game/cards.js');
 if (rawCards) {
     availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
 }
