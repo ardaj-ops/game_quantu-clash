@@ -43,8 +43,13 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
+// ==========================================
+// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
+// ==========================================
 const loadSharedFile = (fileName) => {
+    // Přidali jsme cestu přímo do tvé složky frontend/src/game/
     const pathsToTry = [
+        path.join(__dirname, '..', 'frontend', 'src', 'game', fileName), // <--- TADY JE ZMĚNA
         path.join(frontendDistPath, fileName),
         path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
