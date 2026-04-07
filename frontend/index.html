@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#111111">
     <title>Quantum Clash</title>
-
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E🎯%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="/style.css">
 </head>
@@ -17,77 +16,77 @@
         </div>
     </noscript>
 
+    <div id="game-layer">
+        <canvas id="game"></canvas>
+
+        <button id="settingsBtn" class="hud-element hidden">⚙️ Nastavení</button>
+
+        <div id="scoreBoardContainer" class="hud-element hidden">
+            <h3 style="margin: 0 0 10px 0;">Skóre (do <span id="maxScoreDisplay">5</span>)</h3>
+            <div id="scoreBoard"></div>
+        </div>
+
+        <div id="ammoContainer" class="hud-element hidden">
+            Munice: <span id="ammoDisplay">-- / --</span>
+        </div>
+
+        <div id="settingsUI" class="overlay hidden">
+            <div class="panel" style="width: 350px; background: #222; border: 1px solid #444; border-radius: 10px; padding: 20px;">
+                <h2 class="game-title" style="font-size: 2rem; margin-top: 0; color: white;">Nastavení</h2>
+
+                <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: left;">
+                    <h3 style="color: #4ade80; margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #444; padding-bottom: 5px;">⌨️ Ovládání:</h3>
+                    <ul style="color: #ccc; padding-left: 20px; margin-bottom: 0; line-height: 1.8;">
+                        <li><b>WASD</b> - Pohyb</li>
+                        <li><b>Levé myši</b> - Střelba</li>
+                        <li><b>Pravé myši</b> - Dash / Rituál</li>
+                        <li><b>R</b> - Přebití zbraně</li>
+                        <li><b>TAB</b> - Tabulka karet</li>
+                    </ul>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 15px; text-align: left;">
+                    <label for="crosshairSelect" style="color: white; display: block; margin-bottom: 5px;">Tvar zaměřovače:</label>
+                    <select id="crosshairSelect" style="cursor: pointer; width: 100%; padding: 8px;">
+                        <option value="cross">Křížek</option>
+                        <option value="dot">Tečka</option>
+                        <option value="circle">Kruh</option>
+                    </select>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 20px; text-align: left;">
+                    <label for="volumeSlider" style="color: white; display: block; margin-bottom: 5px;">Hlasitost zvuků:</label>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="50" style="width: 100%; cursor: pointer;">
+                </div>
+
+                <button id="closeSettingsBtn" style="width: 100%; padding: 10px; cursor: pointer;">Uložit a zavřít</button>
+            </div>
+        </div>
+
+        <div id="upgradeUI" class="overlay hidden">
+            <h2 style="font-size: 3.5rem; margin-bottom: 10px; text-transform: uppercase; color: #f43f5e;">Prohrál jsi!</h2>
+            <p style="color: white; font-size: 1.3rem; margin-bottom: 30px; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 20px;">Vyber si jedno vylepšení pro další kolo:</p>
+            <div id="cardsContainer" style="display: flex; gap: 20px;"></div>
+        </div>
+
+        <div id="waitingUI" class="overlay hidden">
+            <h2 style="font-size: 4rem; text-transform: uppercase; color: #4ade80;">Kolo skončilo!</h2>
+            <p style="color: #aaa; font-size: 1.2rem; margin-top: 20px;">
+                <span style="display: inline-block;">⏳</span> Čekej, než si poražení vyberou svá vylepšení...
+            </p>
+        </div>
+
+        <div id="gameOverScreen" class="overlay hidden">
+            <h1 style="font-size: 6rem; margin-top: 0; color: #f43f5e;">🏆 KONEC HRY 🏆</h1>
+            <h2 id="winnerText" style="font-size: 3rem; color: white; margin-bottom: 50px; text-transform: uppercase; letter-spacing: 2px;">Vítěz: ???</h2>
+            <button id="returnToLobbyBtn" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">Zpět do Hlavního menu</button>
+        </div>    
+    </div>
+
     <div id="root"></div>
 
-    <canvas id="game"></canvas>
-
-    <button id="settingsBtn" class="hud-element hidden">⚙️ Nastavení</button>
-
-    <div id="scoreBoardContainer" class="hud-element hidden">
-        <h3 style="margin: 0 0 10px 0;">Skóre (do <span id="maxScoreDisplay">5</span>)</h3>
-        <div id="scoreBoard"></div>
-    </div>
-
-    <div id="ammoContainer" class="hud-element hidden">
-        Munice: <span id="ammoDisplay">-- / --</span>
-    </div>
-
-    <div id="settingsUI" class="overlay hidden">
-        <div class="panel" style="width: 350px; background: #222; border: 1px solid #444; border-radius: 10px; padding: 20px;">
-            <h2 class="game-title" style="font-size: 2rem; margin-top: 0; color: white;">Nastavení</h2>
-
-            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: left;">
-                <h3 style="color: #4ade80; margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #444; padding-bottom: 5px;">⌨️ Ovládání:</h3>
-                <ul style="color: #ccc; padding-left: 20px; margin-bottom: 0; line-height: 1.8;">
-                    <li><b>WASD</b> - Pohyb</li>
-                    <li><b>Levé myši</b> - Střelba</li>
-                    <li><b>Pravé myši</b> - Dash / Rituál</li>
-                    <li><b>R</b> - Přebití zbraně</li>
-                    <li><b>TAB</b> - Tabulka karet</li>
-                </ul>
-            </div>
-
-            <div class="input-group" style="margin-bottom: 15px; text-align: left;">
-                <label for="crosshairSelect" style="color: white; display: block; margin-bottom: 5px;">Tvar zaměřovače:</label>
-                <select id="crosshairSelect" style="cursor: pointer; width: 100%; padding: 8px;">
-                    <option value="cross">Křížek</option>
-                    <option value="dot">Tečka</option>
-                    <option value="circle">Kruh</option>
-                </select>
-            </div>
-
-            <div class="input-group" style="margin-bottom: 20px; text-align: left;">
-                <label for="volumeSlider" style="color: white; display: block; margin-bottom: 5px;">Hlasitost zvuků:</label>
-                <input type="range" id="volumeSlider" min="0" max="100" value="50" style="width: 100%; cursor: pointer;">
-            </div>
-
-            <button id="closeSettingsBtn" style="width: 100%; padding: 10px; cursor: pointer;">Uložit a zavřít</button>
-        </div>
-    </div>
-
-    <div id="upgradeUI" class="overlay hidden">
-        <h2 style="font-size: 3.5rem; margin-bottom: 10px; text-transform: uppercase; color: #f43f5e;">Prohrál jsi!</h2>
-        <p style="color: white; font-size: 1.3rem; margin-bottom: 30px; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 20px;">Vyber si jedno vylepšení pro další kolo:</p>
-        <div id="cardsContainer" style="display: flex; gap: 20px;"></div>
-    </div>
-
-    <div id="waitingUI" class="overlay hidden">
-        <h2 style="font-size: 4rem; text-transform: uppercase; color: #4ade80;">Kolo skončilo!</h2>
-        <p style="color: #aaa; font-size: 1.2rem; margin-top: 20px;">
-            <span style="display: inline-block;">⏳</span> Čekej, než si poražení vyberou svá vylepšení...
-        </p>
-    </div>
-
-    <div id="gameOverScreen" class="overlay hidden">
-        <h1 style="font-size: 6rem; margin-top: 0; color: #f43f5e;">🏆 KONEC HRY 🏆</h1>
-        <h2 id="winnerText" style="font-size: 3rem; color: white; margin-bottom: 50px; text-transform: uppercase; letter-spacing: 2px;">Vítěz: ???</h2>
-        <button id="returnToLobbyBtn" style="padding: 15px 30px; font-size: 1.2rem; cursor: pointer;">Zpět do Hlavního menu</button>
-    </div>    
-
     <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    
     <script type="module" src="/src/main.jsx"></script>
-    
     <script src="/gameConfig.js"></script>
     <script src="/cards.js"></script>
     <script src="/input.js"></script>
