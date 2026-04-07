@@ -3,9 +3,9 @@ import './App.css';
 
 // --- KLÍČOVÉ ZMĚNY ---
 // 1. Odebíráme jediný sdílený socket přímo z tvého herního kódu!
-import { socket } from 'src/game/network.js'; 
+import { socket } from 'game/network.js'; 
 // 2. Musíme Reactu říct, ať vůbec spustí tvůj herní engine (main.js)
-import 'src/game/main.js'; 
+import 'game/main.js'; 
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
