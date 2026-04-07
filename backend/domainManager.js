@@ -1,5 +1,5 @@
 // domainManager.js
-const CONFIG = require('../frontend/public/gameConfig');
+const CONFIG = require('../frontend/src/game/gameConfig');
 
 class DomainManager {
     static activateDomain(player) {

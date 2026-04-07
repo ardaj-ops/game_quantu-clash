@@ -27,6 +27,9 @@ const io = new Server(server, {
 
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
 const frontendPublicPath = path.join(__dirname, '..', 'frontend', 'public');
+// OPRAVA: Přidána správná cesta do složky s logikou hry
+const frontendSrcGamePath = path.join(__dirname, '..', 'frontend', 'src', 'game'); 
+
 const staticPath = fs.existsSync(frontendDistPath) ? frontendDistPath : frontendPublicPath;
 
 app.use(express.static(staticPath));
@@ -45,6 +48,7 @@ app.get('/', (req, res) => {
 // ==========================================
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
+        path.join(frontendSrcGamePath, fileName), // OPRAVA: Tady to teď najde gameConfig.js a cards.js!
         path.join(frontendDistPath, fileName),
         path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
@@ -58,7 +62,7 @@ const loadSharedFile = (fileName) => {
                 const content = fs.readFileSync(p, 'utf-8');
                 const m = { exports: {} };
                 
-                // OPRAVA: Vlastní require, který hledá závislosti ve stejné složce jako aktuální soubor
+                // Vlastní require, který hledá závislosti ve stejné složce jako aktuální soubor
                 const fileDir = path.dirname(p);
                 const customRequire = (moduleName) => {
                     if (moduleName.startsWith('.')) {
