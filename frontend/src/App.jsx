@@ -5,8 +5,7 @@ import './App.css';
 // 1. Odebíráme jediný sdílený socket přímo z tvého herního kódu!
 import { socket } from './game/network.js'; 
 // 2. Musíme Reactu říct, ať vůbec spustí tvůj herní engine (main.js)
-import './game/main.js'; 
-
+import { initGameEngine } from './game/main.js';
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   
@@ -40,7 +39,10 @@ function App() {
     localStorage.setItem('qc_color', color);
     localStorage.setItem('qc_cosmetics', cosmetics);
   }, [nickname, color, cosmetics]);
-
+// Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením
+  useEffect(() => {
+    initGameEngine();
+  }, []);
   // Hlavní Socket.io logika
   useEffect(() => {
     if (!socket) {

@@ -1,4 +1,4 @@
-// main.js
+// game/main.js
 import { state } from './state.js';
 import './network.js'; // Jen spustíme, aby se navázalo spojení
 import { updateLocalGame } from './physics.js';
@@ -52,7 +52,7 @@ function renderLoop() {
     if (canvas && state.latestServerData) {
         
         // POJISTKA: Pokud canvas nemá nastavenou vnitřní velikost, nakreslí se jen černo!
-        // (Uprav si 800x600 podle toho, jak velkou máš hru)
+        // (Uprav si 800x600 podle toho, jak velkou máš hru, nebo použij window.innerWidth)
         if (canvas.width === 0 || canvas.height === 0) {
             canvas.width = 800; 
             canvas.height = 600;
@@ -70,6 +70,23 @@ function renderLoop() {
     requestAnimationFrame(renderLoop);
 }
 
-// Odstartování smyček
-requestAnimationFrame(renderLoop);
-setInterval(updateLocalGame, 1000 / 60); // Fyzika běží 60x za vteřinu
+// --- 5. EXPORTOVANÁ FUNKCE PRO REACT ---
+let engineStarted = false;
+
+export function initGameEngine() {
+    if (engineStarted) return; // Zabráníme vícenásobnému spuštění
+
+    const canvas = document.getElementById('game');
+    if (!canvas) {
+        console.error("❌ Plátno nenalezeno! React ještě nevykreslil <canvas id='game'>.");
+        return;
+    }
+
+    console.log("🚀 Herní engine úspěšně nastartován!");
+    
+    // Odstartování smyček až teď, když víme, že plátno existuje
+    requestAnimationFrame(renderLoop);
+    setInterval(updateLocalGame, 1000 / 60); // Fyzika běží 60x za vteřinu
+    
+    engineStarted = true;
+}

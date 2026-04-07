@@ -1,4 +1,4 @@
-// render.js
+// game/render.js
 import { state, CONFIG } from './state.js';
 import { socket } from './network.js';
 
@@ -36,15 +36,20 @@ function drawBackground(mapW, mapH) {
 
 function drawMapObjects(obstacles = [], breakables = []) {
     if (!state.ctx) return;
+    
+    // Zabezpečení proti undefined polím
+    const safeObstacles = Array.isArray(obstacles) ? obstacles : [];
+    const safeBreakables = Array.isArray(breakables) ? breakables : [];
+
     // Vykreslení překážek (zdí)
     state.ctx.fillStyle = '#555555';
-    obstacles.forEach(obs => {
+    safeObstacles.forEach(obs => {
         state.ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     });
 
     // Vykreslení zničitelných objektů (krabice)
     state.ctx.fillStyle = '#8B4513';
-    breakables.forEach(brk => {
+    safeBreakables.forEach(brk => {
         if (brk.hp > 0) state.ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
     });
 }
@@ -58,13 +63,17 @@ function drawDecoys(decoys = [], playersData) {
 }
 
 function drawPlayers(playersData) {
-    if (!state.ctx) return;
+    if (!state.ctx || !playersData) return;
+    
     for (const id in playersData) {
         const p = playersData[id];
-        if (p.hp <= 0) continue; // Mrtvé nekreslíme
+        if (!p || p.hp <= 0) continue; // Mrtvé nekreslíme
 
         state.ctx.save();
-        state.ctx.translate(p.x, p.y);
+        // Pojistka proti NaN pozicím (kdyby server poslal nesmysl)
+        const px = p.x || 0;
+        const py = p.y || 0;
+        state.ctx.translate(px, py);
         
         // Jméno hráče
         state.ctx.fillStyle = (socket && id === socket.id) ? '#00ff00' : '#ffffff';
@@ -73,11 +82,12 @@ function drawPlayers(playersData) {
         state.ctx.fillText(p.name || "Hráč", 0, -35);
 
         // Healthbar (Zdraví)
-        const hpPercent = p.hp / (p.maxHp || 100);
+        const maxHp = p.maxHp || 100;
+        const hpPercent = (p.hp || 0) / maxHp;
         state.ctx.fillStyle = '#ff0000';
         state.ctx.fillRect(-20, -25, 40, 5);
         state.ctx.fillStyle = '#00ff00';
-        state.ctx.fillRect(-20, -25, 40 * Math.max(0, Math.min(1, hpPercent)), 5); // Ošetření proti přeplnění
+        state.ctx.fillRect(-20, -25, 40 * Math.max(0, Math.min(1, hpPercent)), 5); 
 
         // Rotace hráče podle toho, kam míří
         state.ctx.rotate(p.angle || 0);
@@ -109,10 +119,13 @@ function drawCosmetics(p) {
     // Klobouky, brýle atd., pokud je hráč má
 }
 
-function drawBullets(bullets = [], playersData) {
+function drawBullets(bullets = []) {
     if (!state.ctx) return;
+    const safeBullets = Array.isArray(bullets) ? bullets : [];
+    
     state.ctx.fillStyle = '#f1c40f'; // Žluté kulky
-    bullets.forEach(b => {
+    safeBullets.forEach(b => {
+        if (b.x === undefined || b.y === undefined) return;
         state.ctx.beginPath();
         state.ctx.arc(b.x, b.y, 4, 0, TWO_PI);
         state.ctx.fill();
@@ -126,7 +139,7 @@ function drawCrosshair() {
     const { currentMouseX: x, currentMouseY: y } = state;
 
     state.ctx.save();
-    state.ctx.strokeStyle = config.color;
+    state.ctx.strokeStyle = config.color || '#00ff00';
     state.ctx.lineWidth = 2;
 
     if (config.shape === 'cross' || !config.shape) {
@@ -155,7 +168,7 @@ function drawTabMenu(playersData) {
 }
 
 function updateDOM_HUD(player) {
-    // Aktualizace HTML prvků (pokud existují)
+    // Aktualizace HTML prvků (necháváme pro zpětnou kompatibilitu, v Reactu to asi řešíš přes state)
     const hpEl = document.getElementById('hpDisplay');
     const ammoEl = document.getElementById('ammoDisplay');
     
@@ -163,33 +176,40 @@ function updateDOM_HUD(player) {
     if (ammoEl) ammoEl.innerText = `AMMO: ${player.ammo || 0}`;
 }
 
-// --- HLAVNÍ FUNKCE (Zavolá se z main.js každou vteřinu 60x) ---
+// --- HLAVNÍ FUNKCE ---
 
 export function drawGame(serverData) {
+    // 1. Získání plátna, pokud ho ještě nemáme
     if (!state.canvas) {
         state.canvas = document.getElementById('game');
         if (state.canvas) state.ctx = state.canvas.getContext('2d');
     }
 
-    if (!serverData || !state.ctx || !state.canvas) return;
-    const playersData = serverData.leanPlayers || serverData.players || {};
-    state.canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
+    if (!state.canvas || !state.ctx) return; // Plátno ještě neexistuje
 
-    // Ošetření plynulého resizeování na celou obrazovku
+    // 2. Bezpečná data (pokud serverData ještě nedorazila, vytvoříme prázdný objekt)
+    const safeData = serverData || {};
+    const playersData = safeData.leanPlayers || safeData.players || {};
+    const gameState = safeData.gameState || 'PLAYING';
+
+    // 3. Správa kurzoru
+    state.canvas.style.cursor = (gameState === 'PLAYING') ? 'none' : 'default';
+
+    // 4. Ošetření plynulého resizeování na celou obrazovku
     if (state.canvas.width !== window.innerWidth || state.canvas.height !== window.innerHeight) {
         state.canvas.width = window.innerWidth;
         state.canvas.height = window.innerHeight;
     }
     
-    // Černé pozadí mimo mapu (aby to nenechávalo "šmouhy")
+    // 5. Černé pozadí mimo mapu
     state.ctx.fillStyle = '#000000';
     state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
 
-    // BEZPEČNÉ VYTAŽENÍ ROZMĚRŮ MAPY (Pokud chybí v CONFIG, použijeme 2000)
+    // 6. Bezpečné rozměry mapy
     const mapW = (CONFIG && CONFIG.MAP_W) ? CONFIG.MAP_W : 2000;
     const mapH = (CONFIG && CONFIG.MAP_H) ? CONFIG.MAP_H : 2000;
 
-    // Vypočítáme kameru (změřítkování a centrování mapy)
+    // 7. Kamera a centrování
     state.gameScale = Math.min(state.canvas.width / mapW, state.canvas.height / mapH);
     state.gameOffsetX = (state.canvas.width - mapW * state.gameScale) / 2;
     state.gameOffsetY = (state.canvas.height - mapH * state.gameScale) / 2;
@@ -198,28 +218,25 @@ export function drawGame(serverData) {
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
     state.ctx.scale(state.gameScale, state.gameScale);
 
-    // Vykreslení herního světa (předáváme opravené rozměry)
+    // 8. Vykreslení herního světa
     drawBackground(mapW, mapH); 
-    
-    // Používáme bezpečný fallback pro případ, že pole ještě nejsou naplněná
     drawMapObjects(state.localObstacles || [], state.localBreakables || []);
 
-    if (serverData.gameState !== 'LOBBY') {
+    if (gameState !== 'LOBBY') {
         drawDomains(playersData);
-        if (serverData.decoys) drawDecoys(serverData.decoys, playersData);
+        if (safeData.decoys) drawDecoys(safeData.decoys, playersData);
         drawPlayers(playersData);
-        drawBullets(serverData.bullets || [], playersData);
+        drawBullets(safeData.bullets || []);
         
         if (socket && playersData[socket.id]) {
             updateDOM_HUD(playersData[socket.id]);
         }
     }
     
-    state.ctx.restore();
+    state.ctx.restore(); // Konec transformací kamery
 
-    // Vykreslení UI (zaměřovač nebo tabulka)
-    if (serverData.gameState === 'PLAYING' || !serverData.gameState) {
-        // Zabezpečení proti neexistujícímu objektu playerInputs
+    // 9. Vykreslení UI přes mapu (nezávislé na kameře)
+    if (gameState === 'PLAYING') {
         const isTabPressed = state.playerInputs && state.playerInputs.tab;
         
         if (!isTabPressed) {
@@ -229,7 +246,7 @@ export function drawGame(serverData) {
         }
     }
 
-    if (serverData.gameState === 'SCOREBOARD') {
+    if (gameState === 'SCOREBOARD') {
         state.ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
         state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
         state.ctx.fillStyle = "white";
