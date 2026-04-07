@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import './network.js'; // Jen spustíme
 import { updateLocalGame } from './physics.js';
-import { drawGame } from './renderer.js';
+import { drawGame } from './render.js';
 
 // Inicializace nastavení zaměřovače z LocalStorage
 try {
