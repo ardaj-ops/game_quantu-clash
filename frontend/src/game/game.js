@@ -949,7 +949,7 @@ window.drawGame = function(serverData) {
 };
 
 function renderLoop() {
-    if (window.latestServerData) {
+    if (window.latestServerData) { // <-- Pokud je null, nevykreslí se ANI PRÁZDNÝ CANVAS
         window.drawGame(window.latestServerData);
     }
     requestAnimationFrame(renderLoop);

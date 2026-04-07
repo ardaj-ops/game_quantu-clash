@@ -27,9 +27,8 @@ const io = new Server(server, {
 
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
 const frontendPublicPath = path.join(__dirname, '..', 'frontend', 'public');
-// OPRAVA: Přidána správná cesta do složky s logikou hry
-const frontendSrcGamePath = path.join(__dirname, '..', 'frontend', 'src', 'game'); 
 
+// Vite v produkci servíruje z "dist", v devu budeme číst z "public"
 const staticPath = fs.existsSync(frontendDistPath) ? frontendDistPath : frontendPublicPath;
 
 app.use(express.static(staticPath));
@@ -44,11 +43,11 @@ app.get('/', (req, res) => {
 });
 
 // ==========================================
-// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ (OPRAVENO)
+// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
 const loadSharedFile = (fileName) => {
+    // Hledáme primárně v public a dist (kam Vite kopíruje public složku při buildu)
     const pathsToTry = [
-        path.join(frontendSrcGamePath, fileName), // OPRAVA: Tady to teď najde gameConfig.js a cards.js!
         path.join(frontendDistPath, fileName),
         path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
@@ -67,15 +66,11 @@ const loadSharedFile = (fileName) => {
                 const customRequire = (moduleName) => {
                     if (moduleName.startsWith('.')) {
                         let resolvedPath = path.join(fileDir, moduleName);
-                        // Pokud chybí přípona .js, doplníme ji
                         if (!resolvedPath.endsWith('.js')) resolvedPath += '.js';
-                        
-                        // Zkusíme soubor načíst pomocí standardního require Node.js, pokud existuje
                         if (fs.existsSync(resolvedPath)) {
                             return require(resolvedPath);
                         }
                     }
-                    // Fallback na standardní require (pro systémové moduly atd.)
                     return require(moduleName);
                 };
 
@@ -92,7 +87,7 @@ const loadSharedFile = (fileName) => {
     return null;
 };
 
-// Nejdříve načteme gameConfig, aby byl dostupný, pokud ho cards.js potřebují
+// Nejdříve načteme gameConfig
 let gameConfig = loadSharedFile('gameConfig.js') || {};
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
@@ -103,7 +98,7 @@ const {
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
-// Poté načteme karty (teď už bezpečně najdou gameConfig)
+// Poté načteme karty
 let availableCards = [];
 const rawCards = loadSharedFile('cards.js');
 if (rawCards) {
@@ -223,7 +218,7 @@ function createPlayerTemplate(playerName, playerColor, playerTeam, playerCosmeti
 }
 
 function generateCardsForPlayer(player) {
-    if (!availableCards || availableCards.length === 0) return [];
+    if (!availableCards || availableCards.length === 0 || !player) return [];
     
     let pickedIndices = [];
     let cardsToSend = [];
