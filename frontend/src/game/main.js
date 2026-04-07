@@ -1,30 +1,34 @@
 // main.js
 import { state } from './state.js';
-import './network.js'; // Jen spustíme
+import './network.js'; // Jen spustíme, aby se navázalo spojení
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
 
-// Inicializace nastavení zaměřovače z LocalStorage
+// --- 1. Inicializace zaměřovače z LocalStorage ---
 try {
     const savedCrosshair = localStorage.getItem('crosshairSettings');
     if (savedCrosshair) {
         state.crosshairConfig = JSON.parse(savedCrosshair);
     }
 } catch (e) {
-    console.warn("Chyba při načítání zaměřovače z localStorage.");
+    console.warn("⚠️ Chyba při načítání zaměřovače z localStorage.");
 }
 
-// Eventy myši
+// --- 2. Eventy myši (Bezpečné pro React/HTML) ---
 window.addEventListener('mousemove', (e) => {
-    if (!state.canvas) state.canvas = document.getElementById('game');
-    if (!state.canvas) return;
+    // Dynamicky hledáme canvas (pokud ho React ještě nevykreslil, nespadne to)
+    if (!state.canvas) {
+        state.canvas = document.getElementById('game');
+    }
+    if (!state.canvas) return; // Canvas ještě není v DOMu, kašleme na to
+    
     const rect = state.canvas.getBoundingClientRect();
+    // Výpočet pozice myši uvnitř plátna
     state.currentMouseX = e.clientX - rect.left;
     state.currentMouseY = e.clientY - rect.top;
 });
 
-// Pokud používáš čisté HTML, musíš některé funkce explicitně napojit na window, 
-// aby fungovaly v onclick="saveCrosshairSettings()" atd.
+// --- 3. Ukládání z UI (Pro Vanilla HTML menu) ---
 window.saveCrosshairSettings = function() {
     const shapeEl = document.getElementById('crosshairShape');
     const colorEl = document.getElementById('crosshairColor');
@@ -38,13 +42,34 @@ window.saveCrosshairSettings = function() {
     if (settingsUI) settingsUI.classList.add('hidden');
 };
 
-// Herní smyčky
+// --- 4. HERNÍ SMYČKY (Kreslení a Fyzika) ---
+let firstFrameLogged = false;
+
 function renderLoop() {
-    if (state.latestServerData) {
+    const canvas = document.getElementById('game');
+    
+    // Kreslíme POUZE tehdy, pokud máme plátno a pokud máme data ze serveru
+    if (canvas && state.latestServerData) {
+        
+        // POJISTKA: Pokud canvas nemá nastavenou vnitřní velikost, nakreslí se jen černo!
+        // (Uprav si 800x600 podle toho, jak velkou máš hru)
+        if (canvas.width === 0 || canvas.height === 0) {
+            canvas.width = 800; 
+            canvas.height = 600;
+        }
+
+        if (!firstFrameLogged) {
+            console.log("🎨 PRVNÍ FRAME: main.js našel canvas, má data a volá render.js!");
+            firstFrameLogged = true;
+        }
+
+        // Předáme data k vykreslení
         drawGame(state.latestServerData);
     }
+    
     requestAnimationFrame(renderLoop);
 }
-requestAnimationFrame(renderLoop);
 
-setInterval(updateLocalGame, 1000 / 60);
+// Odstartování smyček
+requestAnimationFrame(renderLoop);
+setInterval(updateLocalGame, 1000 / 60); // Fyzika běží 60x za vteřinu

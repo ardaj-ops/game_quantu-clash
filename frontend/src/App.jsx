@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
 import './App.css'; 
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
-
-// Socket inicializujeme hned, aby byl dostupný pro game.js skrze window
-const socket = io(backendUrl, { autoConnect: false });
-window.gameSocket = socket; 
+// --- KLÍČOVÉ ZMĚNY ---
+// 1. Odebíráme jediný sdílený socket přímo z tvého herního kódu!
+import { socket } from './network.js'; 
+// 2. Musíme Reactu říct, ať vůbec spustí tvůj herní engine (main.js)
+import './main.js'; 
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -44,11 +43,14 @@ function App() {
 
   // Hlavní Socket.io logika
   useEffect(() => {
-    socket.connect();
+    if (!socket) {
+        console.error("❌ Socket chybí! Podívej se na instrukce k network.js níže.");
+        return;
+    }
 
     const onConnect = () => {
       setIsConnected(true);
-      console.log('Propojeno se serverem:', socket.id);
+      console.log('✅ UI Propojeno se serverem:', socket.id);
     };
 
     const onDisconnect = () => setIsConnected(false);
@@ -131,21 +133,13 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- RENDER ---
   return (
-    // HLAVNÍ OBAL PRO CENTROVÁNÍ PŘES CELOU OBRAZOVKU
     <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      minHeight: '100vh', 
-      width: '100vw',
-      backgroundColor: '#0f141e' // Tmavé pozadí mimo hru
+      display: 'flex', justifyContent: 'center', alignItems: 'center', 
+      minHeight: '100vh', width: '100vw', backgroundColor: '#0f141e' 
     }}>
       
-      {/* OPONA (Menu / Lobby) 
-        Schová se pouze, když hra běží 
-      */}
+      {/* OPONA (Menu / Lobby) */}
       {currentView !== 'game' && (
         <div className="App-container" style={{ width: '100%', maxWidth: '600px' }}>
           
@@ -161,10 +155,7 @@ function App() {
 
                 <div className="input-group">
                   <label>Přezdívka</label>
-                  <input 
-                    type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} 
-                    placeholder="Tvé jméno..." maxLength="12"
-                  />
+                  <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="Tvé jméno..." maxLength="12" />
                 </div>
 
                 <div className="input-group">
@@ -186,10 +177,7 @@ function App() {
                 <button onClick={handleCreateRoom} className="menu-btn" style={{ width: '100%', marginTop: '15px' }}>VYTVOŘIT HRU</button>
 
                 <div className="join-box" style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                  <input 
-                    type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} 
-                    placeholder="KÓD MÍSTNOSTI" maxLength="4" style={{ flex: 1 }}
-                  />
+                  <input type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} placeholder="KÓD MÍSTNOSTI" maxLength="4" style={{ flex: 1 }} />
                   <button onClick={handleJoinRoom} className="menu-btn" style={{ background: '#2ecc71' }}>PŘIPOJIT SE</button>
                 </div>
 
@@ -253,40 +241,28 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ PLÁTNO & HUD 
-        Vykreslí se JEN tehdy, když je hra aktivní.
-      */}
+      {/* HERNÍ PLÁTNO */}
       <canvas 
         id="game" 
         style={{ 
           display: currentView === 'game' ? 'block' : 'none', 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          width: '100vw', 
-          height: '100vh',
-          zIndex: 1 
+          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1 
         }}
       ></canvas>
 
-      {/* HUD (Head-Up Display) pro Náboje a Dash */}
+      {/* HUD (Head-Up Display) - Upravená IDčka aby si to povídalo s render.js */}
       {currentView === 'game' && (
         <div id="game-hud" style={{
-          position: 'absolute',
-          bottom: '30px',
-          right: '30px',
-          zIndex: 10,
-          color: 'white',
-          fontFamily: 'Arial, sans-serif',
-          textAlign: 'right'
+          position: 'absolute', bottom: '30px', right: '30px', zIndex: 10,
+          color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right'
         }}>
-          <h2 id="ammo-text" style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>∞ / ∞</h2>
+          <h2 id="hpDisplay" style={{ fontSize: '24px', margin: '0 0 5px 0', color: '#ff4444' }}>HP: 100</h2>
+          <h2 id="ammoDisplay" style={{ fontSize: '32px', margin: '0 0 10px 0' }}>AMMO: ∞</h2>
           <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
             <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

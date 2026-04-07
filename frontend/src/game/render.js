@@ -6,32 +6,36 @@ const TWO_PI = Math.PI * 2;
 
 // --- POMOCNÉ VYKRESLOVACÍ FUNKCE ---
 
-function drawGrid() {
+function drawGrid(mapW, mapH) {
+    if (!state.ctx) return;
     state.ctx.strokeStyle = '#222222';
     state.ctx.lineWidth = 2;
     const gridSize = 50;
     
-    for (let x = 0; x <= CONFIG.MAP_W; x += gridSize) {
-        state.ctx.beginPath(); state.ctx.moveTo(x, 0); state.ctx.lineTo(x, CONFIG.MAP_H); state.ctx.stroke();
+    for (let x = 0; x <= mapW; x += gridSize) {
+        state.ctx.beginPath(); state.ctx.moveTo(x, 0); state.ctx.lineTo(x, mapH); state.ctx.stroke();
     }
-    for (let y = 0; y <= CONFIG.MAP_H; y += gridSize) {
-        state.ctx.beginPath(); state.ctx.moveTo(0, y); state.ctx.lineTo(CONFIG.MAP_W, y); state.ctx.stroke();
+    for (let y = 0; y <= mapH; y += gridSize) {
+        state.ctx.beginPath(); state.ctx.moveTo(0, y); state.ctx.lineTo(mapW, y); state.ctx.stroke();
     }
 }
 
-function drawBackground(playersData) {
+function drawBackground(mapW, mapH) {
+    if (!state.ctx) return;
     // Pozadí mapy
     state.ctx.fillStyle = '#111111';
-    state.ctx.fillRect(0, 0, CONFIG.MAP_W, CONFIG.MAP_H);
-    drawGrid();
+    state.ctx.fillRect(0, 0, mapW, mapH);
+    
+    drawGrid(mapW, mapH);
     
     // Hranice mapy
     state.ctx.strokeStyle = '#ff0000';
     state.ctx.lineWidth = 5;
-    state.ctx.strokeRect(0, 0, CONFIG.MAP_W, CONFIG.MAP_H);
+    state.ctx.strokeRect(0, 0, mapW, mapH);
 }
 
 function drawMapObjects(obstacles = [], breakables = []) {
+    if (!state.ctx) return;
     // Vykreslení překážek (zdí)
     state.ctx.fillStyle = '#555555';
     obstacles.forEach(obs => {
@@ -49,11 +53,12 @@ function drawDomains(playersData) {
     // Pokud hra používá nějaké zóny/teritoria
 }
 
-function drawDecoys(decoys, playersData) {
+function drawDecoys(decoys = [], playersData) {
     // Vykreslení falešných cílů (pokud existují)
 }
 
 function drawPlayers(playersData) {
+    if (!state.ctx) return;
     for (const id in playersData) {
         const p = playersData[id];
         if (p.hp <= 0) continue; // Mrtvé nekreslíme
@@ -72,7 +77,7 @@ function drawPlayers(playersData) {
         state.ctx.fillStyle = '#ff0000';
         state.ctx.fillRect(-20, -25, 40, 5);
         state.ctx.fillStyle = '#00ff00';
-        state.ctx.fillRect(-20, -25, 40 * hpPercent, 5);
+        state.ctx.fillRect(-20, -25, 40 * Math.max(0, Math.min(1, hpPercent)), 5); // Ošetření proti přeplnění
 
         // Rotace hráče podle toho, kam míří
         state.ctx.rotate(p.angle || 0);
@@ -85,6 +90,7 @@ function drawPlayers(playersData) {
 }
 
 function drawAvatar(p) {
+    if (!state.ctx) return;
     // Tělo
     state.ctx.fillStyle = p.color || '#3498db';
     state.ctx.beginPath();
@@ -104,6 +110,7 @@ function drawCosmetics(p) {
 }
 
 function drawBullets(bullets = [], playersData) {
+    if (!state.ctx) return;
     state.ctx.fillStyle = '#f1c40f'; // Žluté kulky
     bullets.forEach(b => {
         state.ctx.beginPath();
@@ -113,7 +120,7 @@ function drawBullets(bullets = [], playersData) {
 }
 
 function drawCrosshair() {
-    if (state.currentMouseX === undefined || state.currentMouseY === undefined) return;
+    if (!state.ctx || state.currentMouseX === undefined || state.currentMouseY === undefined) return;
     
     const config = state.crosshairConfig || { color: '#00ff00', size: 10, shape: 'cross' };
     const { currentMouseX: x, currentMouseY: y } = state;
@@ -136,6 +143,7 @@ function drawCrosshair() {
 }
 
 function drawTabMenu(playersData) {
+    if (!state.ctx || !state.canvas) return;
     // Vykreslení tabulky skóre (TAB)
     state.ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
     state.ctx.fillRect(state.canvas.width/2 - 150, state.canvas.height/2 - 200, 300, 400);
@@ -167,20 +175,21 @@ export function drawGame(serverData) {
     const playersData = serverData.leanPlayers || serverData.players || {};
     state.canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
 
+    // Ošetření plynulého resizeování na celou obrazovku
     if (state.canvas.width !== window.innerWidth || state.canvas.height !== window.innerHeight) {
         state.canvas.width = window.innerWidth;
         state.canvas.height = window.innerHeight;
     }
     
-    // Černé pozadí mimo mapu
+    // Černé pozadí mimo mapu (aby to nenechávalo "šmouhy")
     state.ctx.fillStyle = '#000000';
     state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
 
-    // Vypočítáme kameru (změřítkování a centrování mapy)
-    // Předpokládám, že CONFIG.MAP_W je definováno ve state.js. Pokud ne, dej tam třeba 2000.
-    const mapW = CONFIG.MAP_W || 2000;
-    const mapH = CONFIG.MAP_H || 2000;
+    // BEZPEČNÉ VYTAŽENÍ ROZMĚRŮ MAPY (Pokud chybí v CONFIG, použijeme 2000)
+    const mapW = (CONFIG && CONFIG.MAP_W) ? CONFIG.MAP_W : 2000;
+    const mapH = (CONFIG && CONFIG.MAP_H) ? CONFIG.MAP_H : 2000;
 
+    // Vypočítáme kameru (změřítkování a centrování mapy)
     state.gameScale = Math.min(state.canvas.width / mapW, state.canvas.height / mapH);
     state.gameOffsetX = (state.canvas.width - mapW * state.gameScale) / 2;
     state.gameOffsetY = (state.canvas.height - mapH * state.gameScale) / 2;
@@ -189,15 +198,17 @@ export function drawGame(serverData) {
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
     state.ctx.scale(state.gameScale, state.gameScale);
 
-    // Vykreslení herního světa
-    drawBackground(playersData); 
-    drawMapObjects(state.localObstacles, state.localBreakables);
+    // Vykreslení herního světa (předáváme opravené rozměry)
+    drawBackground(mapW, mapH); 
+    
+    // Používáme bezpečný fallback pro případ, že pole ještě nejsou naplněná
+    drawMapObjects(state.localObstacles || [], state.localBreakables || []);
 
     if (serverData.gameState !== 'LOBBY') {
         drawDomains(playersData);
         if (serverData.decoys) drawDecoys(serverData.decoys, playersData);
         drawPlayers(playersData);
-        drawBullets(serverData.bullets, playersData);
+        drawBullets(serverData.bullets || [], playersData);
         
         if (socket && playersData[socket.id]) {
             updateDOM_HUD(playersData[socket.id]);
@@ -208,7 +219,10 @@ export function drawGame(serverData) {
 
     // Vykreslení UI (zaměřovač nebo tabulka)
     if (serverData.gameState === 'PLAYING' || !serverData.gameState) {
-        if (!state.playerInputs || !state.playerInputs.tab) {
+        // Zabezpečení proti neexistujícímu objektu playerInputs
+        const isTabPressed = state.playerInputs && state.playerInputs.tab;
+        
+        if (!isTabPressed) {
             drawCrosshair(); 
         } else {
             drawTabMenu(playersData);

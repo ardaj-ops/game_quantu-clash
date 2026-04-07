@@ -1,12 +1,12 @@
-// network.js
+/// network.js
+import { io } from 'socket.io-client';
 import { state } from './state.js';
 
-// Automatické přepínání: Pokud jsi u sebe na PC, použije localhost. Jinak použije produkční Render server.
 const BACKEND_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:3000" 
     : "https://quantum-clash-backend.onrender.com";
 
-export const socket = typeof io !== 'undefined' ? io(BACKEND_URL) : null;
+export const socket = io(BACKEND_URL);
 
 if (!socket) {
     console.error("❌ Socket.IO není načten! Zkontroluj, jestli máš v index.html správný script tag.");
@@ -45,7 +45,11 @@ if (!socket) {
     socket.on('mapUpdate', (data) => {
         if (data.obstacles) state.localObstacles = data.obstacles;
         if (data.breakables) state.localBreakables = data.breakables;
-        console.log("🗺️ Herní mapa úspěšně načtena a uložena do state!");
+        
+        // NOVÝ DIAGNOSTICKÝ LOG: Zjistíme, jestli server posílá reálné bloky nebo prázdno
+        const pocetZdi = data.obstacles ? data.obstacles.length : 0;
+        const pocetKrabic = data.breakables ? data.breakables.length : 0;
+        console.log(`🗺️ MAPA PŘIJATA! Počet zdí: ${pocetZdi}, Počet krabic: ${pocetKrabic}`);
     });
 
     // Změny stavů hry (přepnutí z LOBBY do PLAYING, GAMEOVER atd.)
