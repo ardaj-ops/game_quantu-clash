@@ -1,0 +1,48 @@
+/* ==========================================
+   ZÁKLADNÍ PROMĚNNÉ A RESET (index.css)
+========================================== */
+:root {
+    --bg-color: #0b0c10;
+    --neon-blue: #45f3ff;
+    --neon-pink: #ff2a7a;
+    --neon-green: #2ed573;
+    --neon-yellow: #f1c40f;
+    --glass-bg: rgba(11, 12, 16, 0.85);
+    --text-main: #ffffff;
+    --text-muted: #aaaaaa;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body, html {
+    background-color: var(--bg-color);
+    background-image: radial-gradient(circle at 50% 50%, #1f2833 0, #0b0c10 100%);
+    color: var(--text-main);
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    width: 100vw;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden; /* Zabrání rolování stránky */
+}
+
+/* ==========================================
+   SCROLLBAR (Posuvník)
+========================================== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--neon-blue);
+    border-radius: 4px;
+    box-shadow: 0 0 10px var(--neon-blue);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #fff;
+}
