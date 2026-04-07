@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import './App.css';
+import './App.css'; // Ujisti se, že importuješ ten nový style.css (zde pojmenovaný jako App.css, případně přepiš na '../style.css' podle tvé struktury)
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
 // Socket inicializujeme hned, aby byl dostupný pro game.js skrze window
 const socket = io(backendUrl, { autoConnect: false });
 window.gameSocket = socket; 
@@ -75,7 +76,7 @@ function App() {
 
     const onGameStateChange = (data) => {
       if (data.state === 'PLAYING') {
-        setCurrentView('game');
+        setCurrentView('game'); // Toto spustí přidání třídy .hidden na .App-container
       } else if (data.state === 'LOBBY') {
         setCurrentView('lobby');
         setIsReady(false);
@@ -133,6 +134,7 @@ function App() {
 
   // --- RENDER ---
   return (
+    // KLÍČOVÝ PRVEK: App-container funguje jako opona. Pokud je currentView 'game', přidá se 'hidden' a React zmizí.
     <div className={`App-container ${currentView === 'game' ? 'hidden' : ''}`}>
       
       {/* MENU VIEW */}

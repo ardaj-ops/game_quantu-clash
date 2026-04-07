@@ -50,6 +50,7 @@ body, html {
 /* ==========================================
    Z-INDEX HIERARCHIE (Klíčové pro React vs Canvas)
 ========================================== */
+
 /* 1. Nejnižší vrstva: Herní plátno */
 #game {
     position: absolute;
@@ -61,32 +62,47 @@ body, html {
     z-index: 1; 
 }
 
-/* 2. Prostřední vrstva: React (Menu a Lobby) */
+/* 2. Prostřední vrstva: Průhledný obal pro React */
 #root {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
     z-index: 10; 
-    pointer-events: none; /* Propustí klikání na canvas, když React zmizí */
+    pointer-events: none; /* Propustí klikání na canvas, když je prázdný */
+}
+
+/* 3. HLAVNÍ OPONA: Kontejner React aplikace, který zakryje hru */
+.App-container {
+    pointer-events: auto; /* Uvnitř menu musí fungovat klikání */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    /* Stejné pozadí jako má body, aby to vypadalo celistvě a skrylo to hru pod sebou */
+    background-color: var(--bg-color);
+    background-image: radial-gradient(circle at 50% 50%, #1f2833 0, #0b0c10 100%);
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 
-#root > * {
-    pointer-events: auto; /* Obsah Reactu je klikatelný */
+/* Skrývací třída (když se přidá, element zmizí) */
+.hidden {
+    display: none !important;
 }
 
-/* 3. Herní HUD (Skóre, Munice) */
+/* 4. Herní HUD (Skóre, Munice) */
 .hud-element {
     position: absolute;
     z-index: 20; 
     pointer-events: auto;
 }
 
-/* 4. Overlays (Konec hry, Karty) */
+/* 5. Overlays (Konec hry, Karty) */
 .overlay {
     position: absolute;
     top: 0;
@@ -107,15 +123,11 @@ body, html {
     animation: fadeIn 0.4s ease-out;
 }
 
-/* 5. Absolutní vrchol (Nastavení) */
+/* 6. Absolutní vrchol (Nastavení) */
 #settingsUI {
     z-index: 300 !important;
 }
 
-/* Skrývací třída řízená JavaScriptem */
-.hidden {
-    display: none !important;
-}
 
 /* ==========================================
    REACT MENU A LOBBY BOXY
