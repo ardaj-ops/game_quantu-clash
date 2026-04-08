@@ -1,4 +1,14 @@
-const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
+// Definice vah pro vzácnost karet
+const RARITY_WEIGHTS = { 
+    'common': 100, 
+    'uncommon': 70,    // Častější než Rare, ale méně než Common
+    'rare': 40, 
+    'epic': 15, 
+    'legendary': 5,
+    'mythic': 2,       // Vzácnější než Legendary
+    'exotic': 0.8,     // Extrémně vzácné (méně než 1 % šance vůči Common)
+    'transcended': 0.1 // Absolutní rarita, padne jen velmi výjimečně
+};
 
 /**
  * Vylepšená detekce kolize: Skutečný kruh vs. obdélník.
@@ -151,6 +161,7 @@ const generateMap = (mapWidth, mapHeight) => {
 };
 
 module.exports = {
+    RARITY_WEIGHTS,
     getValidSpawnPoint,
     generateCardsForPlayer,
     generateMap,

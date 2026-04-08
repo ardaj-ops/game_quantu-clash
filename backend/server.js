@@ -1,8 +1,19 @@
 process.on('uncaughtException', (err) => {
-    console.error('🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:', err);
+    console.error('\n🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:');
+    console.error('Typ chyby:', err.name);
+    console.error('Zpráva:', err.message);
+    console.error('Stack Trace:\n', err.stack);
+    console.error('----------------------------------------\n');
 });
+
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('🚨 NEOŠETŘENÝ PROMISE:', reason);
+    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:');
+    console.error('Důvod:', reason);
+    console.error('Promise:', promise);
+    if (reason && reason.stack) {
+        console.error('Stack Trace:\n', reason.stack);
+    }
+    console.error('----------------------------------------\n');
 });
 
 const express = require('express');
@@ -14,24 +25,51 @@ const cors = require('cors'); // Přidáno pro globální CORS
 
 // --- Bezpečné načtení externích modulů ---
 let DomainManager;
-let gameHelper;
+let gameHelper = {};
 try {
     DomainManager = require('./domainManager.js');
-    gameHelper = require('./gameHelper.js');
+    gameHelper = require('./gameHelper.js') || {};
     console.log('✅ Manažeři a helpery úspěšně načteny.');
 } catch (err) {
     console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Pravděpodobně špatný export. Místo "export const" použij "module.exports = { ... }"):');
-    console.error(err);
+    console.error(err.stack);
     process.exit(1); // Necháme server spadnout, ale až po vypsání chyby!
 }
 
-const { 
-    applyHardCaps, 
-    resetPlayerStatsToBase, 
-    generateMap, 
-    getValidSpawnPoint, 
-    createPlayerTemplate 
-} = gameHelper;
+// ==========================================
+// ZABEZPEČENÉ NAČTENÍ FUNKCÍ (FALLBACKS)
+// Pokud něco v gameHelper.js chybí, server použije tyto záložní funkce a nespadne!
+// ==========================================
+const applyHardCaps = gameHelper.applyHardCaps || ((p) => { /* prázdný fallback */ });
+const resetPlayerStatsToBase = gameHelper.resetPlayerStatsToBase || ((p) => { p.hp = p.maxHp; p.ammo = p.maxAmmo; });
+const generateMap = gameHelper.generateMap || ((w, h) => { 
+    console.warn('⚠️ Použita ZÁLOŽNÍ generateMap'); 
+    return { obstacles: [], breakables: [] }; 
+});
+const getValidSpawnPoint = gameHelper.getValidSpawnPoint || (() => ({ x: 200, y: 200 }));
+
+const createPlayerTemplate = gameHelper.createPlayerTemplate || ((name, color, team, cosmetic, isHost) => {
+    console.warn('⚠️ Použita ZÁLOŽNÍ createPlayerTemplate (funkce pravděpodobně chyběla v exportu gameHelper.js!)');
+    return {
+        name: String(name || 'Hráč').substring(0, 15),
+        color: String(color || '#ffffff').substring(0, 7),
+        team: team || "none",
+        cosmetic: cosmetic || 0,
+        isHost: !!isHost,
+        isReady: false,
+        hp: 100, maxHp: 100,
+        x: 0, y: 0,
+        ammo: 10, maxAmmo: 10,
+        damage: 20, speed: 5, fireRate: 500, reloadSpeed: 1000,
+        bulletSpeed: 10, bulletSize: 5,
+        isReloading: false, isInvisible: false, domainActive: false,
+        domainType: null,
+        score: 0,
+        aimAngle: 0,
+        inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false }
+    };
+});
+
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -209,7 +247,7 @@ const startNextRound = (room) => {
     console.log(`🎮 Hra v místnosti ${room.id} začíná!`);
     room.roundNumber = (room.roundNumber || 0) + 1;
     
-    const mapData = generateMap();
+    const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT); // ZDE OPRAVENO: Předáváme rozměry
     room.obstacles = mapData.obstacles;
     room.breakables = mapData.breakables;
     room.deadPlayersThisRound = [];
@@ -301,7 +339,7 @@ io.on('connection', (socket) => {
 
     socket.on('createRoom', (data = {}) => {
         const code = generateRoomCode();
-        const mapData = generateMap();
+        const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT); // ZDE OPRAVENO: Předáváme rozměry
         
         rooms[code] = {
             id: code, hostId: socket.id, players: {}, upgradeQueue: [],
