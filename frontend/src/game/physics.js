@@ -55,28 +55,27 @@ export function updateLocalGame() {
     if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) me.x = nextX;
 
     // --- OPRAVENÝ VÝPOČET ÚHLU ZAMĚŘOVÁNÍ ---
-    // Hráč je neustále udržován ve středu plátna kamerou, 
-    // takže porovnáváme čistě myš a střed monitoru.
-    if (state.canvas && state.currentMouseX !== undefined && state.currentMouseY !== undefined) {
-        const playerScreenX = state.canvas.width / 2;
-        const playerScreenY = state.canvas.height / 2;
-        
+    // Používáme přesné pozice herního světa z input.js.
+    // Střela díky tomu poletí na správné místo i ve chvíli, kdy postava
+    // už nestojí v absolutním středu obrazovky (např. u okraje mapy).
+    if (state.worldMouseX !== undefined && state.worldMouseY !== undefined) {
         state.playerInputs.aimAngle = Math.atan2(
-            state.currentMouseY - playerScreenY, 
-            state.currentMouseX - playerScreenX
+            state.worldMouseY - me.y, 
+            state.worldMouseX - me.x
         );
     }
     
     let currentAimAngle = state.playerInputs.aimAngle || 0;
 
-    // Odeslání dat na server
+    // --- ODESLÁNÍ VŠECH AKCÍ NA SERVER ---
     socket.emit('clientSync', {
         x: me.x, 
         y: me.y,
         aimAngle: currentAimAngle,
         ammo: me.ammo,
         isReloading: state.playerInputs.reload || false,
-        dashRequested: state.playerInputs.rightClick || false
+        dashRequested: state.playerInputs.rightClick || false,
+        ritualRequested: state.playerInputs.ritual || false  // <--- PŘIDÁN RITUÁL Z KLÁVESNICE
     });
 
     let now = Date.now();

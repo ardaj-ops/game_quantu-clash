@@ -2,11 +2,12 @@
 import { state } from './state.js';
 
 export function initInputs() {
-    // Inicializujeme vstupy do centrálního stavu (místo na window)
+    // Inicializujeme vstupy do centrálního stavu
     if (!state.playerInputs) {
         state.playerInputs = {
             up: false, down: false, left: false, right: false,
             click: false, rightClick: false, reload: false, tab: false,
+            ritual: false, // <--- PŘIDÁNO: Proměnná pro rituál
             aimAngle: 0
         };
     }
@@ -23,6 +24,7 @@ export function initInputs() {
         if (key === 'd' || e.key === 'arrowright') state.playerInputs.right = true;
         
         if (key === 'r') state.playerInputs.reload = true;
+        if (key === 'f') state.playerInputs.ritual = true; // <--- PŘIDÁNO: Rituál na klávesu F
         
         if (e.key === 'Tab') {
             state.playerInputs.tab = true;
@@ -38,6 +40,7 @@ export function initInputs() {
         if (key === 'd' || e.key === 'arrowright') state.playerInputs.right = false;
         
         if (key === 'r') state.playerInputs.reload = false;
+        if (key === 'f') state.playerInputs.ritual = false; // <--- PŘIDÁNO: Uvolnění klávesy F
         if (e.key === 'Tab') state.playerInputs.tab = false;
     });
 
@@ -59,10 +62,19 @@ export function initInputs() {
 
     // --- SLEDOVÁNÍ MYŠI ---
     window.addEventListener('mousemove', (e) => {
-        // Ukládáme si čisté pozice myši na monitoru.
-        // Složitý výpočet samotného úhlu (aimAngle) vzhledem ke kameře a mapě
-        // už pro nás automaticky a mnohem přesněji řeší physics.js!
+        // 1. ČISTÉ POZICE MONITORU (Pro UI a HUD)
+        // Toto si necháváme pro render.js, aby věděl, kam nakreslit zelený křížek (drawCrosshair)
         state.currentMouseX = e.clientX;
         state.currentMouseY = e.clientY;
+
+        // 2. PŘEPOČET NA HERNÍ SVĚT (Pro fyziku a střelbu)
+        // Získáme aktuální nastavení kamery z render.js (pokud už naběhla, jinak dáme výchozí nuly)
+        const scale = state.gameScale || 1;
+        const offsetX = state.gameOffsetX || 0;
+        const offsetY = state.gameOffsetY || 0;
+
+        // Vypočítáme, kam přesně v MAPĚ hráč ukazuje
+        state.worldMouseX = (e.clientX - offsetX) / scale;
+        state.worldMouseY = (e.clientY - offsetY) / scale;
     });
 }

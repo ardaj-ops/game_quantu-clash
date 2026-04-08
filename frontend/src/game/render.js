@@ -1,4 +1,3 @@
-// game/render.js
 import { state, CONFIG } from './state.js';
 import { socket } from './network.js';
 
@@ -37,19 +36,20 @@ function drawBackground(mapW, mapH) {
 function drawMapObjects(obstacles = [], breakables = []) {
     if (!state.ctx) return;
     
-    const safeObstacles = Array.isArray(obstacles) ? obstacles : [];
-    const safeBreakables = Array.isArray(breakables) ? breakables : [];
+    // Pojistka pro případ, že backend pošle objekt místo pole
+    const safeObstacles = Array.isArray(obstacles) ? obstacles : Object.values(obstacles || {});
+    const safeBreakables = Array.isArray(breakables) ? breakables : Object.values(breakables || {});
 
     // Vykreslení překážek (zdí)
     state.ctx.fillStyle = '#555555';
     safeObstacles.forEach(obs => {
-        state.ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        if (obs.x !== undefined) state.ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
     });
 
     // Vykreslení zničitelných objektů (krabice)
     state.ctx.fillStyle = '#8B4513';
     safeBreakables.forEach(brk => {
-        if (brk.hp > 0) state.ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
+        if (brk.hp > 0 && brk.x !== undefined) state.ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
     });
 }
 
@@ -82,7 +82,18 @@ function drawPlayers(playersData) {
         state.ctx.fillStyle = '#00ff00';
         state.ctx.fillRect(-20, -25, 40 * Math.max(0, Math.min(1, hpPercent)), 5); 
 
-        state.ctx.rotate(p.angle || 0);
+        // OPRAVA OTÁČENÍ: Standardní úhel ze serveru
+        let angleToDraw = p.angle || p.rotation || 0; 
+        
+        // Pokud jsme to my (lokální hráč), natočíme hlaveň HNED podle myši (aby hra nepůsobila zasekaně)
+        if (socket && id === socket.id && state.currentMouseX !== undefined) {
+            // Převod pixelů obrazovky na souřadnice v mapě
+            const worldMouseX = (state.currentMouseX - state.gameOffsetX) / state.gameScale;
+            const worldMouseY = (state.currentMouseY - state.gameOffsetY) / state.gameScale;
+            angleToDraw = Math.atan2(worldMouseY - py, worldMouseX - px);
+        }
+
+        state.ctx.rotate(angleToDraw);
         drawAvatar(p);
         state.ctx.restore();
     }
@@ -95,23 +106,32 @@ function drawAvatar(p) {
     state.ctx.beginPath();
     state.ctx.arc(0, 0, 15, 0, TWO_PI);
     state.ctx.fill();
+    state.ctx.strokeStyle = '#000000';
+    state.ctx.lineWidth = 2;
     state.ctx.stroke();
 
     // Zbraň (hlaveň)
     state.ctx.fillStyle = '#7f8c8d';
     state.ctx.fillRect(0, -4, 25, 8);
+    state.ctx.strokeRect(0, -4, 25, 8);
 }
 
-function drawBullets(bullets = []) {
-    if (!state.ctx) return;
-    const safeBullets = Array.isArray(bullets) ? bullets : [];
+function drawBullets(bullets) {
+    if (!state.ctx || !bullets) return;
+    
+    // OPRAVA KULEK: Pokud server pošle objekt { bullet1: {...}, bullet2: {...} }, uděláme z něj pole
+    const safeBullets = Array.isArray(bullets) ? bullets : Object.values(bullets);
     
     state.ctx.fillStyle = '#f1c40f'; // Žluté kulky
+    state.ctx.strokeStyle = '#000000'; // Přidán černý okraj pro lepší čitelnost
+    state.ctx.lineWidth = 1;
+
     safeBullets.forEach(b => {
         if (b.x === undefined || b.y === undefined) return;
         state.ctx.beginPath();
-        state.ctx.arc(b.x, b.y, 4, 0, TWO_PI);
+        state.ctx.arc(b.x, b.y, 5, 0, TWO_PI); // Zvětšeno z 4 na 5
         state.ctx.fill();
+        state.ctx.stroke();
     });
 }
 
@@ -173,35 +193,33 @@ export function drawGame(serverData) {
         state.canvas.height = window.innerHeight;
     }
     
-    // Černé pozadí mimo mapu (Zároveň vyčistí předchozí frame)
+    // Černé pozadí mimo mapu
     state.ctx.fillStyle = '#000000';
     state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
 
     const mapW = (CONFIG && CONFIG.MAP_W) ? CONFIG.MAP_W : 2000;
     const mapH = (CONFIG && CONFIG.MAP_H) ? CONFIG.MAP_H : 2000;
 
-    // --- NOVÁ KAMERA: ZOOM A SLEDOVÁNÍ HRÁČE ---
-    const ZOOM = 1.2; // Tady můžeš upravit, jak moc chceš mít hru zvětšenou (např. 1.5, 2.0)
-    state.gameScale = ZOOM;
+    // --- OPRAVA KAMERY: MAPA NA CELOU OBRAZOVKU ---
+    // Vypočítáme měřítko, aby se mapa vešla přesně na obrazovku
+    const scaleX = state.canvas.width / mapW;
+    const scaleY = state.canvas.height / mapH;
+    
+    // Použijeme menší měřítko z obou a vynásobíme 0.95, aby byl kolem mapy okraj 5%
+    state.gameScale = Math.min(scaleX, scaleY) * 0.95; 
 
-    // Najdeme našeho hráče
+    // Vycentrujeme mapu do prostředka obrazovky
+    state.gameOffsetX = (state.canvas.width - (mapW * state.gameScale)) / 2;
+    state.gameOffsetY = (state.canvas.height - (mapH * state.gameScale)) / 2;
+
     let me = null;
     if (socket && socket.id) {
         me = playersData[socket.id];
     }
 
-    if (me) {
-        // Pokud žijeme, chceme mít vlastní postavičku PŘESNĚ uprostřed obrazovky
-        state.gameOffsetX = (state.canvas.width / 2) - (me.x * state.gameScale);
-        state.gameOffsetY = (state.canvas.height / 2) - (me.y * state.gameScale);
-    } else {
-        // Pokud umřeme nebo čekáme, zíráme doprostřed mapy
-        state.gameOffsetX = (state.canvas.width / 2) - ((mapW / 2) * state.gameScale);
-        state.gameOffsetY = (state.canvas.height / 2) - ((mapH / 2) * state.gameScale);
-    }
-
     state.ctx.save();
-    // Aplikování kamery (posun + přiblížení)
+    
+    // Aplikování měřítka a zarovnání na střed okna
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
     state.ctx.scale(state.gameScale, state.gameScale);
 
@@ -213,7 +231,9 @@ export function drawGame(serverData) {
         drawDomains(playersData);
         if (safeData.decoys) drawDecoys(safeData.decoys, playersData);
         drawPlayers(playersData);
-        drawBullets(safeData.bullets || []);
+        
+        // Vykreslení kulek!
+        drawBullets(safeData.bullets);
         
         if (me) updateDOM_HUD(me);
     }

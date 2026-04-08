@@ -72,3 +72,39 @@ if (!socket) {
         console.log("📚 ENGINE: Katalog karet načten. Počet položek:", Object.keys(catalogData || {}).length);
     });
 }
+
+// ==========================================
+// 5. ODESÍLÁNÍ DAT NA SERVER (NOVÉ FUNKCE)
+// ==========================================
+
+/**
+ * Pošle serveru aktuální stav klávesnice a myši (včetně přepočítaného úhlu rotace).
+ * Tuto funkci bys měl volat ideálně v tvé hlavní herní smyčce (v main.js nebo physics.js)
+ * pokaždé, když se vstupy změní, nebo každý frame.
+ */
+export function sendInputsToServer() {
+    if (!socket || !state.playerInputs) return;
+    socket.emit('playerInput', state.playerInputs);
+}
+
+/**
+ * Odešle požadavek na připojení do hry s konkrétním jménem.
+ * Vyřeší to problém s tím, že se všichni jmenují "dasdaf".
+ * @param {string} playerName Jméno, které si hráč vybral v UI
+ */
+export function joinGame(playerName) {
+    if (!socket) return;
+    const finalName = playerName || "Hráč_" + Math.floor(Math.random() * 1000);
+    socket.emit('joinGame', { name: finalName });
+    console.log(`🚀 ENGINE: Odesílám požadavek na připojení se jménem: ${finalName}`);
+}
+
+/**
+ * Odešle serveru informaci o tom, jakou kartu (vylepšení) si hráč vybral.
+ * @param {string} cardId ID vybrané karty
+ */
+export function selectUpgradeCard(cardId) {
+    if (!socket) return;
+    socket.emit('selectCard', { cardId: cardId });
+    console.log(`🃏 ENGINE: Odeslána volba karty: ${cardId}`);
+}
