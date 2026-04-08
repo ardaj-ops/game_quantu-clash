@@ -1,3 +1,4 @@
+// game/render.js
 import { state, CONFIG } from './state.js';
 import { socket } from './network.js';
 
@@ -59,13 +60,32 @@ function drawDecoys(decoys = [], playersData) {}
 function drawPlayers(playersData) {
     if (!state.ctx || !playersData) return;
     
+    // Inicializace objektu pro plynulý pohyb (LERP), pokud neexistuje
+    if (!state.renderPlayers) state.renderPlayers = {};
+
+    // Promazání hráčů, kteří se odpojili
+    for (let rid in state.renderPlayers) {
+        if (!playersData[rid]) delete state.renderPlayers[rid];
+    }
+
     for (const id in playersData) {
         const p = playersData[id];
         if (!p || p.hp <= 0) continue; // Mrtvé nekreslíme
 
+        // --- LERP (VYHLAZENÍ POHYBU A ODSTRANĚNÍ LAGŮ) ---
+        if (!state.renderPlayers[id]) {
+            state.renderPlayers[id] = { x: p.x, y: p.y }; // První načtení hráče
+        }
+        
+        // Konstanta plynulosti: 1.0 = okamžitý skok (starý stav), 0.3 = plynulé dotahování
+        const lerpSpeed = 0.3; 
+        state.renderPlayers[id].x += ((p.x || 0) - state.renderPlayers[id].x) * lerpSpeed;
+        state.renderPlayers[id].y += ((p.y || 0) - state.renderPlayers[id].y) * lerpSpeed;
+
+        const px = state.renderPlayers[id].x;
+        const py = state.renderPlayers[id].y;
+
         state.ctx.save();
-        const px = p.x || 0;
-        const py = p.y || 0;
         state.ctx.translate(px, py);
         
         // Jméno hráče
@@ -82,12 +102,11 @@ function drawPlayers(playersData) {
         state.ctx.fillStyle = '#00ff00';
         state.ctx.fillRect(-20, -25, 40 * Math.max(0, Math.min(1, hpPercent)), 5); 
 
-        // OPRAVA OTÁČENÍ: Standardní úhel ze serveru
+        // OPRAVA OTÁČENÍ
         let angleToDraw = p.angle || p.rotation || 0; 
         
-        // Pokud jsme to my (lokální hráč), natočíme hlaveň HNED podle myši (aby hra nepůsobila zasekaně)
         if (socket && id === socket.id && state.currentMouseX !== undefined) {
-            // Převod pixelů obrazovky na souřadnice v mapě
+            // Převod pixelů obrazovky na souřadnice v mapě s ohledem na novou kameru
             const worldMouseX = (state.currentMouseX - state.gameOffsetX) / state.gameScale;
             const worldMouseY = (state.currentMouseY - state.gameOffsetY) / state.gameScale;
             angleToDraw = Math.atan2(worldMouseY - py, worldMouseX - px);
@@ -116,20 +135,27 @@ function drawAvatar(p) {
     state.ctx.strokeRect(0, -4, 25, 8);
 }
 
-function drawBullets(bullets) {
-    if (!state.ctx || !bullets) return;
+function drawBullets(serverBullets) {
+    if (!state.ctx) return;
     
-    // OPRAVA KULEK: Pokud server pošle objekt { bullet1: {...}, bullet2: {...} }, uděláme z něj pole
-    const safeBullets = Array.isArray(bullets) ? bullets : Object.values(bullets);
+    // Sjednotíme kulky ze serveru a naše vlastní lokální kulky (pro okamžitý vizuál výstřelu)
+    const safeServerBullets = Array.isArray(serverBullets) ? serverBullets : Object.values(serverBullets || {});
+    const localBullets = state.localBullets || [];
     
+    // Používáme Set k odstranění duplicit, abychom nevykreslili naši střelu dvakrát (od nás a pak ze serveru)
+    const drawnBulletIds = new Set();
+    const allBullets = [...localBullets, ...safeServerBullets];
+
     state.ctx.fillStyle = '#f1c40f'; // Žluté kulky
-    state.ctx.strokeStyle = '#000000'; // Přidán černý okraj pro lepší čitelnost
+    state.ctx.strokeStyle = '#000000'; // Přidán černý okraj
     state.ctx.lineWidth = 1;
 
-    safeBullets.forEach(b => {
-        if (b.x === undefined || b.y === undefined) return;
+    allBullets.forEach(b => {
+        if (b.x === undefined || b.y === undefined || drawnBulletIds.has(b.id)) return;
+        drawnBulletIds.add(b.id);
+        
         state.ctx.beginPath();
-        state.ctx.arc(b.x, b.y, 5, 0, TWO_PI); // Zvětšeno z 4 na 5
+        state.ctx.arc(b.x, b.y, 5, 0, TWO_PI);
         state.ctx.fill();
         state.ctx.stroke();
     });
@@ -171,8 +197,9 @@ function drawTabMenu(playersData) {
 function updateDOM_HUD(player) {
     const hpEl = document.getElementById('hpDisplay');
     const ammoEl = document.getElementById('ammoDisplay');
-    if (hpEl) hpEl.innerText = `HP: ${player.hp}`;
-    if (ammoEl) ammoEl.innerText = `AMMO: ${player.ammo || 0}`;
+    // Mírná optimalizace přepisování DOMu - UI přeskakování ale vyřešíme definitivně až v Reactu
+    if (hpEl && hpEl.innerText !== `HP: ${player.hp}`) hpEl.innerText = `HP: ${player.hp}`;
+    if (ammoEl && ammoEl.innerText !== `AMMO: ${player.ammo}`) ammoEl.innerText = `AMMO: ${player.ammo || 0}`;
 }
 
 // --- HLAVNÍ FUNKCE ---
@@ -200,26 +227,43 @@ export function drawGame(serverData) {
     const mapW = (CONFIG && CONFIG.MAP_W) ? CONFIG.MAP_W : 2000;
     const mapH = (CONFIG && CONFIG.MAP_H) ? CONFIG.MAP_H : 2000;
 
-    // --- OPRAVA KAMERY: MAPA NA CELOU OBRAZOVKU ---
-    // Vypočítáme měřítko, aby se mapa vešla přesně na obrazovku
-    const scaleX = state.canvas.width / mapW;
-    const scaleY = state.canvas.height / mapH;
-    
-    // Použijeme menší měřítko z obou a vynásobíme 0.95, aby byl kolem mapy okraj 5%
-    state.gameScale = Math.min(scaleX, scaleY) * 0.95; 
-
-    // Vycentrujeme mapu do prostředka obrazovky
-    state.gameOffsetX = (state.canvas.width - (mapW * state.gameScale)) / 2;
-    state.gameOffsetY = (state.canvas.height - (mapH * state.gameScale)) / 2;
-
     let me = null;
     if (socket && socket.id) {
         me = playersData[socket.id];
     }
 
+    // --- OPRAVA KAMERY: SLEDOVÁNÍ HRÁČE MÍSTO ODDÁLENÍ ---
+    state.gameScale = 1; // 1 = normální velikost (můžeš dát 1.5 pro zoom in, nebo 0.8 pro mírné oddálení)
+    
+    if (me && state.renderPlayers && state.renderPlayers[socket.id]) {
+        // Použijeme zpožděnou (vyhlazenou) pozici hráče, aby i kamera jela plynule
+        const smoothMe = state.renderPlayers[socket.id];
+        
+        let camX = (smoothMe.x * state.gameScale) - (state.canvas.width / 2);
+        let camY = (smoothMe.y * state.gameScale) - (state.canvas.height / 2);
+
+        // Omezení kamery, aby nevyjela ze šedé mapy do černého prázdna
+        const maxCamX = (mapW * state.gameScale) - state.canvas.width;
+        const maxCamY = (mapH * state.gameScale) - state.canvas.height;
+        
+        // Pokud je obrazovka větší než samotná mapa, vycentrujeme to jinak
+        if (state.canvas.width > mapW * state.gameScale) camX = -(state.canvas.width - mapW * state.gameScale) / 2;
+        else camX = Math.max(0, Math.min(maxCamX, camX));
+
+        if (state.canvas.height > mapH * state.gameScale) camY = -(state.canvas.height - mapH * state.gameScale) / 2;
+        else camY = Math.max(0, Math.min(maxCamY, camY));
+
+        state.gameOffsetX = -camX;
+        state.gameOffsetY = -camY;
+    } else {
+        // Výchozí pohled do středu, pokud hráč ještě není spawnutý
+        state.gameOffsetX = (state.canvas.width - (mapW * state.gameScale)) / 2;
+        state.gameOffsetY = (state.canvas.height - (mapH * state.gameScale)) / 2;
+    }
+
     state.ctx.save();
     
-    // Aplikování měřítka a zarovnání na střed okna
+    // Aplikování pozice kamery a měřítka
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
     state.ctx.scale(state.gameScale, state.gameScale);
 
@@ -232,7 +276,7 @@ export function drawGame(serverData) {
         if (safeData.decoys) drawDecoys(safeData.decoys, playersData);
         drawPlayers(playersData);
         
-        // Vykreslení kulek!
+        // Vykreslení kulek
         drawBullets(safeData.bullets);
         
         if (me) updateDOM_HUD(me);

@@ -3,7 +3,7 @@ import { state } from './state.js';
 import './network.js'; // Jen spustíme, aby se navázalo spojení
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
-import { initInputs } from './input.js'; // Správně importováno
+import { initInputs } from './input.js';
 
 // --- 1. Inicializace zaměřovače z LocalStorage ---
 try {
@@ -15,7 +15,7 @@ try {
     console.warn("⚠️ Chyba při načítání zaměřovače z localStorage.");
 }
 
-// --- 2. Ukládání z UI (Zůstává pro kompatibilitu s případným starým kódem) ---
+// --- 2. Ukládání z UI (Zůstává pro kompatibilitu) ---
 window.saveCrosshairSettings = function() {
     const shapeEl = document.getElementById('crosshairShape');
     const colorEl = document.getElementById('crosshairColor');
@@ -27,11 +27,12 @@ window.saveCrosshairSettings = function() {
     }
 };
 
-// --- 3. HERNÍ SMYČKY (Kreslení a Fyzika) ---
+// --- 3. HERNÍ SMYČKA (Kreslení) ---
 let firstFrameLogged = false;
 
 function renderLoop() {
-    const canvas = document.getElementById('game');
+    // Vytahujeme canvas rovnou ze state, pokud už je uložený
+    const canvas = state.canvas || document.getElementById('game');
     
     if (canvas) {
         // UDRŽUJEME SPRÁVNÉ ROZLIŠENÍ: Pokud hráč zmenší/zvětší okno, canvas se okamžitě přizpůsobí
@@ -46,12 +47,13 @@ function renderLoop() {
                 console.log("🎨 PRVNÍ FRAME: main.js našel canvas, má data a volá render.js!");
                 firstFrameLogged = true;
             }
-            // Předáme data k vykreslení hernímu renderu
+            // Předáme data k vykreslení hernímu renderu (ten už teď obsluhuje kameru i plynulost)
             drawGame(state.latestServerData);
         } else {
-            // Pokud čekáme v lobby nebo data ještě nedorazila, aspoň plátno promažeme.
+            // Pokud čekáme v lobby, jen vykreslíme černé plátno místo blikání
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
     }
     
@@ -70,19 +72,22 @@ export function initGameEngine() {
         return;
     }
 
-    // KRITICKÝ KROK PRO REACT: Okamžitě plátnu nastavíme 100% vnitřní velikost.
+    // KRITICKÝ KROK PRO REACT: Okamžitě plátnu nastavíme 100% vnitřní velikost
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    state.canvas = canvas; // Uložíme do state pro myš a ostatní skripty
+    state.canvas = canvas; 
+
+    // Pojistka pro Dash: zablokování kontextového menu na celém dokumentu (nejen na canvasu)
+    document.addEventListener('contextmenu', event => event.preventDefault());
 
     console.log(`🚀 Herní engine nastartován! Rozlišení plátna: ${canvas.width}x${canvas.height}`);
     
-    // ---> TADY JE TA MAGIE: ZAPNEME OVLÁDÁNÍ <---
+    // ZAPNEME OVLÁDÁNÍ
     initInputs(); 
     
     // Odstartování smyček
     requestAnimationFrame(renderLoop);
-    setInterval(updateLocalGame, 1000 / 60); // Fyzika běží 60x za vteřinu
+    setInterval(updateLocalGame, 1000 / 60); // Fyzika běží stabilně 60x za vteřinu
     
     engineStarted = true;
 }

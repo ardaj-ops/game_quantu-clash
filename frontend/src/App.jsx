@@ -81,7 +81,6 @@ function App() {
       }
     };
 
-    // --- OPRAVENÝ LISTENER STAVŮ HRY ---
     const onGameStateChange = (data) => {
       if (data.state === 'PLAYING') {
         setCurrentView('game'); 
@@ -93,17 +92,16 @@ function App() {
         setIsCardSelection(false);
         setIsGameOver(false);
       } else if (data.state === 'CARD_SELECTION' || data.state === 'UPGRADE') {
-        setCurrentView('game'); // Necháme běžet hru v pozadí
+        setCurrentView('game'); 
         setIsCardSelection(true);
         setIsGameOver(false);
       } else if (data.state === 'SCOREBOARD' || data.state === 'GAMEOVER') {
-        setCurrentView('game'); // Necháme běžet hru v pozadí (černá obrazovka s textem z Canvasu)
+        setCurrentView('game'); 
         setIsGameOver(true);
         setIsCardSelection(false);
       }
     };
 
-    // --- PŘIJETÍ KARET ZE SERVERU ---
     const onReceiveCards = (availableCards) => {
       setCards(availableCards);
       setIsCardSelection(true);
@@ -117,7 +115,7 @@ function App() {
     socket.on('settingsUpdated', (settings) => setGameSettings(settings));
     socket.on('errorMsg', (msg) => setErrorMsg(msg));
     socket.on('gameStateChanged', onGameStateChange);
-    socket.on('showCards', onReceiveCards); // Nasloucháme na event karet
+    socket.on('showCards', onReceiveCards);
 
     return () => {
       socket.off('connect', onConnect);
@@ -130,7 +128,6 @@ function App() {
     };
   }, []);
 
-  // --- HANDLERY ---
   const handleCreateRoom = () => {
     if (!nickname.trim()) return setErrorMsg('Zadej přezdívku!');
     socket.emit('createRoom', { name: nickname, color, cosmetics });
@@ -159,10 +156,9 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- NOVÝ HANDLER PRO VÝBĚR KARTY ---
   const handleSelectCard = (cardId) => {
     socket.emit('selectCard', cardId);
-    setIsCardSelection(false); // Okamžitě skryjeme, aby hráč neklikal dvakrát
+    setIsCardSelection(false); 
   };
 
   return (
@@ -282,29 +278,35 @@ function App() {
         </div>
       )}
 
-      {/* --- VÝBĚR KARET (Kreslí se přes hru) --- */}
+      {/* --- VÝBĚR KARET --- */}
       {isCardSelection && (
         <div style={{
           position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
           backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 100, display: 'flex',
-          flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'auto' // Pojistka
         }}>
           <h1 style={{ color: '#45f3ff', textShadow: '0 0 15px #45f3ff', marginBottom: '40px', fontSize: '40px' }}>VÝBĚR VYLEPŠENÍ</h1>
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
             {cards.length > 0 ? cards.map((c, i) => (
               <div 
                 key={i} 
-                onClick={() => handleSelectCard(c.id)}
+                // OPRAVA: Použití onPointerDown + stopPropagation zablokuje herní engine v krádeži kliku
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  handleSelectCard(c.id);
+                }}
                 style={{
                   background: '#1a1a2e', border: '2px solid #45f3ff', borderRadius: '10px',
                   padding: '20px', width: '220px', textAlign: 'center', cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(69, 243, 255, 0.3)', transition: 'transform 0.2s'
+                  boxShadow: '0 0 10px rgba(69, 243, 255, 0.3)', transition: 'transform 0.2s',
+                  pointerEvents: 'auto'
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                 onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
               >
-                <h3 style={{ color: 'white', borderBottom: '1px solid #45f3ff', paddingBottom: '10px' }}>{c.name || 'Vylepšení'}</h3>
-                <p style={{ color: '#ccc', marginTop: '15px' }}>{c.description || 'Popis vylepšení chybí...'}</p>
+                <h3 style={{ color: 'white', borderBottom: '1px solid #45f3ff', paddingBottom: '10px', pointerEvents: 'none' }}>{c.name || 'Vylepšení'}</h3>
+                <p style={{ color: '#ccc', marginTop: '15px', pointerEvents: 'none' }}>{c.description || 'Popis vylepšení chybí...'}</p>
               </div>
             )) : (
               <h3 style={{ color: 'white' }}>Čekám na balíček karet ze serveru...</h3>
@@ -313,20 +315,24 @@ function App() {
         </div>
       )}
 
-      {/* --- GAME OVER OBRAZOVKA (Kreslí se přes hru) --- */}
+      {/* --- GAME OVER OBRAZOVKA --- */}
       {isGameOver && (
         <div style={{
           position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
           backgroundColor: 'transparent', zIndex: 100, display: 'flex',
-          flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'auto'
         }}>
-          {/* Kreslíme jen UI komponenty, "KOLO SKONČILO" už kreslí Canvas */}
           <div style={{ marginTop: '200px' }}>
             {isHost ? (
               <button 
-                onClick={() => socket.emit('returnToLobby')} 
+                // OPRAVA: I tady zablokujeme probublání do hry
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  socket.emit('returnToLobby');
+                }} 
                 className="menu-btn" 
-                style={{ padding: '15px 40px', fontSize: '20px', backgroundColor: '#e74c3c' }}
+                style={{ padding: '15px 40px', fontSize: '20px', backgroundColor: '#e74c3c', cursor: 'pointer' }}
               >
                 ZPĚT DO LOBBY
               </button>
@@ -339,7 +345,7 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ HUD (Skóre, Životy, atd.) */}
+      {/* HERNÍ HUD */}
       <div 
         id="game-hud" 
         style={{ 
@@ -348,11 +354,13 @@ function App() {
           top: '20px',
           left: '20px',
           zIndex: 10,
-          pointerEvents: 'none' // Aby šlo klikat skrz HUD do hry
+          pointerEvents: 'none' 
         }}
       >
-        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0', textShadow: '2px 2px 2px black' }}>HP: 100</h2>
-        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0', textShadow: '2px 2px 2px black' }}>AMMO: ∞</h2>
+        {/* OPRAVA: Necháme h2 tagy uvnitř prázdné! Tím pádem React nebude při každém renderu přepisovat hodnoty z render.js */}
+        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0', textShadow: '2px 2px 2px black' }}></h2>
+        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0', textShadow: '2px 2px 2px black' }}></h2>
+        
         <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', marginTop: '10px' }}>
           <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
         </div>
