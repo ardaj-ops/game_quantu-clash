@@ -168,7 +168,7 @@ function drawTabMenu(playersData) {
 }
 
 function updateDOM_HUD(player) {
-    // Aktualizace HTML prvků (necháváme pro zpětnou kompatibilitu, v Reactu to asi řešíš přes state)
+    // Aktualizace HTML prvků
     const hpEl = document.getElementById('hpDisplay');
     const ammoEl = document.getElementById('ammoDisplay');
     
@@ -179,13 +179,16 @@ function updateDOM_HUD(player) {
 // --- HLAVNÍ FUNKCE ---
 
 export function drawGame(serverData) {
-    // 1. Získání plátna, pokud ho ještě nemáme
+    // 1. Získání plátna a kontextu (TADY BYL TEN HÁČEK!)
     if (!state.canvas) {
         state.canvas = document.getElementById('game');
-        if (state.canvas) state.ctx = state.canvas.getContext('2d');
+    }
+    // Pokud už máme plátno (z main.js nebo odjinud), ale nemáme kontext, musíme ho vytvořit
+    if (state.canvas && !state.ctx) {
+        state.ctx = state.canvas.getContext('2d');
     }
 
-    if (!state.canvas || !state.ctx) return; // Plátno ještě neexistuje
+    if (!state.canvas || !state.ctx) return; // Plátno ještě neexistuje, jdeme pryč
 
     // 2. Bezpečná data (pokud serverData ještě nedorazila, vytvoříme prázdný objekt)
     const safeData = serverData || {};
@@ -201,7 +204,7 @@ export function drawGame(serverData) {
         state.canvas.height = window.innerHeight;
     }
     
-    // 5. Černé pozadí mimo mapu
+    // 5. Černé pozadí mimo mapu (Zároveň vyčistí předchozí frame)
     state.ctx.fillStyle = '#000000';
     state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
 

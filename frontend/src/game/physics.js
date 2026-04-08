@@ -1,11 +1,11 @@
-// physics.js
+// game/physics.js
 import { state, CONFIG } from './state.js';
 import { socket } from './network.js';
 
 export function checkWallCollision(x, y, radius, walls) {
     if (!walls || walls.length === 0) return false;
     for (let wall of walls) {
-        // BEZPEČNOST: Zdi a krabice, které jsou zničené nebo mají 0 HP, ignorujeme (dá se přes ně chodit/střílet)
+        // BEZPEČNOST: Zdi a krabice, které jsou zničené nebo mají 0 HP, ignorujeme
         if (!wall || wall.destroyed || (wall.hp !== undefined && wall.hp <= 0)) continue;
         
         let testX = Math.max(wall.x, Math.min(x, wall.x + wall.width));
@@ -19,9 +19,9 @@ export function checkWallCollision(x, y, radius, walls) {
 
 export function updateLocalGame() {
     if (!state.latestServerData || state.latestServerData.gameState !== 'PLAYING') return;
-    if (!socket) return;
+    if (!socket || !socket.id) return; // Pojistka, pokud socket ještě nemá ID
 
-    // POJISTKA: Pokud se fyzika spustí dřív, než se vytvoří objekty pro vstupy nebo kulky
+    // POJISTKA: Inicializace objektů, pokud ještě neexistují
     if (!state.playerInputs) state.playerInputs = {};
     if (!state.localBullets) state.localBullets = [];
 
@@ -38,7 +38,7 @@ export function updateLocalGame() {
     let nextX = me.x;
     let nextY = me.y;
 
-    // BEZPEČNÉ VYTAŽENÍ ROZMĚRŮ MAPY (Aby ses mohl hýbat, i když CONFIG zrovna chybí)
+    // BEZPEČNÉ VYTAŽENÍ ROZMĚRŮ MAPY
     const mapW = (CONFIG && CONFIG.MAP_W) ? CONFIG.MAP_W : 2000;
     const mapH = (CONFIG && CONFIG.MAP_H) ? CONFIG.MAP_H : 2000;
 
@@ -54,7 +54,16 @@ export function updateLocalGame() {
     nextX = Math.max(pRadius, Math.min(mapW - pRadius, nextX)); // Zastaví tě na kraji mapy
     if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) me.x = nextX;
 
-    // Pojistka pro úhel, kdyby chyběl (aby neletělo na server NaN)
+    // --- NOVÉ: PŘESNÝ VÝPOČET ÚHLU ZAMĚŘOVÁNÍ ---
+    // Musíme převést "obrazovkové" pixely myši do "herního" světa, kvůli kameře
+    if (state.currentMouseX !== undefined && state.currentMouseY !== undefined) {
+        let worldMouseX = (state.currentMouseX - (state.gameOffsetX || 0)) / (state.gameScale || 1);
+        let worldMouseY = (state.currentMouseY - (state.gameOffsetY || 0)) / (state.gameScale || 1);
+        
+        // Atan2 spočítá přesný úhel mezi hráčem a myší
+        state.playerInputs.aimAngle = Math.atan2(worldMouseY - me.y, worldMouseX - me.x);
+    }
+    
     let currentAimAngle = state.playerInputs.aimAngle || 0;
 
     // Odeslání dat na server
@@ -80,7 +89,7 @@ export function updateLocalGame() {
         let bullet = {
             id: Math.random().toString(36).substring(2, 9), 
             ownerId: myId,
-            x: me.x + Math.cos(currentAimAngle) * (pRadius + 5),
+            x: me.x + Math.cos(currentAimAngle) * (pRadius + 5), // Vystřelí z hlavně, ne ze středu
             y: me.y + Math.sin(currentAimAngle) * (pRadius + 5),
             vx: Math.cos(currentAimAngle) * bSpeed,
             vy: Math.sin(currentAimAngle) * bSpeed,
