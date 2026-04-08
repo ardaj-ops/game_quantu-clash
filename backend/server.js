@@ -4,8 +4,15 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 
-// --- Import Domain Manageru ---
+// --- Importy externích manažerů a helperů ---
 const DomainManager = require('./domainManager.js');
+const { 
+    applyHardCaps, 
+    resetPlayerStatsToBase, 
+    generateMap, 
+    getValidSpawnPoint, 
+    createPlayerTemplate 
+} = require('./gameHelper.js');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -86,10 +93,6 @@ const loadSharedFile = (fileName) => {
 const gameConfig = loadSharedFile('gameConfig.js') || {};
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
-    BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
-    BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
-    MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
-    MAX_CAP_MOVE_SPEED = 2.8, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 45, MAX_CAP_AMMO = 50,
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
@@ -109,111 +112,17 @@ const rooms = {};
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
 // ==========================================
-// 3. POMOCNÉ FUNKCE 
+// 3. LOKÁLNÍ POMOCNÉ FUNKCE 
 // ==========================================
 const broadcastLobbyUpdate = (room) => {
     if (!room) return;
     io.to(room.id).emit('lobbyUpdated', { hostId: room.hostId, players: room.players });
 };
 
-const applyHardCaps = (p) => {
-    if (!p) return;
-    p.maxHp = Math.max(MIN_CAP_HP, Math.min(MAX_CAP_HP, p.maxHp || BASE_HP));
-    p.hp = Math.min(p.hp, p.maxHp);
-    p.damage = Math.min(MAX_CAP_DAMAGE, p.damage || BASE_DAMAGE);
-    p.fireRate = Math.max(MIN_CAP_FIRE_RATE, p.fireRate || BASE_FIRE_RATE);
-    p.moveSpeed = Math.max(MIN_CAP_MOVE_SPEED, Math.min(MAX_CAP_MOVE_SPEED, p.moveSpeed || BASE_MOVE_SPEED));
-    p.bulletSpeed = Math.min(MAX_CAP_BULLET_SPEED, p.bulletSpeed || BASE_BULLET_SPEED);
-    p.maxAmmo = Math.min(MAX_CAP_AMMO, p.maxAmmo || BASE_AMMO);
-};
-
-const resetPlayerStatsToBase = (p) => {
-    if (!p) return;
-    Object.assign(p, {
-        maxHp: BASE_HP, hp: BASE_HP,
-        damage: BASE_DAMAGE, fireRate: BASE_FIRE_RATE,
-        bulletSpeed: BASE_BULLET_SPEED, moveSpeed: BASE_MOVE_SPEED,
-        maxAmmo: BASE_AMMO, ammo: BASE_AMMO,
-        reloadTime: BASE_RELOAD_TIME, isReloading: false, multishot: 1,
-        spread: 0.1, bounces: 0, pierce: 0, lifesteal: 0,
-        cards: [], domainType: undefined, domainActive: false,
-        domainTimer: 0, domainCooldown: 0, isJackpotActive: false,
-        inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false }
-    });
-};
-
-const checkRectCollision = (x, y, radius, rect) => {
-    return (x + radius > rect.x && x - radius < rect.x + rect.width &&
-            y + radius > rect.y && y - radius < rect.y + rect.height);
-};
-
-const generateMap = () => {
-    const obstacles = [
-        { x: -50, y: -50, width: MAP_WIDTH + 100, height: 50 },
-        { x: -50, y: MAP_HEIGHT, width: MAP_WIDTH + 100, height: 50 },
-        { x: -50, y: 0, width: 50, height: MAP_HEIGHT },
-        { x: MAP_WIDTH, y: 0, width: 50, height: MAP_HEIGHT }
-    ];
-    const breakables = [];
-
-    for (let i = 0; i < 7; i++) {
-        let width = Math.floor(Math.random() * 150) + 80;
-        let height = Math.floor(Math.random() * 150) + 80;
-        obstacles.push({
-            x: Math.floor(Math.random() * (MAP_WIDTH - width - 100)) + 50,
-            y: Math.floor(Math.random() * (MAP_HEIGHT - height - 100)) + 50,
-            width, height
-        });
-    }
-
-    for (let i = 0; i < 8; i++) {
-        let isHorizontal = Math.random() > 0.5;
-        let width = isHorizontal ? 150 : 30;
-        let height = isHorizontal ? 30 : 150;
-        breakables.push({
-            id: i,
-            x: Math.floor(Math.random() * (MAP_WIDTH - width - 100)) + 50,
-            y: Math.floor(Math.random() * (MAP_HEIGHT - height - 100)) + 50,
-            width, height, destroyed: false
-        });
-    }
-    return { obstacles, breakables };
-};
-
-const getValidSpawnPoint = (players, obstacles, breakables) => {
-    const pr = PLAYER_RADIUS + 5;
-    for (let attempt = 0; attempt < 100; attempt++) {
-        let testX = Math.random() * (MAP_WIDTH - 100) + 50;
-        let testY = Math.random() * (MAP_HEIGHT - 100) + 50;
-        
-        const hitObstacle = obstacles.some(obs => checkRectCollision(testX, testY, pr, obs));
-        if (hitObstacle) continue;
-        
-        const hitBreakable = breakables.some(wall => !wall.destroyed && checkRectCollision(testX, testY, pr, wall));
-        if (hitBreakable) continue;
-
-        return { x: testX, y: testY };
-    }
-    return { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 }; 
-};
-
 const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     return Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 };
-
-const createPlayerTemplate = (playerName, playerColor, playerTeam, playerCosmetic, isHost = false) => ({
-    x: 0, y: 0, aimAngle: 0,
-    hp: BASE_HP, maxHp: BASE_HP, damage: BASE_DAMAGE, fireRate: BASE_FIRE_RATE, bulletSpeed: BASE_BULLET_SPEED, moveSpeed: BASE_MOVE_SPEED,
-    maxAmmo: BASE_AMMO, ammo: BASE_AMMO,
-    name: String(playerName || "Hráč").substring(0, 15), 
-    color: String(playerColor || "#ff4757").substring(0, 7), 
-    cosmetic: playerCosmetic || "none", team: playerTeam || "none", score: 0,
-    isReady: false, isReloading: false, isInvisible: false, isHost: isHost,
-    cards: [],
-    inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false },
-    domainType: undefined, domainActive: false, domainTimer: 0, domainCooldown: 0, isJackpotActive: false
-});
 
 const generateCardsForPlayer = (player) => {
     if (!availableCards.length || !player) return [];
@@ -272,7 +181,7 @@ const startNextRound = (room) => {
     console.log(`🎮 Hra v místnosti ${room.id} začíná!`);
     room.roundNumber = (room.roundNumber || 0) + 1;
     
-    const mapData = generateMap();
+    const mapData = generateMap(); // Nyní se volá z gameHelper.js
     room.obstacles = mapData.obstacles;
     room.breakables = mapData.breakables;
     room.deadPlayersThisRound = [];
@@ -347,7 +256,6 @@ const handleDeath = (room, victimId) => {
         if (room.upgradeQueue.length > 0) {
             room.currentLoserId = room.upgradeQueue[0];
             let cardsToSend = generateCardsForPlayer(room.players[room.currentLoserId]);
-            // ZDE JE OPRAVA: Posíláme obojí, aby React zachytil showCards!
             io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
             io.to(room.id).emit('showCards', cardsToSend);
         } else {
@@ -378,6 +286,7 @@ io.on('connection', (socket) => {
         
         socket.join(code); 
         socket.roomId = code;
+        // Použití helperu pro inicializaci hráče
         rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, "none", data.cosmetic, true);
 
         socket.emit('roomCreated', { code, isHost: true });
@@ -397,7 +306,7 @@ io.on('connection', (socket) => {
         socket.join(code); 
         socket.roomId = code;
         const pTeam = (data.team && room.settings.gameMode !== 'FFA') ? data.team : "none";
-        room.players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
+        rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
 
         socket.emit('roomJoined', { code, isHost: false });
         socket.emit('settingsUpdated', room.settings);
@@ -464,7 +373,7 @@ io.on('connection', (socket) => {
             
             playerIds.forEach(id => {
                 room.players[id].score = 0;
-                resetPlayerStatsToBase(room.players[id]);
+                resetPlayerStatsToBase(room.players[id]); // Zde se volá funkce z gameHelperu
             });
             
             room.teamScores = {};
@@ -590,7 +499,7 @@ io.on('connection', (socket) => {
             const oldMaxHp = p.maxHp;
             if (typeof card.apply === 'function') card.apply(p);
             if (p.maxHp !== oldMaxHp) p.hp = Math.floor(p.maxHp * (p.hp / oldMaxHp));
-            applyHardCaps(p);
+            applyHardCaps(p); // Zde se volá funkce z gameHelperu
         }
 
         room.upgradeQueue = room.upgradeQueue.filter(id => id !== socket.id);
@@ -600,7 +509,6 @@ io.on('connection', (socket) => {
             const nextPlayer = room.players[room.currentLoserId];
             if (nextPlayer) {
                 let cardsToSend = generateCardsForPlayer(nextPlayer);
-                // ZDE JE OPRAVA
                 io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
                 io.to(room.id).emit('showCards', cardsToSend);
             } else { 
@@ -645,7 +553,6 @@ io.on('connection', (socket) => {
                 const nextPlayer = room.players[room.currentLoserId];
                 if (nextPlayer) { 
                     let cardsToSend = generateCardsForPlayer(nextPlayer);
-                    // ZDE JE OPRAVA
                     io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend }); 
                     io.to(room.id).emit('showCards', cardsToSend);
                 } else { 
