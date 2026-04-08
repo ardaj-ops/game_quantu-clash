@@ -4,13 +4,14 @@
 
 /* 1. Nejnižší vrstva: Herní plátno */
 #game {
-    position: fixed; /* Přibije plátno na obrazovku */
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 1; 
-    pointer-events: auto; /* Aby hra reagovala na myš */
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1; /* Posune plátno DOZADU, aby HUD (texty) byl nad ním */
+  background-color: #111; /* Jen pro test, jestli ho vůbec vidíš */
 }
 
 /* 2. Prostřední vrstva: Průhledný obal pro React */

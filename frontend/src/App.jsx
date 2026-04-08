@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css'; 
 
-// --- KLÍČOVÉ ZMĚNY ---
-// 1. Odebíráme jediný sdílený socket přímo z tvého herního kódu!
 import { socket } from './game/network.js'; 
-// 2. Musíme Reactu říct, ať vůbec spustí tvůj herní engine (main.js)
 import { initGameEngine } from './game/main.js';
 
 function App() {
@@ -41,7 +38,7 @@ function App() {
     localStorage.setItem('qc_cosmetics', cosmetics);
   }, [nickname, color, cosmetics]);
 
-  // Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením
+  // Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením (HUD už v DOMu je!)
   useEffect(() => {
     initGameEngine();
   }, []);
@@ -140,8 +137,20 @@ function App() {
 
   return (
     <>
-      {/* HERNÍ PLÁTNO - Zůstává stále na pozadí, ale CSS (z-index) zajistí, že ho UI překryje */}
-      <canvas id="game"></canvas>
+      {/* HERNÍ PLÁTNO - Nyní má garantované rozměry přes celou obrazovku a je vždy vzadu */}
+      <canvas 
+        id="game"
+        style={{
+          display: 'block',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: -1,
+          backgroundColor: '#0b0c10' // Základní tmavé pozadí herního enginu
+        }}
+      ></canvas>
 
       {/* HLAVNÍ OPONA (Menu / Lobby) */}
       {currentView !== 'game' && (
@@ -245,16 +254,26 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ HUD (Skóre, Životy, atd.) - Zobrazí se POUZE při hře */}
-      {currentView === 'game' && (
-        <div id="game-hud">
-          <h2 id="hpDisplay" style={{ color: '#ff4444' }}>HP: 100</h2>
-          <h2 id="ammoDisplay">AMMO: ∞</h2>
-          <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
-            <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
-          </div>
+      {/* HERNÍ HUD (Skóre, Životy, atd.) 
+          KLÍČOVÁ ZMĚNA: Už nepoužíváme {currentView === 'game' && ...}, ale skrýváme ho pomocí CSS.
+          Vanilla JS tak vždy najde 'hpDisplay' a nespadne hned na začátku! 
+      */}
+      <div 
+        id="game-hud" 
+        style={{ 
+          display: currentView === 'game' ? 'block' : 'none', 
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          zIndex: 10
+        }}
+      >
+        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0' }}>HP: 100</h2>
+        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0' }}>AMMO: ∞</h2>
+        <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden' }}>
+          <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
         </div>
-      )}
+      </div>
     </>
   );
 }
