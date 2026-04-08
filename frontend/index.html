@@ -15,18 +15,15 @@
         </div>
     </noscript>
 
-    <div id="game-layer">
-        <canvas id="game"></canvas>
+    <div id="root"></div>
 
+    <div id="game-layer">
+        
         <button id="settingsBtn" class="hud-element hidden">⚙️ Nastavení</button>
 
         <div id="scoreBoardContainer" class="hud-element hidden">
             <h3 style="margin: 0 0 10px 0;">Skóre (do <span id="maxScoreDisplay">5</span>)</h3>
             <div id="scoreBoard"></div>
-        </div>
-
-        <div id="ammoContainer" class="hud-element hidden">
-            Munice: <span id="ammoDisplay">-- / --</span>
         </div>
 
         <div id="settingsUI" class="overlay hidden">
@@ -82,14 +79,6 @@
         </div>    
     </div>
 
-    <div id="root"></div>
-
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    <script type="module" src="src/main.jsx"></script>
-    
-    <script type="module" src="src/game/gameConfig.js"></script>
-    <script type="module" src="src/game/cards.js"></script>
-    <script type="module" src="src/game/input.js"></script>
     <script type="module" src="src/game/main.js"></script>
 </body>
 </html>

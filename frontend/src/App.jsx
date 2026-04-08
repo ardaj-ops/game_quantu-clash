@@ -6,6 +6,7 @@ import './App.css';
 import { socket } from './game/network.js'; 
 // 2. Musíme Reactu říct, ať vůbec spustí tvůj herní engine (main.js)
 import { initGameEngine } from './game/main.js';
+
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   
@@ -39,14 +40,16 @@ function App() {
     localStorage.setItem('qc_color', color);
     localStorage.setItem('qc_cosmetics', cosmetics);
   }, [nickname, color, cosmetics]);
-// Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením
+
+  // Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením
   useEffect(() => {
     initGameEngine();
   }, []);
+
   // Hlavní Socket.io logika
   useEffect(() => {
     if (!socket) {
-        console.error("❌ Socket chybí! Podívej se na instrukce k network.js níže.");
+        console.error("❌ Socket chybí! Zkontroluj network.js.");
         return;
     }
 
@@ -136,22 +139,21 @@ function App() {
   };
 
   return (
-    <div style={{ 
-      display: 'flex', justifyContent: 'center', alignItems: 'center', 
-      minHeight: '100vh', width: '100vw', backgroundColor: '#0f141e' 
-    }}>
-      
-      {/* OPONA (Menu / Lobby) */}
+    <>
+      {/* HERNÍ PLÁTNO - Zůstává stále na pozadí, ale CSS (z-index) zajistí, že ho UI překryje */}
+      <canvas id="game"></canvas>
+
+      {/* HLAVNÍ OPONA (Menu / Lobby) */}
       {currentView !== 'game' && (
-        <div className="App-container" style={{ width: '100%', maxWidth: '600px' }}>
+        <div className="App-container">
           
           {/* MENU VIEW */}
           {currentView === 'menu' && (
             <div id="mainMenuUI" className="overlay">
-              <h1 className="title-blue" style={{ textAlign: 'center' }}>QUANTUM CLASH</h1>
+              <h1 className="title-blue">QUANTUM CLASH</h1>
               
-              <div className="panel" style={{ margin: '0 auto' }}>
-                <p className="status-text" style={{ textAlign: 'center', fontWeight: 'bold', color: isConnected ? '#2ecc71' : '#e74c3c' }}>
+              <div className="panel">
+                <p className="status-text" style={{ fontWeight: 'bold', color: isConnected ? '#2ecc71' : '#e74c3c' }}>
                   {isConnected ? '● ONLINE' : '● OFFLINE'}
                 </p>
 
@@ -176,14 +178,14 @@ function App() {
                   </select>
                 </div>
 
-                <button onClick={handleCreateRoom} className="menu-btn" style={{ width: '100%', marginTop: '15px' }}>VYTVOŘIT HRU</button>
+                <button onClick={handleCreateRoom} className="menu-btn" style={{ width: '100%' }}>VYTVOŘIT HRU</button>
 
-                <div className="join-box" style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                  <input type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} placeholder="KÓD MÍSTNOSTI" maxLength="4" style={{ flex: 1 }} />
-                  <button onClick={handleJoinRoom} className="menu-btn" style={{ background: '#2ecc71' }}>PŘIPOJIT SE</button>
+                <div className="join-box">
+                  <input type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} placeholder="KÓD MÍSTNOSTI" maxLength="4" style={{ width: 'calc(100% - 140px)', marginRight: '10px' }} />
+                  <button onClick={handleJoinRoom} className="menu-btn" style={{ background: '#2ecc71', width: '130px', margin: '0' }}>PŘIPOJIT</button>
                 </div>
 
-                {errorMsg && <p id="errorMsg" style={{ color: '#e74c3c', textAlign: 'center', marginTop: '10px' }}>{errorMsg}</p>}
+                {errorMsg && <p id="errorMsg">{errorMsg}</p>}
               </div>
             </div>
           )}
@@ -191,10 +193,10 @@ function App() {
           {/* LOBBY VIEW */}
           {currentView === 'lobby' && (
             <div id="lobbyUI" className="overlay">
-              <div className="panel lobby-panel" style={{ margin: '0 auto' }}>
-                <h2 className="title-blue" style={{ textAlign: 'center' }}>LOBBY</h2>
+              <div className="panel lobby-panel">
+                <h2 className="title-blue">LOBBY</h2>
                 
-                <div className="room-info" style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <div className="room-info" style={{ marginBottom: '20px' }}>
                   <span className="room-code-label">KÓD MÍSTNOSTI: </span>
                   <strong style={{ cursor: 'pointer', fontSize: '24px', color: '#45f3ff' }} onClick={copyToClipboard}>
                     {roomCode}
@@ -217,7 +219,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="players-list" style={{ marginTop: '20px' }}>
+                <div className="players-list" style={{ marginTop: '20px', textAlign: 'left' }}>
                   <h3 className="section-title">Hráči ({Object.keys(players).length}/6)</h3>
                   {Object.values(players).map((p, i) => (
                     <div key={i} className="player-entry" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
@@ -234,7 +236,7 @@ function App() {
                   {isReady ? 'ZRUŠIT PŘIPRAVENOST' : 'PŘIPRAVIT SE!'}
                 </button>
                 
-                <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="leave-btn" style={{ width: '100%', marginTop: '10px', background: 'transparent', border: '1px solid #7f8c8d', color: 'white', padding: '10px' }}>
+                <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="leave-btn" style={{ width: '100%', marginTop: '10px', background: 'transparent', border: '1px solid #7f8c8d', color: 'white', padding: '10px', borderRadius: '6px', cursor: 'pointer' }}>
                   Opustit
                 </button>
               </div>
@@ -243,29 +245,17 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ PLÁTNO */}
-      <canvas 
-        id="game" 
-        style={{ 
-          display: currentView === 'game' ? 'block' : 'none', 
-          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 1 
-        }}
-      ></canvas>
-
-      {/* HUD (Head-Up Display) - Upravená IDčka aby si to povídalo s render.js */}
+      {/* HERNÍ HUD (Skóre, Životy, atd.) - Zobrazí se POUZE při hře */}
       {currentView === 'game' && (
-        <div id="game-hud" style={{
-          position: 'absolute', bottom: '30px', right: '30px', zIndex: 10,
-          color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right'
-        }}>
-          <h2 id="hpDisplay" style={{ fontSize: '24px', margin: '0 0 5px 0', color: '#ff4444' }}>HP: 100</h2>
-          <h2 id="ammoDisplay" style={{ fontSize: '32px', margin: '0 0 10px 0' }}>AMMO: ∞</h2>
+        <div id="game-hud">
+          <h2 id="hpDisplay" style={{ color: '#ff4444' }}>HP: 100</h2>
+          <h2 id="ammoDisplay">AMMO: ∞</h2>
           <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
             <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

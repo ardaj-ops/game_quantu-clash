@@ -9,27 +9,23 @@ const BACKEND_URL = window.location.hostname === "localhost" || window.location.
 export const socket = io(BACKEND_URL);
 
 if (!socket) {
-    console.error("❌ Socket.IO není načten! Zkontroluj, jestli máš v index.html správný script tag.");
+    console.error("❌ Socket.IO není načten! Zkontroluj instalaci.");
 } else {
     // ==========================================
-    // 1. ZÁKLADNÍ PŘIPOJENÍ A TESTOVACÍ ZKRATKA
+    // 1. ZÁKLADNÍ PŘIPOJENÍ
     // ==========================================
     socket.on('connect', () => {
         console.log('✅ ÚSPĚCH: Připojeno k serveru! Moje ID:', socket.id);
-        
-        // PRO TESTOVÁNÍ MAPY: Okamžitě po připojení vytvoříme místnost
-        console.log("🛠️ Vytvářím testovací místnost...");
-        socket.emit('createRoom', { name: "Tester", color: "#3498db", cosmetic: "none" });
+        // Testovací bypass odstraněn: Už se tu automaticky nevytváří hra!
     });
 
     socket.on('connect_error', (err) => {
         console.error('❌ CHYBA: Nelze se spojit se serverem! Běží backend?', err);
     });
 
-    // Jakmile server potvrdí, že je místnost vytvořena, odpálíme "Ready" a hra začne
     socket.on('roomCreated', (data) => {
-        console.log(`✅ Místnost vytvořena (Kód: ${data.code}). Přepínám na READY!`);
-        socket.emit('toggleReady', true); 
+        console.log(`✅ Místnost vytvořena (Kód: ${data.code}). Řízení přebírá React UI.`);
+        // Testovací bypass odstraněn: Už tu nestřílíme automaticky toggleReady.
     });
 
     // ==========================================
@@ -46,7 +42,7 @@ if (!socket) {
         if (data.obstacles) state.localObstacles = data.obstacles;
         if (data.breakables) state.localBreakables = data.breakables;
         
-        // NOVÝ DIAGNOSTICKÝ LOG: Zjistíme, jestli server posílá reálné bloky nebo prázdno
+        // Diagnostický log: Zjistíme, jestli server posílá reálné bloky nebo prázdno
         const pocetZdi = data.obstacles ? data.obstacles.length : 0;
         const pocetKrabic = data.breakables ? data.breakables.length : 0;
         console.log(`🗺️ MAPA PŘIJATA! Počet zdí: ${pocetZdi}, Počet krabic: ${pocetKrabic}`);
@@ -54,8 +50,8 @@ if (!socket) {
 
     // Změny stavů hry (přepnutí z LOBBY do PLAYING, GAMEOVER atd.)
     socket.on('gameStateChanged', (data) => {
-        console.log("🔄 Změna stavu hry na:", data.state);
-        // Sem budeme později dávat schovávání/ukazování HTML UI
+        console.log("🔄 Vanilla JS zaznamenal změnu stavu hry na:", data.state);
+        // O překreslení UI se teď stará React v App.jsx
     });
 
     // ==========================================
@@ -63,6 +59,6 @@ if (!socket) {
     // ==========================================
     socket.on('initCatalog', (catalogData) => {
         state.CARD_CATALOG = catalogData;
-        console.log("📚 Katalog karet načten:", catalogData);
+        console.log("📚 Katalog karet načten:", Object.keys(catalogData || {}).length, "položek.");
     });
 }
