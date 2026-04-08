@@ -43,13 +43,9 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
-// ==========================================
-// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
-// ==========================================
 const loadSharedFile = (fileName) => {
-    // Přidali jsme cestu přímo do tvé složky frontend/src/game/
     const pathsToTry = [
-        path.join(__dirname, '..', 'frontend', 'src', 'game', fileName), // <--- TADY JE ZMĚNA
+        path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
         path.join(frontendDistPath, fileName),
         path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
@@ -246,7 +242,7 @@ const generateCardsForPlayer = (player) => {
 
         let randomPick = Math.random() * totalWeight;
         let cumulativeWeight = 0;
-        let selected = weightedCards[weightedCards.length - 1].card; // Fallback
+        let selected = weightedCards[weightedCards.length - 1].card; 
 
         for (let item of weightedCards) {
             cumulativeWeight += item.weight;
@@ -351,7 +347,9 @@ const handleDeath = (room, victimId) => {
         if (room.upgradeQueue.length > 0) {
             room.currentLoserId = room.upgradeQueue[0];
             let cardsToSend = generateCardsForPlayer(room.players[room.currentLoserId]);
+            // ZDE JE OPRAVA: Posíláme obojí, aby React zachytil showCards!
             io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
+            io.to(room.id).emit('showCards', cardsToSend);
         } else {
             startNextRound(room);
         }
@@ -601,7 +599,10 @@ io.on('connection', (socket) => {
             room.currentLoserId = room.upgradeQueue[0];
             const nextPlayer = room.players[room.currentLoserId];
             if (nextPlayer) {
-                io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: generateCardsForPlayer(nextPlayer) });
+                let cardsToSend = generateCardsForPlayer(nextPlayer);
+                // ZDE JE OPRAVA
+                io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
+                io.to(room.id).emit('showCards', cardsToSend);
             } else { 
                 startNextRound(room); 
             }
@@ -643,7 +644,10 @@ io.on('connection', (socket) => {
                 room.currentLoserId = room.upgradeQueue[0];
                 const nextPlayer = room.players[room.currentLoserId];
                 if (nextPlayer) { 
-                    io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: generateCardsForPlayer(nextPlayer) }); 
+                    let cardsToSend = generateCardsForPlayer(nextPlayer);
+                    // ZDE JE OPRAVA
+                    io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend }); 
+                    io.to(room.id).emit('showCards', cardsToSend);
                 } else { 
                     startNextRound(room); 
                 }

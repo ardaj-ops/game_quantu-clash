@@ -54,14 +54,17 @@ export function updateLocalGame() {
     nextX = Math.max(pRadius, Math.min(mapW - pRadius, nextX)); // Zastaví tě na kraji mapy
     if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) me.x = nextX;
 
-    // --- NOVÉ: PŘESNÝ VÝPOČET ÚHLU ZAMĚŘOVÁNÍ ---
-    // Musíme převést "obrazovkové" pixely myši do "herního" světa, kvůli kameře
-    if (state.currentMouseX !== undefined && state.currentMouseY !== undefined) {
-        let worldMouseX = (state.currentMouseX - (state.gameOffsetX || 0)) / (state.gameScale || 1);
-        let worldMouseY = (state.currentMouseY - (state.gameOffsetY || 0)) / (state.gameScale || 1);
+    // --- OPRAVENÝ VÝPOČET ÚHLU ZAMĚŘOVÁNÍ ---
+    // Hráč je neustále udržován ve středu plátna kamerou, 
+    // takže porovnáváme čistě myš a střed monitoru.
+    if (state.canvas && state.currentMouseX !== undefined && state.currentMouseY !== undefined) {
+        const playerScreenX = state.canvas.width / 2;
+        const playerScreenY = state.canvas.height / 2;
         
-        // Atan2 spočítá přesný úhel mezi hráčem a myší
-        state.playerInputs.aimAngle = Math.atan2(worldMouseY - me.y, worldMouseX - me.x);
+        state.playerInputs.aimAngle = Math.atan2(
+            state.currentMouseY - playerScreenY, 
+            state.currentMouseX - playerScreenX
+        );
     }
     
     let currentAimAngle = state.playerInputs.aimAngle || 0;

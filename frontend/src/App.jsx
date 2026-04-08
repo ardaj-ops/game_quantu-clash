@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useState, useEffect } from 'react';
 import './App.css'; 
 
@@ -17,6 +18,11 @@ function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [currentView, setCurrentView] = useState('menu'); // 'menu', 'lobby', 'game'
 
+  // --- NOVÉ STAVY PRO KARTY A KONEC HRY ---
+  const [isCardSelection, setIsCardSelection] = useState(false);
+  const [cards, setCards] = useState([]);
+  const [isGameOver, setIsGameOver] = useState(false);
+
   // --- STAVY LOBBY ---
   const [roomCode, setRoomCode] = useState('');
   const [players, setPlayers] = useState({});
@@ -31,19 +37,16 @@ function App() {
       gravityTwist: false
   });
 
-  // Automatické ukládání do LocalStorage
   useEffect(() => {
     localStorage.setItem('qc_nickname', nickname);
     localStorage.setItem('qc_color', color);
     localStorage.setItem('qc_cosmetics', cosmetics);
   }, [nickname, color, cosmetics]);
 
-  // Spustí herní engine až ve chvíli, kdy je React hotový s vykreslením (HUD už v DOMu je!)
   useEffect(() => {
     initGameEngine();
   }, []);
 
-  // Hlavní Socket.io logika
   useEffect(() => {
     if (!socket) {
         console.error("❌ Socket chybí! Zkontroluj network.js.");
@@ -78,13 +81,32 @@ function App() {
       }
     };
 
+    // --- OPRAVENÝ LISTENER STAVŮ HRY ---
     const onGameStateChange = (data) => {
       if (data.state === 'PLAYING') {
         setCurrentView('game'); 
+        setIsCardSelection(false);
+        setIsGameOver(false);
       } else if (data.state === 'LOBBY') {
         setCurrentView('lobby');
         setIsReady(false);
+        setIsCardSelection(false);
+        setIsGameOver(false);
+      } else if (data.state === 'CARD_SELECTION' || data.state === 'UPGRADE') {
+        setCurrentView('game'); // Necháme běžet hru v pozadí
+        setIsCardSelection(true);
+        setIsGameOver(false);
+      } else if (data.state === 'SCOREBOARD' || data.state === 'GAMEOVER') {
+        setCurrentView('game'); // Necháme běžet hru v pozadí (černá obrazovka s textem z Canvasu)
+        setIsGameOver(true);
+        setIsCardSelection(false);
       }
+    };
+
+    // --- PŘIJETÍ KARET ZE SERVERU ---
+    const onReceiveCards = (availableCards) => {
+      setCards(availableCards);
+      setIsCardSelection(true);
     };
 
     socket.on('connect', onConnect);
@@ -95,6 +117,7 @@ function App() {
     socket.on('settingsUpdated', (settings) => setGameSettings(settings));
     socket.on('errorMsg', (msg) => setErrorMsg(msg));
     socket.on('gameStateChanged', onGameStateChange);
+    socket.on('showCards', onReceiveCards); // Nasloucháme na event karet
 
     return () => {
       socket.off('connect', onConnect);
@@ -103,6 +126,7 @@ function App() {
       socket.off('roomJoined', onRoomJoined);
       socket.off('lobbyUpdated', onLobbyUpdate);
       socket.off('gameStateChanged', onGameStateChange);
+      socket.off('showCards', onReceiveCards);
     };
   }, []);
 
@@ -135,9 +159,14 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // --- NOVÝ HANDLER PRO VÝBĚR KARTY ---
+  const handleSelectCard = (cardId) => {
+    socket.emit('selectCard', cardId);
+    setIsCardSelection(false); // Okamžitě skryjeme, aby hráč neklikal dvakrát
+  };
+
   return (
     <>
-      {/* HERNÍ PLÁTNO - Nyní má garantované rozměry přes celou obrazovku a je vždy vzadu */}
       <canvas 
         id="game"
         style={{
@@ -148,11 +177,10 @@ function App() {
           width: '100vw',
           height: '100vh',
           zIndex: -1,
-          backgroundColor: '#0b0c10' // Základní tmavé pozadí herního enginu
+          backgroundColor: '#0b0c10'
         }}
       ></canvas>
 
-      {/* HLAVNÍ OPONA (Menu / Lobby) */}
       {currentView !== 'game' && (
         <div className="App-container">
           
@@ -254,23 +282,78 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ HUD (Skóre, Životy, atd.) 
-          KLÍČOVÁ ZMĚNA: Už nepoužíváme {currentView === 'game' && ...}, ale skrýváme ho pomocí CSS.
-          Vanilla JS tak vždy najde 'hpDisplay' a nespadne hned na začátku! 
-      */}
+      {/* --- VÝBĚR KARET (Kreslí se přes hru) --- */}
+      {isCardSelection && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 100, display: 'flex',
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <h1 style={{ color: '#45f3ff', textShadow: '0 0 15px #45f3ff', marginBottom: '40px', fontSize: '40px' }}>VÝBĚR VYLEPŠENÍ</h1>
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {cards.length > 0 ? cards.map((c, i) => (
+              <div 
+                key={i} 
+                onClick={() => handleSelectCard(c.id)}
+                style={{
+                  background: '#1a1a2e', border: '2px solid #45f3ff', borderRadius: '10px',
+                  padding: '20px', width: '220px', textAlign: 'center', cursor: 'pointer',
+                  boxShadow: '0 0 10px rgba(69, 243, 255, 0.3)', transition: 'transform 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <h3 style={{ color: 'white', borderBottom: '1px solid #45f3ff', paddingBottom: '10px' }}>{c.name || 'Vylepšení'}</h3>
+                <p style={{ color: '#ccc', marginTop: '15px' }}>{c.description || 'Popis vylepšení chybí...'}</p>
+              </div>
+            )) : (
+              <h3 style={{ color: 'white' }}>Čekám na balíček karet ze serveru...</h3>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- GAME OVER OBRAZOVKA (Kreslí se přes hru) --- */}
+      {isGameOver && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
+          backgroundColor: 'transparent', zIndex: 100, display: 'flex',
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+        }}>
+          {/* Kreslíme jen UI komponenty, "KOLO SKONČILO" už kreslí Canvas */}
+          <div style={{ marginTop: '200px' }}>
+            {isHost ? (
+              <button 
+                onClick={() => socket.emit('returnToLobby')} 
+                className="menu-btn" 
+                style={{ padding: '15px 40px', fontSize: '20px', backgroundColor: '#e74c3c' }}
+              >
+                ZPĚT DO LOBBY
+              </button>
+            ) : (
+              <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', textShadow: '2px 2px 4px black' }}>
+                Čekáme na to, až Host vrátí hru do Lobby...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* HERNÍ HUD (Skóre, Životy, atd.) */}
       <div 
         id="game-hud" 
         style={{ 
-          display: currentView === 'game' ? 'block' : 'none', 
+          display: currentView === 'game' && !isCardSelection ? 'block' : 'none', 
           position: 'absolute',
           top: '20px',
           left: '20px',
-          zIndex: 10
+          zIndex: 10,
+          pointerEvents: 'none' // Aby šlo klikat skrz HUD do hry
         }}
       >
-        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0' }}>HP: 100</h2>
-        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0' }}>AMMO: ∞</h2>
-        <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden' }}>
+        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0', textShadow: '2px 2px 2px black' }}>HP: 100</h2>
+        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0', textShadow: '2px 2px 2px black' }}>AMMO: ∞</h2>
+        <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', marginTop: '10px' }}>
           <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
         </div>
       </div>
