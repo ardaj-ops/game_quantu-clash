@@ -1,18 +1,37 @@
+process.on('uncaughtException', (err) => {
+    console.error('🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🚨 NEOŠETŘENÝ PROMISE:', reason);
+});
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors'); // Přidáno pro globální CORS
 
-// --- Importy externích manažerů a helperů ---
-const DomainManager = require('./domainManager.js');
+// --- Bezpečné načtení externích modulů ---
+let DomainManager;
+let gameHelper;
+try {
+    DomainManager = require('./domainManager.js');
+    gameHelper = require('./gameHelper.js');
+    console.log('✅ Manažeři a helpery úspěšně načteny.');
+} catch (err) {
+    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Pravděpodobně špatný export. Místo "export const" použij "module.exports = { ... }"):');
+    console.error(err);
+    process.exit(1); // Necháme server spadnout, ale až po vypsání chyby!
+}
+
 const { 
     applyHardCaps, 
     resetPlayerStatsToBase, 
     generateMap, 
     getValidSpawnPoint, 
     createPlayerTemplate 
-} = require('./gameHelper.js');
+} = gameHelper;
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -21,14 +40,23 @@ const server = http.createServer(app);
 // ==========================================
 // 1. NASTAVENÍ CORS A STATICKÝCH SOUBORŮ
 // ==========================================
+const allowedOrigins = [
+    "https://quantum-clash-gq1w.onrender.com", 
+    "http://localhost:5173", 
+    "http://localhost:3000"
+];
+
+// Express CORS middleware
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "OPTIONS"]
+}));
+
 const io = new Server(server, {
     cors: {
-        origin: [
-            "https://quantum-clash-gq1w.onrender.com", 
-            "http://localhost:5173", 
-            "http://localhost:3000"
-        ], 
-        methods: ["GET", "POST"]
+        origin: allowedOrigins, 
+        methods: ["GET", "POST", "OPTIONS"],
+        credentials: true
     }
 });
 
@@ -80,7 +108,7 @@ const loadSharedFile = (fileName) => {
                 wrapper(m, m.exports, customRequire);
                 return m.exports;
             } catch (err) {
-                console.warn(`⚠️ Soubor ${fileName} nelze načíst:`, err.message);
+                console.warn(`⚠️ Soubor ${fileName} nelze načíst (možná obsahuje ES6 importy):`, err.message);
                 return null;
             }
         }
@@ -181,7 +209,7 @@ const startNextRound = (room) => {
     console.log(`🎮 Hra v místnosti ${room.id} začíná!`);
     room.roundNumber = (room.roundNumber || 0) + 1;
     
-    const mapData = generateMap(); // Nyní se volá z gameHelper.js
+    const mapData = generateMap();
     room.obstacles = mapData.obstacles;
     room.breakables = mapData.breakables;
     room.deadPlayersThisRound = [];
@@ -286,7 +314,6 @@ io.on('connection', (socket) => {
         
         socket.join(code); 
         socket.roomId = code;
-        // Použití helperu pro inicializaci hráče
         rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, "none", data.cosmetic, true);
 
         socket.emit('roomCreated', { code, isHost: true });
@@ -373,7 +400,7 @@ io.on('connection', (socket) => {
             
             playerIds.forEach(id => {
                 room.players[id].score = 0;
-                resetPlayerStatsToBase(room.players[id]); // Zde se volá funkce z gameHelperu
+                resetPlayerStatsToBase(room.players[id]); 
             });
             
             room.teamScores = {};
@@ -499,7 +526,7 @@ io.on('connection', (socket) => {
             const oldMaxHp = p.maxHp;
             if (typeof card.apply === 'function') card.apply(p);
             if (p.maxHp !== oldMaxHp) p.hp = Math.floor(p.maxHp * (p.hp / oldMaxHp));
-            applyHardCaps(p); // Zde se volá funkce z gameHelperu
+            applyHardCaps(p); 
         }
 
         room.upgradeQueue = room.upgradeQueue.filter(id => id !== socket.id);
@@ -590,7 +617,7 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (!room) return;
         
-        if (room.gameState === 'PLAYING' && typeof DomainManager.updateDomains === 'function') {
+        if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
             DomainManager.updateDomains(room.players, room, TICK_RATE);
         }
 

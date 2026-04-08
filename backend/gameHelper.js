@@ -1,21 +1,33 @@
-// gameHelpers.js
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
-const checkRectCollision = (x, y, radius, rect) => {
-    return (x + radius > rect.x && x - radius < rect.x + rect.width &&
-            y + radius > rect.y && y - radius < rect.y + rect.height);
+/**
+ * Vylepšená detekce kolize: Skutečný kruh vs. obdélník.
+ * Původní kód bral kruh spíše jako čtverec, toto je matematicky přesnější.
+ */
+const checkRectCollision = (circleX, circleY, radius, rect) => {
+    // Nalezení nejbližšího bodu na obdélníku ke středu kruhu
+    const closestX = Math.max(rect.x, Math.min(circleX, rect.x + rect.width));
+    const closestY = Math.max(rect.y, Math.min(circleY, rect.y + rect.height));
+    
+    // Výpočet vzdálenosti
+    const distanceX = circleX - closestX;
+    const distanceY = circleY - closestY;
+    
+    return (distanceX * distanceX + distanceY * distanceY) < (radius * radius);
 };
 
-// Vrací fixní body na mapě (rohy a středy okrajů), aby hráči nespawnovali na sobě
+// Pomocná funkce pro fixní spawny, abychom je mohli využít i při generování mapy
+const getFixedSpawns = (mapWidth, mapHeight) => [
+    { x: 150, y: 150 }, // Levý horní
+    { x: mapWidth - 150, y: mapHeight - 150 }, // Pravý dolní
+    { x: mapWidth - 150, y: 150 }, // Pravý horní
+    { x: 150, y: mapHeight - 150 }, // Levý dolní
+    { x: mapWidth / 2, y: 150 }, // Střed nahoře
+    { x: mapWidth / 2, y: mapHeight - 150 } // Střed dole
+];
+
 const getValidSpawnPoint = (playerIndex, mapWidth, mapHeight, obstacles, breakables, playerRadius = 20) => {
-    const fixedSpawns = [
-        { x: 150, y: 150 }, // Levý horní
-        { x: mapWidth - 150, y: mapHeight - 150 }, // Pravý dolní
-        { x: mapWidth - 150, y: 150 }, // Pravý horní
-        { x: 150, y: mapHeight - 150 }, // Levý dolní
-        { x: mapWidth / 2, y: 150 }, // Střed nahoře
-        { x: mapWidth / 2, y: mapHeight - 150 } // Střed dole
-    ];
+    const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
 
     // Pokud máme volný fixní spawn
     if (playerIndex < fixedSpawns.length) {
@@ -23,28 +35,27 @@ const getValidSpawnPoint = (playerIndex, mapWidth, mapHeight, obstacles, breakab
     }
 
     // Fallback: Náhodný spawn pro více než 6 hráčů
-    const pr = playerRadius + 5;
+    const safeRadius = playerRadius + 5;
     for (let attempt = 0; attempt < 100; attempt++) {
         let testX = Math.random() * (mapWidth - 100) + 50;
         let testY = Math.random() * (mapHeight - 100) + 50;
         
-        const hitObstacle = obstacles.some(obs => checkRectCollision(testX, testY, pr, obs));
+        const hitObstacle = obstacles.some(obs => checkRectCollision(testX, testY, safeRadius, obs));
         if (hitObstacle) continue;
         
-        const hitBreakable = breakables.some(wall => !wall.destroyed && checkRectCollision(testX, testY, pr, wall));
+        const hitBreakable = breakables.some(wall => !wall.destroyed && checkRectCollision(testX, testY, safeRadius, wall));
         if (hitBreakable) continue;
 
         return { x: testX, y: testY };
     }
+    
     return { x: mapWidth / 2, y: mapHeight / 2 }; 
 };
 
 const generateCardsForPlayer = (player, availableCards) => {
-    if (!availableCards.length || !player) return [];
+    if (!availableCards?.length || !player) return [];
     
-    let pickedIndices = [];
-    let cardsToSend = [];
-    
+    // Filtrace karet platných pro hráče
     let validCards = availableCards
         .map((c, i) => ({ originalIndex: i, data: c }))
         .filter(c => {
@@ -53,9 +64,12 @@ const generateCardsForPlayer = (player, availableCards) => {
             return true;
         });
 
-    // ZDE JE ZAJIŠTĚNO, ŽE NEJSOU DUPLIKÁTY (unpickedValidCards)
-    while (cardsToSend.length < 3 && pickedIndices.length < validCards.length) {
-        let unpickedValidCards = validCards.filter(c => !pickedIndices.includes(c.originalIndex));
+    // Použití Setu pro rychlejší a čistší vyhledávání duplikátů
+    let pickedIndices = new Set();
+    let cardsToSend = [];
+    
+    while (cardsToSend.length < 3 && pickedIndices.size < validCards.length) {
+        let unpickedValidCards = validCards.filter(c => !pickedIndices.has(c.originalIndex));
         if (unpickedValidCards.length === 0) break;
 
         let totalWeight = 0;
@@ -71,45 +85,68 @@ const generateCardsForPlayer = (player, availableCards) => {
 
         for (let item of weightedCards) {
             cumulativeWeight += item.weight;
-            if (randomPick <= cumulativeWeight) { selected = item.card; break; }
+            if (randomPick <= cumulativeWeight) { 
+                selected = item.card; 
+                break; 
+            }
         }
 
-        pickedIndices.push(selected.originalIndex);
+        pickedIndices.add(selected.originalIndex);
         cardsToSend.push({ ...selected.data, globalIndex: selected.originalIndex });
     }
+    
     return cardsToSend;
 };
 
-const generateMap = (MAP_WIDTH, MAP_HEIGHT) => {
+const generateMap = (mapWidth, mapHeight) => {
     const obstacles = [
-        { x: -50, y: -50, width: MAP_WIDTH + 100, height: 50 },
-        { x: -50, y: MAP_HEIGHT, width: MAP_WIDTH + 100, height: 50 },
-        { x: -50, y: 0, width: 50, height: MAP_HEIGHT },
-        { x: MAP_WIDTH, y: 0, width: 50, height: MAP_HEIGHT }
+        { x: -50, y: -50, width: mapWidth + 100, height: 50 },
+        { x: -50, y: mapHeight, width: mapWidth + 100, height: 50 },
+        { x: -50, y: 0, width: 50, height: mapHeight },
+        { x: mapWidth, y: 0, width: 50, height: mapHeight }
     ];
     const breakables = [];
+    
+    // Ochranná zóna, aby překážky nevznikaly na startovních pozicích hráčů
+    const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
+    const spawnProtectionRadius = 40;
 
+    const isOverlappingSpawn = (rect) => {
+        return fixedSpawns.some(spawn => checkRectCollision(spawn.x, spawn.y, spawnProtectionRadius, rect));
+    };
+
+    // Generování pevných překážek
     for (let i = 0; i < 7; i++) {
         let width = Math.floor(Math.random() * 150) + 80;
         let height = Math.floor(Math.random() * 150) + 80;
-        obstacles.push({
-            x: Math.floor(Math.random() * (MAP_WIDTH - width - 100)) + 50,
-            y: Math.floor(Math.random() * (MAP_HEIGHT - height - 100)) + 50,
+        let newObstacle = {
+            x: Math.floor(Math.random() * (mapWidth - width - 100)) + 50,
+            y: Math.floor(Math.random() * (mapHeight - height - 100)) + 50,
             width, height
-        });
+        };
+        
+        if (!isOverlappingSpawn(newObstacle)) {
+            obstacles.push(newObstacle);
+        }
     }
 
+    // Generování zničitelných překážek
     for (let i = 0; i < 8; i++) {
         let isHorizontal = Math.random() > 0.5;
         let width = isHorizontal ? 150 : 30;
         let height = isHorizontal ? 30 : 150;
-        breakables.push({
+        let newBreakable = {
             id: i,
-            x: Math.floor(Math.random() * (MAP_WIDTH - width - 100)) + 50,
-            y: Math.floor(Math.random() * (MAP_HEIGHT - height - 100)) + 50,
+            x: Math.floor(Math.random() * (mapWidth - width - 100)) + 50,
+            y: Math.floor(Math.random() * (mapHeight - height - 100)) + 50,
             width, height, destroyed: false
-        });
+        };
+        
+        if (!isOverlappingSpawn(newBreakable)) {
+            breakables.push(newBreakable);
+        }
     }
+    
     return { obstacles, breakables };
 };
 
