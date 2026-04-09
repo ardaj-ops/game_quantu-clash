@@ -1,7 +1,7 @@
 // game/physics.js
-import { state, CONFIG } from './state.js';
+import { state} from './state.js';
 import { socket } from './network.js';
-
+import { CONFIG } from "./gameConfig.js";
 export function checkWallCollision(x, y, radius, walls) {
     if (!walls || walls.length === 0) return false;
     for (let wall of walls) {
