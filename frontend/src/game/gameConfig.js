@@ -1,5 +1,6 @@
 /* =========================================
    PUBLIC/JS/GAMECONFIG.JS
+   (Nyní upraveno pro ES6 Import/Export)
    ========================================= */
 
 const CONFIG = {
@@ -71,15 +72,10 @@ const CONFIG = {
 // EXPORT PRO FRONTEND I BACKEND
 // =========================================
 
-// Pro Node.js (Backend - server.js a další soubory)
+// Moderní ES6 Export (Pro Vite, React a moderní Node.js)
+export { CONFIG };
+
+// Fallback pro starší Node.js servery používající CommonJS
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CONFIG;
-}
-
-// Pro Prohlížeč (Frontend - window objekt)
-if (typeof window !== 'undefined') {
-    // Pro jistotu umožníme přístup jak přes window.CONFIG, tak přímo vložením globálních proměnných
-    window.CONFIG = CONFIG;
-    // Tímto zpřístupníme všechny vlastnosti rovnou do globálního scope klienta (např. MAP_WIDTH bez prefixu)
-    Object.assign(window, CONFIG);
 }

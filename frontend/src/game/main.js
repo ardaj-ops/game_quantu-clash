@@ -4,6 +4,7 @@ import './network.js'; // Jen spustíme, aby se navázalo spojení
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
 import { initInputs } from './input.js';
+import { CONFIG } from './gameConfig.js';
 
 // --- 1. Inicializace zaměřovače z LocalStorage ---
 try {

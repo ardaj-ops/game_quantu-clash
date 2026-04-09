@@ -1,40 +1,28 @@
 /* ==========================================
-   Z-INDEX HIERARCHIE (Klíčové pro React vs Canvas)
+   REACT VRSTVY A KONTEJNERY
 ========================================== */
 
-/* 1. Nejnižší vrstva: Herní plátno */
+/* Nejnižší vrstva: Herní plátno (Canvas generovaný Reactem) */
 #game {
-  display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -1; /* Posune plátno DOZADU, aby HUD (texty) byl nad ním */
-  background-color: #111; /* Jen pro test, jestli ho vůbec vidíš */
-}
-
-/* 2. Prostřední vrstva: Průhledný obal pro React */
-#root {
-    /* Toto musí být nad canvasem, jinak by canvas kradl kliknutí na menu */
+    display: block;
     position: absolute;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 10; 
-    pointer-events: none; /* Propustí klikání na canvas, když je menu skryté */
+    z-index: 1; /* Musí být pod UI */
+    background-color: #0b0c10;
 }
 
-/* 3. HLAVNÍ OPONA: Kontejner React aplikace */
+/* HLAVNÍ OPONA: Kontejner React aplikace pro Menu/Lobby */
 .App-container {
-    pointer-events: none; /* Kontejner nesmí plošně blokovat myš */
+    pointer-events: none; /* Kontejner nesmí plošně blokovat myš (aby šlo klikat na hru pod ním) */
     position: absolute;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: transparent; /* Pozadí musí být průhledné, aby byla vidět hra */
+    background: transparent;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -42,42 +30,12 @@
     z-index: 15;
 }
 
-/* Skrývací třída (když se přidá, element zmizí) */
-.hidden {
-    display: none !important;
-}
-
-/* 4. Herní HUD (Skóre, Munice) */
-.hud-element, #game-hud {
-    position: absolute;
-    z-index: 20; 
-    pointer-events: auto;
-}
-
-/* 5. Overlays (Konec hry, Karty, Lobby, Menu) */
+/* Vizuální vylepšení pro .overlay (základní pozicování je v index.css) */
 .overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100vw; 
-    height: 100vh; 
-    background-color: var(--glass-bg);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    color: var(--text-main);
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    pointer-events: auto;
+    pointer-events: auto; /* Zabrání propadnutí kliknutí do hry */
     animation: fadeIn 0.4s ease-out;
-}
-
-/* 6. Absolutní vrchol (Nastavení) */
-#settingsUI {
-    z-index: 300 !important;
 }
 
 /* ==========================================
@@ -92,6 +50,7 @@
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     width: 100%; 
+    pointer-events: auto; /* Zde je myš aktivní */
 }
 
 .settings-box {
@@ -287,27 +246,11 @@ input[type="color"]:hover { transform: scale(1.15); }
     transform: scale(0.95) !important;
 }
 
-#createBtn {
-    background: var(--neon-blue);
-    color: #000;
-    box-shadow: 0 0 15px rgba(69, 243, 255, 0.3);
-}
+#createBtn { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px rgba(69, 243, 255, 0.3); }
+#createBtn:hover { box-shadow: 0 0 25px var(--neon-blue); transform: translateY(-2px); }
 
-#createBtn:hover {
-    box-shadow: 0 0 25px var(--neon-blue);
-    transform: translateY(-2px);
-}
-
-#joinSubmitBtn {
-    background: var(--neon-green);
-    color: #000;
-    box-shadow: 0 0 15px rgba(46, 213, 115, 0.3);
-}
-
-#joinSubmitBtn:hover {
-    box-shadow: 0 0 25px var(--neon-green);
-    transform: translateY(-2px);
-}
+#joinSubmitBtn { background: var(--neon-green); color: #000; box-shadow: 0 0 15px rgba(46, 213, 115, 0.3); }
+#joinSubmitBtn:hover { box-shadow: 0 0 25px var(--neon-green); transform: translateY(-2px); }
 
 #returnToLobbyBtn {
     background: var(--neon-green);
@@ -319,11 +262,7 @@ input[type="color"]:hover { transform: scale(1.15); }
     border-radius: 8px;
     font-weight: bold;
 }
-
-#returnToLobbyBtn:hover {
-    box-shadow: 0 0 35px var(--neon-green);
-    transform: translateY(-3px);
-}
+#returnToLobbyBtn:hover { box-shadow: 0 0 35px var(--neon-green); transform: translateY(-3px); }
 
 #readyBtn {
     margin-top: 25px;
@@ -354,6 +293,17 @@ input[type="color"]:hover { transform: scale(1.15); }
     box-shadow: 0 0 30px var(--neon-pink);
 }
 
+#closeSettingsBtn {
+    background: var(--neon-green);
+    color: #000;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+#closeSettingsBtn:hover { box-shadow: 0 0 15px var(--neon-green); transform: translateY(-2px); }
+
 /* ==========================================
    KARTY A VÝBĚR (Rarity)
 ========================================== */
@@ -364,7 +314,6 @@ input[type="color"]:hover { transform: scale(1.15); }
     justify-content: center;
     flex-wrap: wrap;
     max-width: 1000px;
-    z-index: 105;
 }
 
 .card {
@@ -490,53 +439,19 @@ input[type="color"]:hover { transform: scale(1.15); }
 /* ==========================================
    ANIMACE (Keyframes)
 ========================================== */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes slideInUp {
-    from { opacity: 0; transform: translateY(40px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes popIn {
-    0% { opacity: 0; transform: scale(0.8); }
-    100% { opacity: 1; transform: scale(1); }
-}
-
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-}
-
-@keyframes bgShimmer {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-}
-
-@keyframes mythicPulse {
-    0% { background-color: rgba(20, 22, 28, 0.95); }
-    100% { background-color: rgba(50, 20, 20, 0.95); box-shadow: 0 10px 50px rgba(255, 71, 87, 0.8); }
-}
-
-@keyframes exoticPulse {
-    0%, 100% { box-shadow: 0 0 15px rgba(255, 127, 80, 0.4); }
-    50% { box-shadow: 0 0 30px #ff7f50, 0 0 10px rgba(255, 255, 255, 0.3) inset; }
-}
-
-@keyframes transcendedPulse {
-    0% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2); }
-    100% { box-shadow: 0 0 40px #fff, 0 0 25px rgba(0, 255, 255, 0.6), 0 0 15px rgba(191, 0, 255, 0.4) inset; }
-}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes bgShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes mythicPulse { 0% { background-color: rgba(20, 22, 28, 0.95); } 100% { background-color: rgba(50, 20, 20, 0.95); box-shadow: 0 10px 50px rgba(255, 71, 87, 0.8); } }
+@keyframes exoticPulse { 0%, 100% { box-shadow: 0 0 15px rgba(255, 127, 80, 0.4); } 50% { box-shadow: 0 0 30px #ff7f50, 0 0 10px rgba(255, 255, 255, 0.3) inset; } }
+@keyframes transcendedPulse { 0% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2); } 100% { box-shadow: 0 0 40px #fff, 0 0 25px rgba(0, 255, 255, 0.6), 0 0 15px rgba(191, 0, 255, 0.4) inset; } }
 
 /* ==========================================
-   HERNÍ HUD A VANILLA OVERLAYS (Tlačítka, Skóre atd.)
+   HERNÍ HUD A VANILLA OVERLAYS VZHLED
 ========================================== */
 #settingsBtn {
-    top: 20px;
-    right: 20px;
-    padding: 10px 15px;
     background: rgba(0, 0, 0, 0.6);
     color: var(--text-main);
     border: 1px solid #444;
@@ -546,7 +461,6 @@ input[type="color"]:hover { transform: scale(1.15); }
     transition: all 0.2s ease;
     backdrop-filter: blur(4px);
 }
-
 #settingsBtn:hover {
     background: var(--neon-blue);
     color: #000;
@@ -556,20 +470,17 @@ input[type="color"]:hover { transform: scale(1.15); }
 }
 
 #scoreBoardContainer {
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.6);
     padding: 10px 25px;
     border-radius: 10px;
     border: 1px solid #444;
     color: white;
-    text-align: center;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
 }
 
 #ammoContainer {
+    position: fixed;
     bottom: 30px;
     right: 30px;
     font-size: 1.5rem;
@@ -581,19 +492,5 @@ input[type="color"]:hover { transform: scale(1.15); }
     border: 1px solid #444;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
-}
-
-#closeSettingsBtn {
-    background: var(--neon-green);
-    color: #000;
-    font-weight: bold;
-    border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    transition: all 0.2s ease;
-}
-
-#closeSettingsBtn:hover {
-    box-shadow: 0 0 15px var(--neon-green);
-    transform: translateY(-2px);
+    z-index: 50;
 }

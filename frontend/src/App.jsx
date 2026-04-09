@@ -163,19 +163,8 @@ function App() {
 
   return (
     <>
-      <canvas 
-        id="game"
-        style={{
-          display: 'block',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          zIndex: -1,
-          backgroundColor: '#0b0c10'
-        }}
-      ></canvas>
+      {/* HERNÍ PLÁTNO (Místo inline stylů nyní řízeno v app.css přes ID #game) */}
+      <canvas id="game"></canvas>
 
       {currentView !== 'game' && (
         <div className="App-container">
@@ -186,7 +175,7 @@ function App() {
               <h1 className="title-blue">QUANTUM CLASH</h1>
               
               <div className="panel">
-                <p className="status-text" style={{ fontWeight: 'bold', color: isConnected ? '#2ecc71' : '#e74c3c' }}>
+                <p style={{ fontWeight: 'bold', color: isConnected ? 'var(--neon-green)' : 'var(--neon-pink)', marginBottom: '15px' }}>
                   {isConnected ? '● ONLINE' : '● OFFLINE'}
                 </p>
 
@@ -211,11 +200,14 @@ function App() {
                   </select>
                 </div>
 
-                <button onClick={handleCreateRoom} className="menu-btn" style={{ width: '100%' }}>VYTVOŘIT HRU</button>
+                <button id="createBtn" onClick={handleCreateRoom} className="menu-btn" style={{ width: '100%', marginBottom: '20px' }}>
+                  VYTVOŘIT HRU
+                </button>
 
                 <div className="join-box">
-                  <input type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} placeholder="KÓD MÍSTNOSTI" maxLength="4" style={{ width: 'calc(100% - 140px)', marginRight: '10px' }} />
-                  <button onClick={handleJoinRoom} className="menu-btn" style={{ background: '#2ecc71', width: '130px', margin: '0' }}>PŘIPOJIT</button>
+                  <h3>Připojit se</h3>
+                  <input id="roomCodeInput" type="text" value={roomCodeInput} onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())} placeholder="KÓD MÍSTNOSTI" maxLength="4" />
+                  <button id="joinSubmitBtn" onClick={handleJoinRoom} className="menu-btn" style={{ width: '100%' }}>PŘIPOJIT</button>
                 </div>
 
                 {errorMsg && <p id="errorMsg">{errorMsg}</p>}
@@ -226,51 +218,56 @@ function App() {
           {/* LOBBY VIEW */}
           {currentView === 'lobby' && (
             <div id="lobbyUI" className="overlay">
-              <div className="panel lobby-panel">
-                <h2 className="title-blue">LOBBY</h2>
+              <div className="panel lobby-panel" style={{ maxWidth: '600px' }}>
+                <h2 className="title-blue" style={{ fontSize: '2.5rem', marginTop: 0 }}>LOBBY</h2>
                 
-                <div className="room-info" style={{ marginBottom: '20px' }}>
-                  <span className="room-code-label">KÓD MÍSTNOSTI: </span>
-                  <strong style={{ cursor: 'pointer', fontSize: '24px', color: '#45f3ff' }} onClick={copyToClipboard}>
+                <div style={{ marginBottom: '20px' }}>
+                  <div className="room-code-title">KÓD MÍSTNOSTI</div>
+                  <div id="displayRoomCode" onClick={copyToClipboard}>
                     {roomCode}
-                  </strong>
-                  {copied && <span style={{ marginLeft: '10px', color: '#2ecc71' }}>Zkopírováno!</span>}
+                  </div>
+                  {copied && <div style={{ color: 'var(--neon-green)', fontWeight: 'bold' }}>Zkopírováno!</div>}
                 </div>
 
                 <div className="settings-box">
-                  <h3 className="section-title">Nastavení {isHost ? '👑' : '🔒'}</h3>
-                  <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <h3 style={{ color: 'var(--neon-blue)', marginTop: 0 }}>Nastavení {isHost ? '👑' : '🔒'}</h3>
+                  <div className="input-group">
                     <label>Mód:</label>
                     <select disabled={!isHost} value={gameSettings.gameMode} onChange={(e) => handleSettingChange('gameMode', e.target.value)}>
                       <option value="FFA">Všichni proti všem</option>
                       <option value="TDM">Týmy</option>
                     </select>
                   </div>
-                  <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
                     <label>Kola:</label>
-                    <input disabled={!isHost} type="number" value={gameSettings.maxRounds} onChange={(e) => handleSettingChange('maxRounds', e.target.value)} style={{ width: '60px' }} />
+                    <input disabled={!isHost} type="number" value={gameSettings.maxRounds} onChange={(e) => handleSettingChange('maxRounds', e.target.value)} />
                   </div>
                 </div>
 
-                <div className="players-list" style={{ marginTop: '20px', textAlign: 'left' }}>
-                  <h3 className="section-title">Hráči ({Object.keys(players).length}/6)</h3>
+                <div className="settings-section" style={{ textAlign: 'left' }}>
+                  <h3 style={{ color: 'var(--neon-blue)', marginTop: 0 }}>Hráči ({Object.keys(players).length}/6)</h3>
                   {Object.values(players).map((p, i) => (
-                    <div key={i} className="player-entry" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <span style={{ width: '15px', height: '15px', borderRadius: '50%', backgroundColor: p.color, boxShadow: `0 0 10px ${p.color}` }}></span>
-                      <span className="player-name">{p.name} {p.isHost ? '👑' : ''}</span>
-                      <span style={{ marginLeft: 'auto', fontWeight: 'bold', color: p.isReady ? '#2ecc71' : '#f1c40f' }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px', padding: '10px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
+                      <span style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: p.color, boxShadow: `0 0 10px ${p.color}` }}></span>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{p.name} {p.isHost ? '👑' : ''}</span>
+                      <span style={{ marginLeft: 'auto', fontWeight: 'bold', color: p.isReady ? 'var(--neon-green)' : 'var(--neon-yellow)' }}>
                         {p.isReady ? 'PŘIPRAVEN' : 'ČEKÁ'}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                <button onClick={toggleReady} className="menu-btn" style={{ width: '100%', marginTop: '20px', background: isReady ? '#e74c3c' : '#45f3ff' }}>
+                <button 
+                  id="readyBtn" 
+                  onClick={toggleReady} 
+                  className={isReady ? 'active' : ''} 
+                  style={{ width: '100%' }}
+                >
                   {isReady ? 'ZRUŠIT PŘIPRAVENOST' : 'PŘIPRAVIT SE!'}
                 </button>
                 
-                <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="leave-btn" style={{ width: '100%', marginTop: '10px', background: 'transparent', border: '1px solid #7f8c8d', color: 'white', padding: '10px', borderRadius: '6px', cursor: 'pointer' }}>
-                  Opustit
+                <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="menu-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #7f8c8d', color: '#aaaaaa', marginTop: '15px' }}>
+                  Opustit místnost
                 </button>
               </div>
             </div>
@@ -280,36 +277,30 @@ function App() {
 
       {/* --- VÝBĚR KARET --- */}
       {isCardSelection && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
-          backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 100, display: 'flex',
-          flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'auto' // Pojistka
-        }}>
-          <h1 style={{ color: '#45f3ff', textShadow: '0 0 15px #45f3ff', marginBottom: '40px', fontSize: '40px' }}>VÝBĚR VYLEPŠENÍ</h1>
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {cards.length > 0 ? cards.map((c, i) => (
-              <div 
-                key={i} 
-                // OPRAVA: Použití onPointerDown + stopPropagation zablokuje herní engine v krádeži kliku
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  handleSelectCard(c.id);
-                }}
-                style={{
-                  background: '#1a1a2e', border: '2px solid #45f3ff', borderRadius: '10px',
-                  padding: '20px', width: '220px', textAlign: 'center', cursor: 'pointer',
-                  boxShadow: '0 0 10px rgba(69, 243, 255, 0.3)', transition: 'transform 0.2s',
-                  pointerEvents: 'auto'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                <h3 style={{ color: 'white', borderBottom: '1px solid #45f3ff', paddingBottom: '10px', pointerEvents: 'none' }}>{c.name || 'Vylepšení'}</h3>
-                <p style={{ color: '#ccc', marginTop: '15px', pointerEvents: 'none' }}>{c.description || 'Popis vylepšení chybí...'}</p>
-              </div>
-            )) : (
-              <h3 style={{ color: 'white' }}>Čekám na balíček karet ze serveru...</h3>
+        <div className="overlay">
+          <h1 className="title-blue" style={{ fontSize: '4rem', marginBottom: '20px' }}>VÝBĚR VYLEPŠENÍ</h1>
+          <div className="cards-container">
+            {cards.length > 0 ? cards.map((c, i) => {
+              // Nastavení CSS třídy podle rarity (fallback na 'common', pokud rarita neexistuje)
+              const rarityClass = c.rarity ? `card-${c.rarity.toLowerCase()}` : 'card-common';
+              
+              return (
+                <div 
+                  key={i} 
+                  className={`card ${rarityClass}`}
+                  onPointerDown={(e) => {
+                    e.stopPropagation(); // Zabrání propadnutí kliku do Canvasu (střelba ve hře)
+                    handleSelectCard(c.id);
+                  }}
+                >
+                  {/* Pokud posíláš raritu, vypíše ji to nahoru */}
+                  {c.rarity && <div className="rarity-label">{c.rarity}</div>}
+                  <h3>{c.name || 'Vylepšení'}</h3>
+                  <p>{c.description || 'Popis chybí...'}</p>
+                </div>
+              );
+            }) : (
+              <h3 className="waiting-text">Čekám na balíček karet ze serveru...</h3>
             )}
           </div>
         </div>
@@ -317,27 +308,21 @@ function App() {
 
       {/* --- GAME OVER OBRAZOVKA --- */}
       {isGameOver && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh',
-          backgroundColor: 'transparent', zIndex: 100, display: 'flex',
-          flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'auto'
-        }}>
-          <div style={{ marginTop: '200px' }}>
+        <div className="overlay">
+          <h1 id="winnerText">KONEC HRY</h1>
+          <div>
             {isHost ? (
               <button 
-                // OPRAVA: I tady zablokujeme probublání do hry
+                id="returnToLobbyBtn"
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   socket.emit('returnToLobby');
                 }} 
-                className="menu-btn" 
-                style={{ padding: '15px 40px', fontSize: '20px', backgroundColor: '#e74c3c', cursor: 'pointer' }}
               >
                 ZPĚT DO LOBBY
               </button>
             ) : (
-              <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', textShadow: '2px 2px 4px black' }}>
+              <p className="waiting-text">
                 Čekáme na to, až Host vrátí hru do Lobby...
               </p>
             )}
@@ -345,24 +330,19 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ HUD */}
+      {/* HERNÍ HUD (Viditelný jen při hraní, když není výběr karet ani game over) */}
       <div 
         id="game-hud" 
-        style={{ 
-          display: currentView === 'game' && !isCardSelection ? 'block' : 'none', 
-          position: 'absolute',
-          top: '20px',
-          left: '20px',
-          zIndex: 10,
-          pointerEvents: 'none' 
-        }}
+        className={currentView === 'game' && !isCardSelection && !isGameOver ? '' : 'hidden'}
       >
-        {/* OPRAVA: Necháme h2 tagy uvnitř prázdné! Tím pádem React nebude při každém renderu přepisovat hodnoty z render.js */}
-        <h2 id="hpDisplay" style={{ color: '#ff4444', margin: '5px 0', textShadow: '2px 2px 2px black' }}></h2>
-        <h2 id="ammoDisplay" style={{ color: 'white', margin: '5px 0', textShadow: '2px 2px 2px black' }}></h2>
-        
-        <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', marginTop: '10px' }}>
-          <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
+        <div id="ammoContainer">
+          {/* Necháme h2 tagy prázdné - Vanilla JS engine si je najde a naplní hodnotami */}
+          <h2 id="hpDisplay" style={{ color: '#ff4757', margin: '0 0 5px 0', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}></h2>
+          <h2 id="ammoDisplay" style={{ color: 'white', margin: '0 0 5px 0', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}></h2>
+          
+          <div id="dash-progress" style={{ width: '150px', height: '10px', background: 'rgba(255,255,255,0.2)', borderRadius: '5px', overflow: 'hidden', marginTop: '10px' }}>
+            <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: 'var(--neon-blue)', transition: 'width 0.1s linear' }}></div>
+          </div>
         </div>
       </div>
     </>
