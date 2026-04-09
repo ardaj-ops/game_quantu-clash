@@ -1,7 +1,7 @@
 // game/network.js
 import { io } from 'socket.io-client';
 import { state } from './state.js';
-
+import { CONFIG } from './gameConfig.js';
 // Automatická detekce prostředí (Lokálně vs. Produkce)
 const BACKEND_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:3000" 
