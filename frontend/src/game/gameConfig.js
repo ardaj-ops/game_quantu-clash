@@ -75,7 +75,3 @@ const CONFIG = {
 // Moderní ES6 Export (Pro Vite, React a moderní Node.js)
 export { CONFIG };
 
-// Fallback pro starší Node.js servery používající CommonJS
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = CONFIG;
-}

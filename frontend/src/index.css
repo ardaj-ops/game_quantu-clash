@@ -25,16 +25,30 @@ body, html {
     height: 100vh;
     width: 100vw;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    overflow: hidden; /* Zabrání rolování stránky */
+    overflow: hidden; /* Zabrání rolování celé stránky */
     touch-action: none; /* Zabrání nechtěnému zoomování/posouvání na dotykových displejích */
     user-select: none; /* Zabrání označování textu při zběsilém klikání ve hře */
+}
+
+/* ==========================================
+   HERNÍ PLÁTNO (CANVAS) - ÚPLNĚ VZADU
+========================================== */
+canvas#game {
+    display: block;
+    position: fixed; /* Zajistí, že se plátno nikdy neposune */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1; /* Drží hru úplně vzadu za UIčkem */
+    pointer-events: auto; /* Plátno musí přijímat kliknutí pro střelbu */
 }
 
 /* ==========================================
    VRSTVENÍ A POZICOVÁNÍ APLIKACE (Z-INDEX)
 ========================================== */
 
-/* React kořenový element - leží úplně dole (kreslí se zde Canvas) */
+/* React kořenový element */
 #root {
     position: absolute;
     top: 0;
@@ -45,21 +59,26 @@ body, html {
     padding: 0;
     max-width: none;
     text-align: left;
-    z-index: 10;
+    z-index: 10; /* Leží NAD Canvasem */
+    pointer-events: none; /* Propouští kliky do Canvasu, pokud nejsou na UI prvcích */
 }
 
-/* Vrstva pro statické HTML UI - leží NAD Reactem a Canvasem */
+/* Děti Reactu (Lobby, Menu) musí zachytávat kliknutí */
+#root > * {
+    pointer-events: auto;
+}
+
+/* Vrstva pro statické HTML UI (pokud ještě nějaké máš mimo React) */
 #game-layer {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none; /* Kliknutí propadnou dolů do hry... */
+    pointer-events: none;
     z-index: 20;
 }
 
-/* ...ale tlačítka a panely v této vrstvě budou klikatelné */
 #game-layer > * {
     pointer-events: auto;
 }
@@ -68,25 +87,29 @@ body, html {
    UI KOMPONENTY A HELPERY
 ========================================== */
 
-/* HUD prvky (skóre, tlačítko nastavení) - fixované na obrazovce */
-.hud-element {
+/* HUD prvky (skóre, životy, munice) - fixované na obrazovce */
+.hud-element, #game-hud {
     position: fixed;
-    z-index: 50;
+    top: 20px;
+    left: 20px;
+    z-index: 50; /* Nad hrou, pod menu */
+    pointer-events: none; /* Přes HUD chceme střílet, neklikat na něj */
 }
 
-/* Překryvná vrstva přes celou obrazovku (Konec hry, Výběr karet, Nastavení) */
+/* Překryvná vrstva přes celou obrazovku (Menu, Lobby, Konec hry) */
 .overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.85); /* Tmavší průhlednost na pozadí */
+    background: var(--glass-bg); /* Použití tvé proměnné pro konzistentní vzhled */
+    backdrop-filter: blur(8px); /* Krásný rozmazaný efekt za Lobby (volitelné) */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 100; /* Vždy úplně nahoře nad vším */
     text-align: center;
 }
 
@@ -96,7 +119,7 @@ body, html {
 }
 
 /* ==========================================
-   SCROLLBAR (Posuvník)
+   SCROLLBAR (Posuvník - aplikuje se i na seznam hráčů)
 ========================================== */
 ::-webkit-scrollbar {
     width: 8px;
@@ -112,4 +135,5 @@ body, html {
 }
 ::-webkit-scrollbar-thumb:hover {
     background: #fff;
+    box-shadow: 0 0 15px var(--neon-blue);
 }

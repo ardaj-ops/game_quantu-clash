@@ -5,7 +5,7 @@
 /* Nejnižší vrstva: Herní plátno (Canvas generovaný Reactem) */
 #game {
     display: block;
-    position: absolute;
+    position: fixed; /* ZMĚNĚNO NA FIXED: Zajišťuje absolutní nehybnost na pozadí */
     top: 0;
     left: 0;
     width: 100vw;
@@ -17,7 +17,7 @@
 /* HLAVNÍ OPONA: Kontejner React aplikace pro Menu/Lobby */
 .App-container {
     pointer-events: none; /* Kontejner nesmí plošně blokovat myš (aby šlo klikat na hru pod ním) */
-    position: absolute;
+    position: fixed; /* ZMĚNĚNO NA FIXED: Zabrání roztahování stránky mimo obrazovku */
     top: 0;
     left: 0;
     width: 100vw;

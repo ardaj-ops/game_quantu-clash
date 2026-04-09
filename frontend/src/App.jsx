@@ -215,36 +215,59 @@ function App() {
             </div>
           )}
 
-          {/* LOBBY VIEW */}
+          {/* LOBBY VIEW (Opravený layout s flexboxem a scrollováním hráčů) */}
           {currentView === 'lobby' && (
             <div id="lobbyUI" className="overlay">
-              <div className="panel lobby-panel" style={{ maxWidth: '600px' }}>
-                <h2 className="title-blue" style={{ fontSize: '2.5rem', marginTop: 0 }}>LOBBY</h2>
-                
-                <div style={{ marginBottom: '20px' }}>
-                  <div className="room-code-title">KÓD MÍSTNOSTI</div>
-                  <div id="displayRoomCode" onClick={copyToClipboard}>
-                    {roomCode}
+              <div 
+                className="panel lobby-panel" 
+                style={{ 
+                  maxWidth: '600px', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  maxHeight: '90vh', // Omezí okno na max 90% výšky obrazovky
+                  padding: '30px'
+                }}
+              >
+                {/* HLAVIČKA A NASTAVENÍ (Zůstává vždy nahoře) */}
+                <div style={{ flexShrink: 0 }}>
+                  <h2 className="title-blue" style={{ fontSize: '2.5rem', marginTop: 0 }}>LOBBY</h2>
+                  
+                  <div style={{ marginBottom: '20px' }}>
+                    <div className="room-code-title">KÓD MÍSTNOSTI</div>
+                    <div id="displayRoomCode" onClick={copyToClipboard} style={{ cursor: 'pointer' }}>
+                      {roomCode}
+                    </div>
+                    {copied && <div style={{ color: 'var(--neon-green)', fontWeight: 'bold' }}>Zkopírováno!</div>}
                   </div>
-                  {copied && <div style={{ color: 'var(--neon-green)', fontWeight: 'bold' }}>Zkopírováno!</div>}
+
+                  <div className="settings-box">
+                    <h3 style={{ color: 'var(--neon-blue)', marginTop: 0 }}>Nastavení {isHost ? '👑' : '🔒'}</h3>
+                    <div className="input-group">
+                      <label>Mód:</label>
+                      <select disabled={!isHost} value={gameSettings.gameMode} onChange={(e) => handleSettingChange('gameMode', e.target.value)}>
+                        <option value="FFA">Všichni proti všem</option>
+                        <option value="TDM">Týmy</option>
+                      </select>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label>Kola:</label>
+                      <input disabled={!isHost} type="number" value={gameSettings.maxRounds} onChange={(e) => handleSettingChange('maxRounds', e.target.value)} />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="settings-box">
-                  <h3 style={{ color: 'var(--neon-blue)', marginTop: 0 }}>Nastavení {isHost ? '👑' : '🔒'}</h3>
-                  <div className="input-group">
-                    <label>Mód:</label>
-                    <select disabled={!isHost} value={gameSettings.gameMode} onChange={(e) => handleSettingChange('gameMode', e.target.value)}>
-                      <option value="FFA">Všichni proti všem</option>
-                      <option value="TDM">Týmy</option>
-                    </select>
-                  </div>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <label>Kola:</label>
-                    <input disabled={!isHost} type="number" value={gameSettings.maxRounds} onChange={(e) => handleSettingChange('maxRounds', e.target.value)} />
-                  </div>
-                </div>
-
-                <div className="settings-section" style={{ textAlign: 'left' }}>
+                {/* SEZNAM HRÁČŮ (Scrollovací kontejner) */}
+                <div 
+                  className="settings-section seznam-hracu" 
+                  style={{ 
+                    textAlign: 'left', 
+                    flexGrow: 1,       // Zabere veškeré zbylé volné místo
+                    overflowY: 'auto', // Pokud hráči přetečou, zapne scroll
+                    paddingRight: '10px', 
+                    marginTop: '20px', 
+                    marginBottom: '20px'
+                  }}
+                >
                   <h3 style={{ color: 'var(--neon-blue)', marginTop: 0 }}>Hráči ({Object.keys(players).length}/6)</h3>
                   {Object.values(players).map((p, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px', padding: '10px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px' }}>
@@ -257,18 +280,21 @@ function App() {
                   ))}
                 </div>
 
-                <button 
-                  id="readyBtn" 
-                  onClick={toggleReady} 
-                  className={isReady ? 'active' : ''} 
-                  style={{ width: '100%' }}
-                >
-                  {isReady ? 'ZRUŠIT PŘIPRAVENOST' : 'PŘIPRAVIT SE!'}
-                </button>
-                
-                <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="menu-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #7f8c8d', color: '#aaaaaa', marginTop: '15px' }}>
-                  Opustit místnost
-                </button>
+                {/* SPODNÍ TLAČÍTKA (Zůstávají vždy ukotvená dole) */}
+                <div style={{ flexShrink: 0 }}>
+                  <button 
+                    id="readyBtn" 
+                    onClick={toggleReady} 
+                    className={isReady ? 'active' : ''} 
+                    style={{ width: '100%' }}
+                  >
+                    {isReady ? 'ZRUŠIT PŘIPRAVENOST' : 'PŘIPRAVIT SE!'}
+                  </button>
+                  
+                  <button onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} className="menu-btn" style={{ width: '100%', background: 'transparent', border: '1px solid #7f8c8d', color: '#aaaaaa', marginTop: '15px' }}>
+                    Opustit místnost
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -281,7 +307,6 @@ function App() {
           <h1 className="title-blue" style={{ fontSize: '4rem', marginBottom: '20px' }}>VÝBĚR VYLEPŠENÍ</h1>
           <div className="cards-container">
             {cards.length > 0 ? cards.map((c, i) => {
-              // Nastavení CSS třídy podle rarity (fallback na 'common', pokud rarita neexistuje)
               const rarityClass = c.rarity ? `card-${c.rarity.toLowerCase()}` : 'card-common';
               
               return (
@@ -289,11 +314,10 @@ function App() {
                   key={i} 
                   className={`card ${rarityClass}`}
                   onPointerDown={(e) => {
-                    e.stopPropagation(); // Zabrání propadnutí kliku do Canvasu (střelba ve hře)
+                    e.stopPropagation(); 
                     handleSelectCard(c.id);
                   }}
                 >
-                  {/* Pokud posíláš raritu, vypíše ji to nahoru */}
                   {c.rarity && <div className="rarity-label">{c.rarity}</div>}
                   <h3>{c.name || 'Vylepšení'}</h3>
                   <p>{c.description || 'Popis chybí...'}</p>
@@ -330,13 +354,12 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ HUD (Viditelný jen při hraní, když není výběr karet ani game over) */}
+      {/* HERNÍ HUD (Viditelný jen při hraní) */}
       <div 
         id="game-hud" 
         className={currentView === 'game' && !isCardSelection && !isGameOver ? '' : 'hidden'}
       >
         <div id="ammoContainer">
-          {/* Necháme h2 tagy prázdné - Vanilla JS engine si je najde a naplní hodnotami */}
           <h2 id="hpDisplay" style={{ color: '#ff4757', margin: '0 0 5px 0', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}></h2>
           <h2 id="ammoDisplay" style={{ color: 'white', margin: '0 0 5px 0', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}></h2>
           
