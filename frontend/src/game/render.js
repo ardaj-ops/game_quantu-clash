@@ -1,7 +1,7 @@
 // game/render.js
-import { state, CONFIG } from './state.js';
 import { socket } from './network.js';
-import { CONFIG } from './gameConfig.js';
+import { state } from "./state.js"; 
+import { CONFIG } from "./gameConfig.js";
 const TWO_PI = Math.PI * 2;
 
 // --- POMOCNÉ VYKRESLOVACÍ FUNKCE ---
