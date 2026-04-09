@@ -339,32 +339,19 @@ export function drawGame(serverData) {
         me = playersData[socket.id];
     }
 
-    state.gameScale = 1; 
-    
-    if (me && state.renderPlayers && state.renderPlayers[socket.id]) {
-        const smoothMe = state.renderPlayers[socket.id];
-        
-        let camX = (smoothMe.x * state.gameScale) - (state.canvas.width / 2);
-        let camY = (smoothMe.y * state.gameScale) - (state.canvas.height / 2);
+    // --- ZDE JE HLAVNÍ ZMĚNA: GLOBÁLNÍ KAMERA ---
+    // Vypočítáme měřítko, aby se celá mapa vešla do obrazovky
+    const scaleX = state.canvas.width / mapW;
+    const scaleY = state.canvas.height / mapH;
+    state.gameScale = Math.min(scaleX, scaleY); // Zvolíme menší číslo, ať se zachová poměr stran a nic se neořízne
 
-        const maxCamX = (mapW * state.gameScale) - state.canvas.width;
-        const maxCamY = (mapH * state.gameScale) - state.canvas.height;
-        
-        if (state.canvas.width > mapW * state.gameScale) camX = -(state.canvas.width - mapW * state.gameScale) / 2;
-        else camX = Math.max(0, Math.min(maxCamX, camX));
-
-        if (state.canvas.height > mapH * state.gameScale) camY = -(state.canvas.height - mapH * state.gameScale) / 2;
-        else camY = Math.max(0, Math.min(maxCamY, camY));
-
-        state.gameOffsetX = -camX;
-        state.gameOffsetY = -camY;
-    } else {
-        state.gameOffsetX = (state.canvas.width - (mapW * state.gameScale)) / 2;
-        state.gameOffsetY = (state.canvas.height - (mapH * state.gameScale)) / 2;
-    }
+    // Vycentrujeme mapu (vypočítáme prázdné místo po stranách, pokud je monitor v jiném poměru než mapa)
+    state.gameOffsetX = (state.canvas.width - (mapW * state.gameScale)) / 2;
+    state.gameOffsetY = (state.canvas.height - (mapH * state.gameScale)) / 2;
 
     state.ctx.save();
     
+    // Aplikujeme "zoom" a posun na celé plátno
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
     state.ctx.scale(state.gameScale, state.gameScale);
 
@@ -382,6 +369,7 @@ export function drawGame(serverData) {
     
     state.ctx.restore(); 
 
+    // --- Vykreslování UI a křížku nad herní plochou ---
     if (gameState === 'PLAYING') {
         const isTabPressed = state.playerInputs && state.playerInputs.tab;
         if (!isTabPressed) {
