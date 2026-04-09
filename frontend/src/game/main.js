@@ -66,11 +66,31 @@ let engineStarted = false;
 export function initGameEngine() {
     if (engineStarted) return; // Zabráníme vícenásobnému spuštění
 
+    // --- NOVÉ: SKRYTÍ LOBBY UI ---
+    // Zde doplň přesné ID tvého divu, ve kterém je Lobby.
+    // (Zkusil jsem odhadnout časté názvy, pokud máš jiný, přepiš ho!)
+    const lobbyElements = [
+        document.getElementById('lobby-container'), 
+        document.getElementById('lobby'),
+        document.querySelector('.lobby-wrapper') // Alternativa přes class
+    ];
+
+    lobbyElements.forEach(el => {
+        if (el) {
+            el.style.display = 'none';
+            console.log("🙈 Lobby UI bylo skryto.");
+        }
+    });
+    // ------------------------------
+
     const canvas = document.getElementById('game');
     if (!canvas) {
         console.error("❌ Plátno nenalezeno! React ještě nevykreslil <canvas id='game'>.");
         return;
     }
+
+    // Zviditelnění canvasu (pro jistotu, kdyby byl skrytý)
+    canvas.style.display = 'block';
 
     // KRITICKÝ KROK PRO REACT: Okamžitě plátnu nastavíme 100% vnitřní velikost
     canvas.width = window.innerWidth;
