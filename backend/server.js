@@ -1,11 +1,84 @@
+<<<<<<< HEAD
+=======
+process.on('uncaughtException', (err) => {
+    console.error('\n🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:');
+    console.error('Typ chyby:', err.name);
+    console.error('Zpráva:', err.message);
+    console.error('Stack Trace:\n', err.stack);
+    console.error('----------------------------------------\n');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:');
+    console.error('Důvod:', reason);
+    console.error('Promise:', promise);
+    if (reason && reason.stack) {
+        console.error('Stack Trace:\n', reason.stack);
+    }
+    console.error('----------------------------------------\n');
+});
+
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+<<<<<<< HEAD
 
 // --- Import Domain Manageru ---
 const DomainManager = require('./domainManager.js');
+=======
+const cors = require('cors'); // Přidáno pro globální CORS
+
+// --- Bezpečné načtení externích modulů ---
+let DomainManager;
+let gameHelper = {};
+try {
+    DomainManager = require('./domainManager.js');
+    gameHelper = require('./gameHelper.js') || {};
+    console.log('✅ Manažeři a helpery úspěšně načteny.');
+} catch (err) {
+    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Pravděpodobně špatný export. Místo "export const" použij "module.exports = { ... }"):');
+    console.error(err.stack);
+    process.exit(1); // Necháme server spadnout, ale až po vypsání chyby!
+}
+
+// ==========================================
+// ZABEZPEČENÉ NAČTENÍ FUNKCÍ (FALLBACKS)
+// Pokud něco v gameHelper.js chybí, server použije tyto záložní funkce a nespadne!
+// ==========================================
+const applyHardCaps = gameHelper.applyHardCaps || ((p) => { /* prázdný fallback */ });
+const resetPlayerStatsToBase = gameHelper.resetPlayerStatsToBase || ((p) => { p.hp = p.maxHp; p.ammo = p.maxAmmo; });
+const generateMap = gameHelper.generateMap || ((w, h) => { 
+    console.warn('⚠️ Použita ZÁLOŽNÍ generateMap'); 
+    return { obstacles: [], breakables: [] }; 
+});
+const getValidSpawnPoint = gameHelper.getValidSpawnPoint || (() => ({ x: 200, y: 200 }));
+
+const createPlayerTemplate = gameHelper.createPlayerTemplate || ((name, color, team, cosmetic, isHost) => {
+    console.warn('⚠️ Použita ZÁLOŽNÍ createPlayerTemplate (funkce pravděpodobně chyběla v exportu gameHelper.js!)');
+    return {
+        name: String(name || 'Hráč').substring(0, 15),
+        color: String(color || '#ffffff').substring(0, 7),
+        team: team || "none",
+        cosmetic: cosmetic || 0,
+        isHost: !!isHost,
+        isReady: false,
+        hp: 100, maxHp: 100,
+        x: 0, y: 0,
+        ammo: 10, maxAmmo: 10,
+        damage: 20, speed: 5, fireRate: 500, reloadSpeed: 1000,
+        bulletSpeed: 10, bulletSize: 5,
+        isReloading: false, isInvisible: false, domainActive: false,
+        domainType: null,
+        score: 0,
+        aimAngle: 0,
+        inputs: { up: false, down: false, left: false, right: false, click: false, rightClick: false, aimAngle: 0, reload: false, dash: false }
+    };
+});
+
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -14,6 +87,7 @@ const server = http.createServer(app);
 // ==========================================
 // 1. NASTAVENÍ CORS A STATICKÝCH SOUBORŮ
 // ==========================================
+<<<<<<< HEAD
 const io = new Server(server, {
     cors: {
         origin: [
@@ -22,6 +96,25 @@ const io = new Server(server, {
             "http://localhost:3000"
         ], 
         methods: ["GET", "POST"]
+=======
+const allowedOrigins = [
+    "https://quantum-clash-gq1w.onrender.com", 
+    "http://localhost:5173", 
+    "http://localhost:3000"
+];
+
+// Express CORS middleware
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "OPTIONS"]
+}));
+
+const io = new Server(server, {
+    cors: {
+        origin: allowedOrigins, 
+        methods: ["GET", "POST", "OPTIONS"],
+        credentials: true
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     }
 });
 
@@ -43,6 +136,7 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
+<<<<<<< HEAD
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
@@ -50,6 +144,11 @@ const loadSharedFile = (fileName) => {
     // Přidali jsme cestu přímo do tvé složky frontend/src/game/
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'src', 'game', fileName), // <--- TADY JE ZMĚNA
+=======
+const loadSharedFile = (fileName) => {
+    const pathsToTry = [
+        path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
         path.join(frontendDistPath, fileName),
         path.join(frontendPublicPath, fileName), 
         path.join(__dirname, 'public', fileName),                  
@@ -77,7 +176,11 @@ const loadSharedFile = (fileName) => {
                 wrapper(m, m.exports, customRequire);
                 return m.exports;
             } catch (err) {
+<<<<<<< HEAD
                 console.warn(`⚠️ Soubor ${fileName} nelze načíst:`, err.message);
+=======
+                console.warn(`⚠️ Soubor ${fileName} nelze načíst (možná obsahuje ES6 importy):`, err.message);
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
                 return null;
             }
         }
@@ -90,10 +193,13 @@ const loadSharedFile = (fileName) => {
 const gameConfig = loadSharedFile('gameConfig.js') || {};
 const {
     MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
+<<<<<<< HEAD
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
     BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
     MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
     MAX_CAP_MOVE_SPEED = 2.8, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 45, MAX_CAP_AMMO = 50,
+=======
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
@@ -113,13 +219,18 @@ const rooms = {};
 const RARITY_WEIGHTS = { 'common': 100, 'rare': 40, 'epic': 15, 'legendary': 5 };
 
 // ==========================================
+<<<<<<< HEAD
 // 3. POMOCNÉ FUNKCE 
+=======
+// 3. LOKÁLNÍ POMOCNÉ FUNKCE 
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 // ==========================================
 const broadcastLobbyUpdate = (room) => {
     if (!room) return;
     io.to(room.id).emit('lobbyUpdated', { hostId: room.hostId, players: room.players });
 };
 
+<<<<<<< HEAD
 const applyHardCaps = (p) => {
     if (!p) return;
     p.maxHp = Math.max(MIN_CAP_HP, Math.min(MAX_CAP_HP, p.maxHp || BASE_HP));
@@ -201,11 +312,14 @@ const getValidSpawnPoint = (players, obstacles, breakables) => {
     return { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 }; 
 };
 
+=======
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     return Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 };
 
+<<<<<<< HEAD
 const createPlayerTemplate = (playerName, playerColor, playerTeam, playerCosmetic, isHost = false) => ({
     x: 0, y: 0, aimAngle: 0,
     hp: BASE_HP, maxHp: BASE_HP, damage: BASE_DAMAGE, fireRate: BASE_FIRE_RATE, bulletSpeed: BASE_BULLET_SPEED, moveSpeed: BASE_MOVE_SPEED,
@@ -219,6 +333,8 @@ const createPlayerTemplate = (playerName, playerColor, playerTeam, playerCosmeti
     domainType: undefined, domainActive: false, domainTimer: 0, domainCooldown: 0, isJackpotActive: false
 });
 
+=======
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 const generateCardsForPlayer = (player) => {
     if (!availableCards.length || !player) return [];
     
@@ -246,7 +362,11 @@ const generateCardsForPlayer = (player) => {
 
         let randomPick = Math.random() * totalWeight;
         let cumulativeWeight = 0;
+<<<<<<< HEAD
         let selected = weightedCards[weightedCards.length - 1].card; // Fallback
+=======
+        let selected = weightedCards[weightedCards.length - 1].card; 
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 
         for (let item of weightedCards) {
             cumulativeWeight += item.weight;
@@ -276,7 +396,11 @@ const startNextRound = (room) => {
     console.log(`🎮 Hra v místnosti ${room.id} začíná!`);
     room.roundNumber = (room.roundNumber || 0) + 1;
     
+<<<<<<< HEAD
     const mapData = generateMap();
+=======
+    const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT); // ZDE OPRAVENO: Předáváme rozměry
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     room.obstacles = mapData.obstacles;
     room.breakables = mapData.breakables;
     room.deadPlayersThisRound = [];
@@ -352,6 +476,10 @@ const handleDeath = (room, victimId) => {
             room.currentLoserId = room.upgradeQueue[0];
             let cardsToSend = generateCardsForPlayer(room.players[room.currentLoserId]);
             io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
+<<<<<<< HEAD
+=======
+            io.to(room.id).emit('showCards', cardsToSend);
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
         } else {
             startNextRound(room);
         }
@@ -367,7 +495,11 @@ io.on('connection', (socket) => {
 
     socket.on('createRoom', (data = {}) => {
         const code = generateRoomCode();
+<<<<<<< HEAD
         const mapData = generateMap();
+=======
+        const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT); // ZDE OPRAVENO: Předáváme rozměry
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
         
         rooms[code] = {
             id: code, hostId: socket.id, players: {}, upgradeQueue: [],
@@ -399,7 +531,11 @@ io.on('connection', (socket) => {
         socket.join(code); 
         socket.roomId = code;
         const pTeam = (data.team && room.settings.gameMode !== 'FFA') ? data.team : "none";
+<<<<<<< HEAD
         room.players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
+=======
+        rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 
         socket.emit('roomJoined', { code, isHost: false });
         socket.emit('settingsUpdated', room.settings);
@@ -466,7 +602,11 @@ io.on('connection', (socket) => {
             
             playerIds.forEach(id => {
                 room.players[id].score = 0;
+<<<<<<< HEAD
                 resetPlayerStatsToBase(room.players[id]);
+=======
+                resetPlayerStatsToBase(room.players[id]); 
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
             });
             
             room.teamScores = {};
@@ -592,7 +732,11 @@ io.on('connection', (socket) => {
             const oldMaxHp = p.maxHp;
             if (typeof card.apply === 'function') card.apply(p);
             if (p.maxHp !== oldMaxHp) p.hp = Math.floor(p.maxHp * (p.hp / oldMaxHp));
+<<<<<<< HEAD
             applyHardCaps(p);
+=======
+            applyHardCaps(p); 
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
         }
 
         room.upgradeQueue = room.upgradeQueue.filter(id => id !== socket.id);
@@ -601,7 +745,13 @@ io.on('connection', (socket) => {
             room.currentLoserId = room.upgradeQueue[0];
             const nextPlayer = room.players[room.currentLoserId];
             if (nextPlayer) {
+<<<<<<< HEAD
                 io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: generateCardsForPlayer(nextPlayer) });
+=======
+                let cardsToSend = generateCardsForPlayer(nextPlayer);
+                io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
+                io.to(room.id).emit('showCards', cardsToSend);
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
             } else { 
                 startNextRound(room); 
             }
@@ -643,7 +793,13 @@ io.on('connection', (socket) => {
                 room.currentLoserId = room.upgradeQueue[0];
                 const nextPlayer = room.players[room.currentLoserId];
                 if (nextPlayer) { 
+<<<<<<< HEAD
                     io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: generateCardsForPlayer(nextPlayer) }); 
+=======
+                    let cardsToSend = generateCardsForPlayer(nextPlayer);
+                    io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend }); 
+                    io.to(room.id).emit('showCards', cardsToSend);
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
                 } else { 
                     startNextRound(room); 
                 }
@@ -679,7 +835,11 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (!room) return;
         
+<<<<<<< HEAD
         if (room.gameState === 'PLAYING' && typeof DomainManager.updateDomains === 'function') {
+=======
+        if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
+>>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
             DomainManager.updateDomains(room.players, room, TICK_RATE);
         }
 
