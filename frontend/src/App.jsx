@@ -4,45 +4,38 @@ import './App.css';
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
 
-// Socket inicializujeme hned, aby byl dostupný pro game.js skrze window
 const socket = io(backendUrl, { autoConnect: false });
 window.gameSocket = socket; 
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   
-  // --- DATA HRÁČE (Local Storage) ---
   const [nickname, setNickname] = useState(() => localStorage.getItem('qc_nickname') || '');
   const [color, setColor] = useState(() => localStorage.getItem('qc_color') || '#45f3ff');
   const [cosmetics, setCosmetics] = useState(() => localStorage.getItem('qc_cosmetics') || 'none');
   
-  // --- STAVY APLIKACE ---
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [currentView, setCurrentView] = useState('menu'); // 'menu', 'lobby', 'game'
+  const [currentView, setCurrentView] = useState('menu');
 
-  // --- STAVY LOBBY ---
   const [roomCode, setRoomCode] = useState('');
   const [players, setPlayers] = useState({});
   const [isHost, setIsHost] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // --- NASTAVENÍ HRY ---
   const [gameSettings, setGameSettings] = useState({
       gameMode: 'FFA',
       maxRounds: 5,
       gravityTwist: false
   });
 
-  // Automatické ukládání do LocalStorage
   useEffect(() => {
     localStorage.setItem('qc_nickname', nickname);
     localStorage.setItem('qc_color', color);
     localStorage.setItem('qc_cosmetics', cosmetics);
   }, [nickname, color, cosmetics]);
 
-  // Hlavní Socket.io logika
   useEffect(() => {
     socket.connect();
 
@@ -102,7 +95,6 @@ function App() {
     };
   }, []);
 
-  // --- HANDLERY ---
   const handleCreateRoom = () => {
     if (!nickname.trim()) return setErrorMsg('Zadej přezdívku!');
     socket.emit('createRoom', { name: nickname, color, cosmetics });
@@ -131,30 +123,25 @@ function App() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- RENDER ---
   return (
-    // HLAVNÍ OBAL PRO CENTROVÁNÍ PŘES CELOU OBRAZOVKU
     <div style={{ 
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center', 
       minHeight: '100vh', 
       width: '100vw',
-      backgroundColor: '#0f141e' // Tmavé pozadí mimo hru
+      backgroundColor: '#0f141e'
     }}>
       
-      {/* OPONA (Menu / Lobby) 
-        Schová se pouze, když hra běží 
-      */}
       {currentView !== 'game' && (
         <div className="App-container" style={{ width: '100%', maxWidth: '600px' }}>
           
-          {/* MENU VIEW */}
           {currentView === 'menu' && (
             <div id="mainMenuUI" className="overlay">
               <h1 className="title-blue" style={{ textAlign: 'center' }}>QUANTUM CLASH</h1>
               
-              <div className="panel" style={{ margin: '0 auto' }}>
+              {/* Přidáno position: relative pro případný "X" button */}
+              <div className="panel" style={{ margin: '0 auto', position: 'relative' }}>
                 <p className="status-text" style={{ textAlign: 'center', fontWeight: 'bold', color: isConnected ? '#2ecc71' : '#e74c3c' }}>
                   {isConnected ? '● ONLINE' : '● OFFLINE'}
                 </p>
@@ -198,10 +185,10 @@ function App() {
             </div>
           )}
 
-          {/* LOBBY VIEW */}
           {currentView === 'lobby' && (
             <div id="lobbyUI" className="overlay">
-              <div className="panel lobby-panel" style={{ margin: '0 auto' }}>
+              {/* Přidáno position: relative */}
+              <div className="panel lobby-panel" style={{ margin: '0 auto', position: 'relative' }}>
                 <h2 className="title-blue" style={{ textAlign: 'center' }}>LOBBY</h2>
                 
                 <div className="room-info" style={{ textAlign: 'center', marginBottom: '20px' }}>
@@ -229,15 +216,20 @@ function App() {
 
                 <div className="players-list" style={{ marginTop: '20px' }}>
                   <h3 className="section-title">Hráči ({Object.keys(players).length}/6)</h3>
-                  {Object.values(players).map((p, i) => (
-                    <div key={i} className="player-entry" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <span style={{ width: '15px', height: '15px', borderRadius: '50%', backgroundColor: p.color, boxShadow: `0 0 10px ${p.color}` }}></span>
-                      <span className="player-name">{p.name} {p.isHost ? '👑' : ''}</span>
-                      <span style={{ marginLeft: 'auto', fontWeight: 'bold', color: p.isReady ? '#2ecc71' : '#f1c40f' }}>
-                        {p.isReady ? 'PŘIPRAVEN' : 'ČEKÁ'}
-                      </span>
-                    </div>
-                  ))}
+                  
+                  {/* MAGIE PRO SCROLLBAR */}
+                  <div style={{ maxHeight: '160px', overflowY: 'auto', paddingRight: '10px' }}>
+                    {Object.values(players).map((p, i) => (
+                      <div key={i} className="player-entry" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <span style={{ width: '15px', height: '15px', borderRadius: '50%', backgroundColor: p.color, boxShadow: `0 0 10px ${p.color}` }}></span>
+                        <span className="player-name">{p.name} {p.isHost ? '👑' : ''}</span>
+                        <span style={{ marginLeft: 'auto', fontWeight: 'bold', color: p.isReady ? '#2ecc71' : '#f1c40f' }}>
+                          {p.isReady ? 'PŘIPRAVEN' : 'ČEKÁ'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
                 </div>
 
                 <button onClick={toggleReady} className="menu-btn" style={{ width: '100%', marginTop: '20px', background: isReady ? '#e74c3c' : '#45f3ff' }}>
@@ -253,23 +245,22 @@ function App() {
         </div>
       )}
 
-      {/* HERNÍ PLÁTNO & HUD 
-        Vykreslí se JEN tehdy, když je hra aktivní.
-      */}
+      {/* CHYTRÉ HERNÍ PLÁTNO: Drží poměr 16:9 a vystředí se (černé pruhy okolo na jiných poměrech) */}
       <canvas 
         id="game" 
         style={{ 
-          display: currentView === 'game' ? 'block' : 'none', 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          width: '100vw', 
-          height: '100vh',
+          display: currentView === 'game' ? 'block' : 'none',
+          position: 'absolute',
+          top: 0, bottom: 0, left: 0, right: 0,
+          margin: 'auto', /* Vystředí to dokonale */
+          maxWidth: '100%',
+          maxHeight: '100%',
+          aspectRatio: '16 / 9', /* Fixní poměr 16:9 jako u normálních her */
+          backgroundColor: '#000',
           zIndex: 1 
         }}
       ></canvas>
 
-      {/* HUD (Head-Up Display) pro Náboje a Dash */}
       {currentView === 'game' && (
         <div id="game-hud" style={{
           position: 'absolute',
