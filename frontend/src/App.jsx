@@ -164,11 +164,12 @@ function App() {
 
   return (
     <>
-      {/* HERNÍ PLÁTNO */}
-      <canvas id="game"></canvas>
+      {/* HERNÍ PLÁTNO - Fixnuté na pozadí */}
+      <canvas id="game" style={{ position: 'fixed', top: 0, left: 0, zIndex: 0 }}></canvas>
 
+      {/* REACT MENU - Vrstva nad plátnem */}
       {currentView !== 'game' && (
-        <div className="App-container">
+        <div className="App-container" style={{ position: 'relative', zIndex: 10, width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           
           {/* MENU VIEW */}
           {currentView === 'menu' && (
@@ -283,7 +284,7 @@ function App() {
 
       {/* --- VÝBĚR KARET --- */}
       {isCardSelection && (
-        <div className="overlay">
+        <div className="overlay" style={{ zIndex: 20 }}>
           <h1 className="title-blue" style={{ fontSize: '4rem', marginBottom: '20px' }}>VÝBĚR VYLEPŠENÍ</h1>
           <div className="cards-container">
             {cards.length > 0 ? cards.map((c, i) => {
@@ -312,7 +313,7 @@ function App() {
 
       {/* --- GAME OVER OBRAZOVKA --- */}
       {isGameOver && (
-        <div className="overlay">
+        <div className="overlay" style={{ zIndex: 20 }}>
           <h1 id="winnerText">KONEC HRY</h1>
           <div>
             {isHost ? (
