@@ -1,9 +1,5 @@
 /* =========================================
    PUBLIC/JS/GAMECONFIG.JS
-<<<<<<< HEAD
-=======
-   (Nyní upraveno pro ES6 Import/Export)
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
    ========================================= */
 
 const CONFIG = {
@@ -75,8 +71,7 @@ const CONFIG = {
 // EXPORT PRO FRONTEND I BACKEND
 // =========================================
 
-<<<<<<< HEAD
-// Pro Node.js (Backend - server.js a další soubory)
+// Pro Node.js (Backend - server.js a další soubory, zachováno kvůli 'require')
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CONFIG;
 }
@@ -88,8 +83,7 @@ if (typeof window !== 'undefined') {
     // Tímto zpřístupníme všechny vlastnosti rovnou do globálního scope klienta (např. MAP_WIDTH bez prefixu)
     Object.assign(window, CONFIG);
 }
-=======
-// Moderní ES6 Export (Pro Vite, React a moderní Node.js)
-export { CONFIG };
 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+// Moderní ES6 Export (Pro Vite, React a moderní Node.js)
+// Odkomentuj tento řádek POUZE v případě, že backend plně přejde na ES6 importy (type: "module" v package.json):
+export { CONFIG };

@@ -1,12 +1,3 @@
-<<<<<<< HEAD
-// main.js
-import { state } from './state.js';
-import './network.js'; // Jen spustíme
-import { updateLocalGame } from './physics.js';
-import { drawGame } from './render.js';
-
-// Inicializace nastavení zaměřovače z LocalStorage
-=======
 // game/main.js
 import { state } from './state.js';
 import './network.js'; // Jen spustíme, aby se navázalo spojení
@@ -15,35 +6,17 @@ import { drawGame } from './render.js';
 import { initInputs } from './input.js';
 import { CONFIG } from './gameConfig.js';
 
-// --- 1. Inicializace zaměřovače z LocalStorage ---
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+// --- 1. INICIALIZACE ZAMĚŘOVAČE Z LOCALSTORAGE ---
 try {
     const savedCrosshair = localStorage.getItem('crosshairSettings');
     if (savedCrosshair) {
         state.crosshairConfig = JSON.parse(savedCrosshair);
     }
 } catch (e) {
-<<<<<<< HEAD
-    console.warn("Chyba při načítání zaměřovače z localStorage.");
-}
-
-// Eventy myši
-window.addEventListener('mousemove', (e) => {
-    if (!state.canvas) state.canvas = document.getElementById('game');
-    if (!state.canvas) return;
-    const rect = state.canvas.getBoundingClientRect();
-    state.currentMouseX = e.clientX - rect.left;
-    state.currentMouseY = e.clientY - rect.top;
-});
-
-// Pokud používáš čisté HTML, musíš některé funkce explicitně napojit na window, 
-// aby fungovaly v onclick="saveCrosshairSettings()" atd.
-=======
     console.warn("⚠️ Chyba při načítání zaměřovače z localStorage.");
 }
 
-// --- 2. Ukládání z UI (Zůstává pro kompatibilitu) ---
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+// --- 2. UKLÁDÁNÍ Z UI (Zůstává pro kompatibilitu se starším HTML) ---
 window.saveCrosshairSettings = function() {
     const shapeEl = document.getElementById('crosshairShape');
     const colorEl = document.getElementById('crosshairColor');
@@ -53,22 +26,9 @@ window.saveCrosshairSettings = function() {
         state.crosshairConfig = { color: colorEl.value, size: parseInt(sizeEl.value), shape: shapeEl.value };
         localStorage.setItem('crosshairSettings', JSON.stringify(state.crosshairConfig));
     }
-<<<<<<< HEAD
+    
     const settingsUI = document.getElementById('settingsUI');
     if (settingsUI) settingsUI.classList.add('hidden');
-};
-
-// Herní smyčky
-function renderLoop() {
-    if (state.latestServerData) {
-        drawGame(state.latestServerData);
-    }
-    requestAnimationFrame(renderLoop);
-}
-requestAnimationFrame(renderLoop);
-
-setInterval(updateLocalGame, 1000 / 60);
-=======
 };
 
 // --- 3. HERNÍ SMYČKA (Kreslení) ---
@@ -110,13 +70,12 @@ let engineStarted = false;
 export function initGameEngine() {
     if (engineStarted) return; // Zabráníme vícenásobnému spuštění
 
-    // --- NOVÉ: SKRYTÍ LOBBY UI ---
-    // Zde doplň přesné ID tvého divu, ve kterém je Lobby.
-    // (Zkusil jsem odhadnout časté názvy, pokud máš jiný, přepiš ho!)
+    // --- SKRYTÍ LOBBY UI ---
+    // Skryjeme staré HTML elementy, pokud existují (pro čistý přechod na React)
     const lobbyElements = [
         document.getElementById('lobby-container'), 
         document.getElementById('lobby'),
-        document.querySelector('.lobby-wrapper') // Alternativa přes class
+        document.querySelector('.lobby-wrapper') 
     ];
 
     lobbyElements.forEach(el => {
@@ -125,7 +84,6 @@ export function initGameEngine() {
             console.log("🙈 Lobby UI bylo skryto.");
         }
     });
-    // ------------------------------
 
     const canvas = document.getElementById('game');
     if (!canvas) {
@@ -146,7 +104,7 @@ export function initGameEngine() {
 
     console.log(`🚀 Herní engine nastartován! Rozlišení plátna: ${canvas.width}x${canvas.height}`);
     
-    // ZAPNEME OVLÁDÁNÍ
+    // ZAPNEME OVLÁDÁNÍ (z input.js)
     initInputs(); 
     
     // Odstartování smyček
@@ -155,4 +113,3 @@ export function initGameEngine() {
     
     engineStarted = true;
 }
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076

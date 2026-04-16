@@ -1,33 +1,8 @@
-<<<<<<< HEAD
-// network.js
-import { state } from './state.js';
-
-const BACKEND_URL = "https://quantum-clash-backend.onrender.com";
-export const socket = typeof io !== 'undefined' ? io(BACKEND_URL) : null;
-
-if (!socket) {
-    console.error("❌ Socket.IO není načten!");
-} else {
-    socket.on('connect', () => console.log('✅ ÚSPĚCH: Připojeno k serveru! Moje ID:', socket.id));
-    socket.on('connect_error', (err) => console.error('❌ CHYBA: Nelze se spojit se serverem!', err));
-
-    socket.on('gameState', (serverData) => { state.latestServerData = serverData; });
-    socket.on('update', (serverData) => { state.latestServerData = serverData; });
-
-    socket.on('mapUpdate', (data) => {
-        if (data.obstacles) state.localObstacles = data.obstacles;
-        if (data.breakables) state.localBreakables = data.breakables;
-    });
-
-    socket.on('initCatalog', (catalogData) => {
-        state.CARD_CATALOG = catalogData;
-        console.log("📚 Katalog karet načten!", catalogData);
-    });
-=======
 // game/network.js
 import { io } from 'socket.io-client';
 import { state } from './state.js';
 import { CONFIG } from './gameConfig.js';
+
 // Automatická detekce prostředí (Lokálně vs. Produkce)
 const BACKEND_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:3000" 
@@ -62,11 +37,11 @@ if (!socket) {
     // 2. KLÍČOVÁ HERNÍ DATA (Pro herní smyčku a render)
     // ==========================================
     
-    // Server posílá event 'gameUpdate' každou vteřinu (např. 20x nebo 60x za vteřinu)
-    socket.on('gameUpdate', (serverData) => { 
-        // Průběžně aktualizujeme globální stav hry pro Vanilla JS engine (render.js a main.js)
-        state.latestServerData = serverData; 
-    });
+    // Zpětná kompatibilita: Podchytíme všechny 3 názvy eventů, dokud se to na backendu nesjednotí
+    const updateGameState = (serverData) => { state.latestServerData = serverData; };
+    socket.on('gameUpdate', updateGameState);
+    socket.on('gameState', updateGameState); 
+    socket.on('update', updateGameState);
 
     // Server pošle mapu hned, jak hra začne (nebo když se rozbije zeď/krabice)
     socket.on('mapUpdate', (data) => {
@@ -83,7 +58,7 @@ if (!socket) {
     // ==========================================
     socket.on('gameStateChanged', (data) => {
         console.log(`🔄 ENGINE: Server hlásí změnu stavu hry na [${data.state}]`);
-        // O samotné překreslení vizuálu a zobrazení správných menu se stará React (App.jsx)
+        // O samotné překreslení vizuálu a zobrazení správných menu se stará React
     });
 
     socket.on('showCards', (cards) => {
@@ -100,13 +75,12 @@ if (!socket) {
 }
 
 // ==========================================
-// 5. ODESÍLÁNÍ DAT NA SERVER (NOVÉ FUNKCE)
+// 5. ODESÍLÁNÍ DAT NA SERVER (PRO REACT A ENGINE)
 // ==========================================
 
 /**
  * Pošle serveru aktuální stav klávesnice a myši (včetně přepočítaného úhlu rotace).
- * Tuto funkci bys měl volat ideálně v tvé hlavní herní smyčce (v main.js nebo physics.js)
- * pokaždé, když se vstupy změní, nebo každý frame.
+ * Volá se v herní smyčce (v main.js nebo physics.js) pokaždé, když se vstupy změní.
  */
 export function sendInputsToServer() {
     if (!socket || !state.playerInputs) return;
@@ -133,5 +107,4 @@ export function selectUpgradeCard(cardId) {
     if (!socket) return;
     socket.emit('selectCard', { cardId: cardId });
     console.log(`🃏 ENGINE: Odeslána volba karty: ${cardId}`);
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 }

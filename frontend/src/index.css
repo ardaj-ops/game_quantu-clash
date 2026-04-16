@@ -25,13 +25,6 @@ body, html {
     height: 100vh;
     width: 100vw;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-<<<<<<< HEAD
-    overflow: hidden; /* Zabrání rolování stránky */
-}
-
-/* ==========================================
-   SCROLLBAR (Posuvník)
-=======
     overflow: hidden; /* Zabrání rolování celé stránky */
     touch-action: none; /* Zabrání nechtěnému zoomování/posouvání na dotykových displejích */
     user-select: none; /* Zabrání označování textu při zběsilém klikání ve hře */
@@ -111,7 +104,7 @@ canvas#game {
     width: 100vw;
     height: 100vh;
     background: var(--glass-bg); /* Použití tvé proměnné pro konzistentní vzhled */
-    backdrop-filter: blur(8px); /* Krásný rozmazaný efekt za Lobby (volitelné) */
+    backdrop-filter: blur(8px); /* Krásný rozmazaný efekt */
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -127,7 +120,6 @@ canvas#game {
 
 /* ==========================================
    SCROLLBAR (Posuvník - aplikuje se i na seznam hráčů)
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 ========================================== */
 ::-webkit-scrollbar {
     width: 8px;
@@ -143,8 +135,5 @@ canvas#game {
 }
 ::-webkit-scrollbar-thumb:hover {
     background: #fff;
-<<<<<<< HEAD
-=======
     box-shadow: 0 0 15px var(--neon-blue);
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 }

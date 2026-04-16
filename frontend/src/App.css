@@ -1,40 +1,15 @@
 /* ==========================================
-<<<<<<< HEAD
-   Z-INDEX HIERARCHIE (Klíčové pro React vs Canvas)
-========================================== */
-
-/* 1. Nejnižší vrstva: Herní plátno */
-#game {
-    z-index: 1; 
-}
-
-/* 2. Prostřední vrstva: Průhledný obal pro React */
-#root {
-    /* Toto musí být nad canvasem, jinak by canvas kradl kliknutí na menu */
-    position: absolute;
-=======
    REACT VRSTVY A KONTEJNERY
 ========================================== */
 
 /* Nejnižší vrstva: Herní plátno (Canvas generovaný Reactem) */
 #game {
     display: block;
-    position: fixed; /* ZMĚNĚNO NA FIXED: Zajišťuje absolutní nehybnost na pozadí */
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+    position: fixed; /* Zajišťuje absolutní nehybnost na pozadí */
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-<<<<<<< HEAD
-    z-index: 10; 
-    pointer-events: none; /* Propustí klikání na canvas, když je menu skryté */
-}
-
-/* 3. HLAVNÍ OPONA: Kontejner React aplikace, který zakryje hru */
-.App-container {
-    pointer-events: auto; /* Uvnitř menu musí fungovat klikání */
-    position: absolute;
-=======
     z-index: 1; /* Musí být pod UI */
     background-color: #0b0c10;
 }
@@ -42,19 +17,12 @@
 /* HLAVNÍ OPONA: Kontejner React aplikace pro Menu/Lobby */
 .App-container {
     pointer-events: none; /* Kontejner nesmí plošně blokovat myš (aby šlo klikat na hru pod ním) */
-    position: fixed; /* ZMĚNĚNO NA FIXED: Zabrání roztahování stránky mimo obrazovku */
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+    position: fixed; /* Zabrání roztahování stránky mimo obrazovku */
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-<<<<<<< HEAD
-    /* Stejné pozadí jako má body, aby to vypadalo celistvě a skrylo to hru pod sebou */
-    background-color: var(--bg-color);
-    background-image: radial-gradient(circle at 50% 50%, #1f2833 0, #0b0c10 100%);
-=======
     background: transparent;
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -62,7 +30,6 @@
     z-index: 15;
 }
 
-<<<<<<< HEAD
 /* Skrývací třída (když se přidá, element zmizí) */
 .hidden {
     display: none !important;
@@ -70,9 +37,9 @@
 
 /* 4. Herní HUD (Skóre, Munice) */
 .hud-element, #game-hud {
-    position: absolute;
+    position: fixed;
     z-index: 20; 
-    pointer-events: auto;
+    pointer-events: auto; /* Zde je myš aktivní */
 }
 
 /* 5. Overlays (Konec hry, Karty, Lobby, Menu) */
@@ -82,7 +49,7 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: var(--glass-bg);
+    background-color: var(--glass-bg, rgba(0, 0, 0, 0.4));
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     color: var(--text-main);
@@ -92,7 +59,7 @@
     justify-content: center;
     align-items: center;
     text-align: center;
-    pointer-events: auto;
+    pointer-events: auto; /* Zabrání propadnutí kliknutí do hry */
     animation: fadeIn 0.4s ease-out;
 }
 
@@ -101,16 +68,6 @@
     z-index: 300 !important;
 }
 
-=======
-/* Vizuální vylepšení pro .overlay (základní pozicování je v index.css) */
-.overlay {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    pointer-events: auto; /* Zabrání propadnutí kliknutí do hry */
-    animation: fadeIn 0.4s ease-out;
-}
-
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 /* ==========================================
    REACT MENU A LOBBY BOXY
 ========================================== */
@@ -122,13 +79,9 @@
     border: 1px solid rgba(69, 243, 255, 0.15);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
-<<<<<<< HEAD
-    width: 100%;
-    position: relative; /* OPRAVA: Uzamkne všechny absolutní prvky (jako křížky) uvnitř tohoto panelu */
-=======
     width: 100%; 
+    position: relative; /* Uzamkne všechny absolutní prvky (jako křížky) uvnitř tohoto panelu */
     pointer-events: auto; /* Zde je myš aktivní */
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 }
 
 .settings-box {
@@ -140,7 +93,6 @@
     font-size: 1.5rem;
 }
 
-<<<<<<< HEAD
 /* UNIVERZÁLNÍ ZAVÍRACÍ KŘÍŽEK (Pro případné modaly) */
 .close-btn {
     position: absolute;
@@ -161,8 +113,6 @@
     text-shadow: 0 0 10px var(--neon-pink);
 }
 
-=======
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 /* ==========================================
    TYPOGRAFIE A BARVY TEXTU
 ========================================== */
@@ -253,11 +203,7 @@
 ========================================== */
 .input-group { 
     margin-bottom: 15px; 
-<<<<<<< HEAD
-    display: flex;
-=======
     display: flex; 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     align-items: center; 
 }
 
@@ -270,11 +216,7 @@
 
 .input-group input, 
 .input-group select {
-<<<<<<< HEAD
-    flex: 1;
-=======
     flex: 1; 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 }
 
 .settings-box label {
@@ -329,11 +271,7 @@ input[type="color"]:hover { transform: scale(1.15); }
     font-size: 1.5rem;
     text-transform: uppercase;
     text-align: center;
-<<<<<<< HEAD
-    width: 100%;
-=======
     width: 100%; 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     margin-bottom: 10px;
     letter-spacing: 2px;
 }
@@ -344,11 +282,7 @@ input[type="color"]:hover { transform: scale(1.15); }
 .menu-btn {
     padding: 12px 25px;
     font-size: 1.1rem;
-<<<<<<< HEAD
-    margin-top: 10px;
-=======
     margin-top: 10px; 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -363,7 +297,6 @@ input[type="color"]:hover { transform: scale(1.15); }
     transform: scale(0.95) !important;
 }
 
-<<<<<<< HEAD
 #createBtn {
     background: var(--neon-blue);
     color: #000;
@@ -385,13 +318,6 @@ input[type="color"]:hover { transform: scale(1.15); }
     box-shadow: 0 0 25px var(--neon-green);
     transform: translateY(-2px);
 }
-=======
-#createBtn { background: var(--neon-blue); color: #000; box-shadow: 0 0 15px rgba(69, 243, 255, 0.3); }
-#createBtn:hover { box-shadow: 0 0 25px var(--neon-blue); transform: translateY(-2px); }
-
-#joinSubmitBtn { background: var(--neon-green); color: #000; box-shadow: 0 0 15px rgba(46, 213, 115, 0.3); }
-#joinSubmitBtn:hover { box-shadow: 0 0 25px var(--neon-green); transform: translateY(-2px); }
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 
 #returnToLobbyBtn {
     background: var(--neon-green);
@@ -403,15 +329,11 @@ input[type="color"]:hover { transform: scale(1.15); }
     border-radius: 8px;
     font-weight: bold;
 }
-<<<<<<< HEAD
 
 #returnToLobbyBtn:hover {
     box-shadow: 0 0 35px var(--neon-green);
     transform: translateY(-3px);
 }
-=======
-#returnToLobbyBtn:hover { box-shadow: 0 0 35px var(--neon-green); transform: translateY(-3px); }
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 
 #readyBtn {
     margin-top: 25px;
@@ -442,8 +364,6 @@ input[type="color"]:hover { transform: scale(1.15); }
     box-shadow: 0 0 30px var(--neon-pink);
 }
 
-<<<<<<< HEAD
-=======
 #closeSettingsBtn {
     background: var(--neon-green);
     color: #000;
@@ -453,9 +373,12 @@ input[type="color"]:hover { transform: scale(1.15); }
     font-size: 1rem;
     transition: all 0.2s ease;
 }
-#closeSettingsBtn:hover { box-shadow: 0 0 15px var(--neon-green); transform: translateY(-2px); }
 
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+#closeSettingsBtn:hover {
+    box-shadow: 0 0 15px var(--neon-green);
+    transform: translateY(-2px);
+}
+
 /* ==========================================
    KARTY A VÝBĚR (Rarity)
 ========================================== */
@@ -466,10 +389,7 @@ input[type="color"]:hover { transform: scale(1.15); }
     justify-content: center;
     flex-wrap: wrap;
     max-width: 1000px;
-<<<<<<< HEAD
     z-index: 105;
-=======
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 }
 
 .card {
@@ -595,7 +515,6 @@ input[type="color"]:hover { transform: scale(1.15); }
 /* ==========================================
    ANIMACE (Keyframes)
 ========================================== */
-<<<<<<< HEAD
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -640,25 +559,10 @@ input[type="color"]:hover { transform: scale(1.15); }
    HERNÍ HUD A VANILLA OVERLAYS (Tlačítka, Skóre atd.)
 ========================================== */
 #settingsBtn {
-    position: absolute; /* OPRAVA ZDE */
+    position: fixed;
     top: 20px;
     right: 20px;
     padding: 10px 15px;
-=======
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes bgShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-@keyframes mythicPulse { 0% { background-color: rgba(20, 22, 28, 0.95); } 100% { background-color: rgba(50, 20, 20, 0.95); box-shadow: 0 10px 50px rgba(255, 71, 87, 0.8); } }
-@keyframes exoticPulse { 0%, 100% { box-shadow: 0 0 15px rgba(255, 127, 80, 0.4); } 50% { box-shadow: 0 0 30px #ff7f50, 0 0 10px rgba(255, 255, 255, 0.3) inset; } }
-@keyframes transcendedPulse { 0% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 0 10px rgba(0, 255, 255, 0.2); } 100% { box-shadow: 0 0 40px #fff, 0 0 25px rgba(0, 255, 255, 0.6), 0 0 15px rgba(191, 0, 255, 0.4) inset; } }
-
-/* ==========================================
-   HERNÍ HUD A VANILLA OVERLAYS VZHLED
-========================================== */
-#settingsBtn {
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     background: rgba(0, 0, 0, 0.6);
     color: var(--text-main);
     border: 1px solid #444;
@@ -667,13 +571,10 @@ input[type="color"]:hover { transform: scale(1.15); }
     font-weight: bold;
     transition: all 0.2s ease;
     backdrop-filter: blur(4px);
-<<<<<<< HEAD
     z-index: 50;
+    pointer-events: auto;
 }
 
-=======
-}
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
 #settingsBtn:hover {
     background: var(--neon-blue);
     color: #000;
@@ -683,35 +584,24 @@ input[type="color"]:hover { transform: scale(1.15); }
 }
 
 #scoreBoardContainer {
-<<<<<<< HEAD
-    position: absolute; /* OPRAVA ZDE */
+    position: fixed;
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-=======
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     background: rgba(0, 0, 0, 0.6);
     padding: 10px 25px;
     border-radius: 10px;
     border: 1px solid #444;
     color: white;
-<<<<<<< HEAD
     text-align: center;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     z-index: 50;
-}
-
-#ammoContainer {
-    position: absolute; /* OPRAVA ZDE */
-=======
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
+    pointer-events: auto;
 }
 
 #ammoContainer {
     position: fixed;
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
     bottom: 30px;
     right: 30px;
     font-size: 1.5rem;
@@ -724,22 +614,5 @@ input[type="color"]:hover { transform: scale(1.15); }
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     z-index: 50;
-<<<<<<< HEAD
-}
-
-#closeSettingsBtn {
-    background: var(--neon-green);
-    color: #000;
-    font-weight: bold;
-    border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    transition: all 0.2s ease;
-}
-
-#closeSettingsBtn:hover {
-    box-shadow: 0 0 15px var(--neon-green);
-    transform: translateY(-2px);
-=======
->>>>>>> dadd4ccc79dda0e8cb86d54474321d7743fa2076
+    pointer-events: auto;
 }
