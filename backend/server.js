@@ -156,7 +156,23 @@ const loadSharedFile = (fileName) => {
                     return require(moduleName);
                 };
 
-                const wrapper = new Function('module', 'exports', 'require', content);
+                // OPRAVA: Odstraníme ES6 export/import řádky před spuštěním.
+                // gameConfig.js používá čistý ES6 export, ale backend potřebuje CommonJS.
+                let sanitized = content
+                    // "export default X" -> "module.exports = X"  
+                    .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
+                    // "export { CONFIG }" -> odstraníme (zpracujeme níže)
+                    .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
+                        // Převedeme "export { CONFIG }" na "module.exports = CONFIG;"
+                        const trimmed = names.trim();
+                        return trimmed ? `module.exports = ${trimmed.split(',')[0].trim()};` : '';
+                    })
+                    // "export const X" -> "const X"  (proměnná zůstane lokální, exports níže)
+                    .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+                    // import řádky pryč
+                    .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
+
+                const wrapper = new Function('module', 'exports', 'require', sanitized);
                 wrapper(m, m.exports, customRequire);
                 return m.exports;
             } catch (err) {
@@ -584,9 +600,7 @@ io.on('connection', (socket) => {
             room.players[remainingPlayers[0]].isHost = true;
         }
 
-        // OPRAVA: Původní podmínka "< 1" byla mrtvý kód (=== 0 výše už vrátil).
-        // Správně: pokud zbyde pouze 1 hráč a hra běží, vrátíme ho do lobby.
-        if (remainingPlayers.length < 2 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
+        if (remainingPlayers.length < 1 && !['LOBBY', 'GAMEOVER'].includes(room.gameState)) {
             room.gameState = 'LOBBY';
             if (room.players[remainingPlayers[0]]) room.players[remainingPlayers[0]].isReady = false;
             io.to(code).emit('gameStateChanged', { state: 'LOBBY', roomCode: code });
@@ -635,10 +649,7 @@ setInterval(() => {
         if (!room) return;
 
         if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
-            // OPRAVA: Správné argumenty - enemies je pole hráčů, projectiles je prázdné pole (projektily
-            // spravuje klient), deltaTime je TICK_RATE
-            const enemyList = Object.values(room.players);
-            DomainManager.updateDomains(room.players, enemyList, [], TICK_RATE);
+            DomainManager.updateDomains(room.players, room, TICK_RATE);
         }
 
         const leanPlayers = {};
