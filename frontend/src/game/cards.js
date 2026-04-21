@@ -1,6 +1,12 @@
 // cards.js
-// Zajištění kompatibility napříč Frontendem (window) a Backendem (require)
-const CFG = typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig.js');
+// OPRAVA: Odstraněn require('./gameConfig.js') — ten soubor používá ES6 export
+// a na backendu by selhal. Server nyní předává CONFIG přes window mock.
+// Frontend má window.CONFIG nastaveno globálně z gameConfig.js.
+const CFG = (typeof window !== 'undefined' && window.CONFIG) ? window.CONFIG : {
+    MAX_CAP_HP: 600, MIN_CAP_HP: 30, MAX_CAP_DAMAGE: 999, MIN_CAP_FIRE_RATE: 50,
+    MAX_CAP_MOVE_SPEED: 3.5, MIN_CAP_MOVE_SPEED: 0.2, MAX_CAP_BULLET_SPEED: 80,
+    MAX_CAP_AMMO: 99, MAX_CAP_LIFESTEAL: 0.50, MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15
+};
 
 const availableCards = [
     // =========================================================================
@@ -155,3 +161,6 @@ if (typeof module !== 'undefined' && module.exports) {
     window.availableCards = availableCards;
     window.getValidCardsForPlayer = getValidCardsForPlayer;
 }
+
+// ES6 export pro Vite/React frontend
+export { availableCards, getValidCardsForPlayer };

@@ -130,7 +130,9 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
-const loadSharedFile = (fileName) => {
+// windowMock: volitelný objekt, který se předá jako 'window' do wrapperu.
+// Potřebné pro cards.js, které dělá: typeof window !== 'undefined' ? window.CONFIG : require(...)
+const loadSharedFile = (fileName, windowMock = undefined) => {
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
         path.join(frontendDistPath, fileName),
@@ -143,12 +145,35 @@ const loadSharedFile = (fileName) => {
         if (fs.existsSync(p)) {
             try {
                 console.log(`📄 Načítám sdílený soubor: ${p}`);
-                const content = fs.readFileSync(p, 'utf-8');
-                const m = { exports: {} };
+                const raw = fs.readFileSync(p, 'utf-8');
 
+                // OPRAVA: Odstraníme ES6 export/import syntax, která zastavuje new Function().
+                // gameConfig.js a jiné frontend soubory používají 'export const X' nebo 'export { X }'.
+                const sanitized = raw
+                    // "export default X"  ->  "module.exports = X"
+                    .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
+                    // "export { CONFIG }"  ->  "module.exports = CONFIG;"
+                    .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
+                        const first = names.trim().split(',')[0].trim();
+                        return first ? `module.exports = ${first};` : '';
+                    })
+                    // "export const X"  ->  "const X"
+                    .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+                    // "import X from '...'"  ->  odstraníme
+                    .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
+
+                const m = { exports: {} };
                 const fileDir = path.dirname(p);
+
                 const customRequire = (moduleName) => {
+                    // OPRAVA: Pokud soubor importuje gameConfig relativně, vrátíme
+                    // ho z windowMock (pokud existuje), aby se nespouštěl nativní require
+                    // na ES6 souboru, který by selhal.
                     if (moduleName.startsWith('.')) {
+                        const basename = path.basename(moduleName, '.js');
+                        if ((basename === 'gameConfig') && windowMock && windowMock.CONFIG) {
+                            return windowMock.CONFIG;
+                        }
                         let resolvedPath = path.join(fileDir, moduleName);
                         if (!resolvedPath.endsWith('.js')) resolvedPath += '.js';
                         if (fs.existsSync(resolvedPath)) return require(resolvedPath);
@@ -156,11 +181,12 @@ const loadSharedFile = (fileName) => {
                     return require(moduleName);
                 };
 
-                const wrapper = new Function('module', 'exports', 'require', content);
-                wrapper(m, m.exports, customRequire);
+                // Předáme 'window' jako parametr — cards.js ho potřebuje pro CFG
+                const wrapper = new Function('module', 'exports', 'require', 'window', sanitized);
+                wrapper(m, m.exports, customRequire, windowMock || {});
                 return m.exports;
             } catch (err) {
-                console.warn(`⚠️ Soubor ${fileName} nelze načíst (možná obsahuje ES6 importy):`, err.message);
+                console.warn(`⚠️ Soubor ${fileName} nelze načíst:`, err.message);
                 return null;
             }
         }
@@ -172,7 +198,7 @@ const loadSharedFile = (fileName) => {
 // --- Načtení Konfigurace ---
 const gameConfig = loadSharedFile('gameConfig.js') || {};
 const {
-    MAP_WIDTH = 2000, MAP_HEIGHT = 2000, PLAYER_RADIUS = 20,
+    MAP_WIDTH = 1920, MAP_HEIGHT = 1080, PLAYER_RADIUS = 20,
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
     BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
     MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
@@ -180,13 +206,22 @@ const {
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
+// OPRAVA: Předáme načtený gameConfig jako window.CONFIG do cards.js.
+// cards.js dělá: const CFG = typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig.js')
+// Nativní require() na ES6 souboru by selhal — tímto to obcházíme.
+const configForCards = { ...gameConfig, MAP_WIDTH, MAP_HEIGHT, BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE,
+    BASE_BULLET_SPEED, BASE_MOVE_SPEED, BASE_AMMO, MAX_CAP_HP, MIN_CAP_HP, MAX_CAP_DAMAGE,
+    MIN_CAP_FIRE_RATE, MAX_CAP_MOVE_SPEED, MIN_CAP_MOVE_SPEED, MAX_CAP_BULLET_SPEED, MAX_CAP_AMMO,
+    MAX_CAP_LIFESTEAL: 0.5, MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15 };
+
 // --- Načtení Karet ---
 let availableCards = [];
-const rawCards = loadSharedFile('cards.js');
+const rawCards = loadSharedFile('cards.js', { CONFIG: configForCards });
 if (rawCards) {
     availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
 }
 if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
+else console.log(`✅ Načteno ${availableCards.length} karet z cards.js.`);
 
 const uiCatalog = availableCards.map(c => ({
     name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
@@ -230,6 +265,8 @@ const startNextRound = (room) => {
     room.deadPlayersThisRound = [];
     if (room.processedHits) room.processedHits.clear();
 
+    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
+
     const playerIds = Object.keys(room.players);
     playerIds.forEach((id, index) => {
         const p = room.players[id];
@@ -247,16 +284,14 @@ const startNextRound = (room) => {
         io.to(room.id).emit('gravityChanged', room.currentGravity.name);
     }
 
-    // OPRAVA: Pošleme gameStateChanged VČETNĚ dat mapy najednou.
-    // Původní pořadí: mapUpdate -> gameStateChanged způsobovalo, že engine
-    // ještě nebyl načten když přišla mapa, takže se překážky nikdy nezobrazily.
-    io.to(room.id).emit('gameStateChanged', { 
+    // OPRAVA: Pošleme mapUpdate PŘED gameStateChanged, ale také data mapy
+    // přímo v gameStateChanged jako zálohu (engine nemusí být ready pro mapUpdate)
+    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
+    io.to(room.id).emit('gameStateChanged', {
         state: 'PLAYING',
         obstacles: room.obstacles,
         breakables: room.breakables
     });
-    // mapUpdate posíláme taky pro zpětnou kompatibilitu
-    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
 };
 
 const handleDeath = (room, victimId) => {
@@ -409,7 +444,7 @@ io.on('connection', (socket) => {
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
 
-        if (playerIds.length >= 1 && playerIds.every(id => room.players[id].isReady)) {
+        if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
             if (room.settings.gameMode === 'TDM' && playerIds.length > 1) {
                 const hasRed = playerIds.some(id => room.players[id].team === 'red');
                 const hasBlue = playerIds.some(id => room.players[id].team === 'blue');

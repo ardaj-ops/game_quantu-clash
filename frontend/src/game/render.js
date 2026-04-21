@@ -5,9 +5,8 @@ import { socket } from './network.js';
 
 const TWO_PI = Math.PI * 2;
 
-// OPRAVA ammo glitch: callback nastavený z App.jsx pro update ammo v React state
-// místo přímého document.getElementById(...).innerText (způsobovalo glitch)
-export let onAmmoUpdate = null;
+// render.js - pure canvas rendering, no DOM manipulation
+// Ammo je nyní sledováno přímo v App.jsx přes socket.on('gameUpdate')
 
 function drawGrid() {
     state.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
@@ -241,9 +240,4 @@ export function drawGame(serverData) {
         state.ctx.fillText('KOLO SKONČILO', state.canvas.width / 2, state.canvas.height / 2);
     }
 
-    // OPRAVA ammo: voláme callback z App.jsx místo přímého DOM.innerText
-    if (socket && playersData[socket.id] && typeof onAmmoUpdate === 'function') {
-        const me = playersData[socket.id];
-        onAmmoUpdate(me.ammo ?? 0, me.maxAmmo ?? 0);
-    }
 }
