@@ -230,8 +230,6 @@ const startNextRound = (room) => {
     room.deadPlayersThisRound = [];
     if (room.processedHits) room.processedHits.clear();
 
-    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
-
     const playerIds = Object.keys(room.players);
     playerIds.forEach((id, index) => {
         const p = room.players[id];
@@ -249,7 +247,16 @@ const startNextRound = (room) => {
         io.to(room.id).emit('gravityChanged', room.currentGravity.name);
     }
 
-    io.to(room.id).emit('gameStateChanged', { state: 'PLAYING' });
+    // OPRAVA: Pošleme gameStateChanged VČETNĚ dat mapy najednou.
+    // Původní pořadí: mapUpdate -> gameStateChanged způsobovalo, že engine
+    // ještě nebyl načten když přišla mapa, takže se překážky nikdy nezobrazily.
+    io.to(room.id).emit('gameStateChanged', { 
+        state: 'PLAYING',
+        obstacles: room.obstacles,
+        breakables: room.breakables
+    });
+    // mapUpdate posíláme taky pro zpětnou kompatibilitu
+    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
 };
 
 const handleDeath = (room, victimId) => {
@@ -402,8 +409,7 @@ io.on('connection', (socket) => {
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
 
-        // OPRAVA: >= 1 -> >= 2 (hra nesmí začít s jedním hráčem)
-        if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
+        if (playerIds.length >= 1 && playerIds.every(id => room.players[id].isReady)) {
             if (room.settings.gameMode === 'TDM' && playerIds.length > 1) {
                 const hasRed = playerIds.some(id => room.players[id].team === 'red');
                 const hasBlue = playerIds.some(id => room.players[id].team === 'blue');

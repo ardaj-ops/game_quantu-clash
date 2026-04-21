@@ -30,6 +30,12 @@ function App() {
     gravityTwist: false
   });
 
+  // OPRAVA ammo glitch: ammo v React state místo přímého DOM.innerText
+  const [ammo, setAmmo] = useState({ current: 0, max: 0 });
+
+  // OPRAVA card phase: stav pro výběr karet po kole
+  const [upgradeData, setUpgradeData] = useState(null); // { loserId, cards[] }
+
   useEffect(() => {
     localStorage.setItem('qc_nickname', nickname);
     localStorage.setItem('qc_color', color);
@@ -70,15 +76,28 @@ function App() {
     const onGameStateChange = (data) => {
       if (data.state === 'PLAYING') {
         setCurrentView('game');
-        // Dynamický import, aby se engine načetl jen jednou při přechodu do hry
+        setUpgradeData(null);
         import('./game/main.js').then(({ initGameEngine }) => {
           initGameEngine();
+          // OPRAVA ammo: Po startu enginu napojíme callback z render.js na React state
+          import('./game/render.js').then(({ onAmmoUpdate: setter }) => {
+            // onAmmoUpdate je exportovaná let proměnná — nastavíme ji
+            import('./game/render.js').then((renderModule) => {
+              renderModule.onAmmoUpdate = (cur, max) => setAmmo({ current: cur, max });
+            });
+          });
         });
+      } else if (data.state === 'UPGRADE') {
+        // OPRAVA: UPGRADE stav nebyl nikdy zpracován — karta fáze se vůbec nezobrazila!
+        setUpgradeData({ loserId: data.loserId, cards: data.cards || [] });
+        setCurrentView('upgrade');
       } else if (data.state === 'LOBBY') {
         setCurrentView('lobby');
         setIsReady(false);
+        setUpgradeData(null);
       } else if (data.state === 'GAMEOVER') {
         setCurrentView('gameover');
+        setUpgradeData(null);
       }
     };
 
@@ -145,7 +164,7 @@ function App() {
       <canvas
         id="game"
         style={{
-          display: currentView === 'game' ? 'block' : 'none',
+          display: (currentView === 'game' || currentView === 'upgrade') ? 'block' : 'none',
           position: 'fixed',
           top: 0, left: 0,
           width: '100vw',
@@ -158,27 +177,61 @@ function App() {
       {/* HUD — zobrazí se jen ve hře, nad canvasem */}
       {currentView === 'game' && (
         <div id="game-hud" style={{
-          position: 'fixed',
-          top: 0, left: 0,
-          width: '100vw',
-          height: '100vh',
-          pointerEvents: 'none',
-          zIndex: 10
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          pointerEvents: 'none', zIndex: 10
         }}>
           <div style={{
-            position: 'absolute',
-            bottom: '30px',
-            right: '30px',
-            color: 'white',
-            fontFamily: 'Arial, sans-serif',
-            textAlign: 'right',
+            position: 'absolute', bottom: '30px', right: '30px',
+            color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right',
             pointerEvents: 'none'
           }}>
-            <h2 id="ammo-text" style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>∞ / ∞</h2>
+            {/* OPRAVA: ammo z React state, ne DOM.innerText (způsobovalo glitch) */}
+            <h2 id="ammo-text" style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>
+              {ammo.current} / {ammo.max}
+            </h2>
             <div id="dash-progress" style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
               <div id="dash-progress-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* OPRAVA: Výběr karet po konci kola — dříve VŮBEC neexistoval v App.jsx! */}
+      {currentView === 'upgrade' && upgradeData && (
+        <div className="overlay" style={{ zIndex: 30, flexDirection: 'column' }}>
+          {upgradeData.loserId === socket.id ? (
+            <>
+              <h2 style={{ fontSize: '3rem', color: '#f43f5e', textTransform: 'uppercase', marginBottom: '10px' }}>
+                Prohrál jsi kolo!
+              </h2>
+              <p style={{ color: 'white', fontSize: '1.2rem', marginBottom: '30px' }}>
+                Vyber si vylepšení:
+              </p>
+              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '900px' }}>
+                {upgradeData.cards.map((card, i) => (
+                  <div
+                    key={i}
+                    onClick={() => {
+                      socket.emit('pickCard', card.globalIndex ?? i);
+                      setUpgradeData(null);
+                      setCurrentView('game');
+                    }}
+                    className={`card card-${(card.rarity || 'common').toLowerCase()}`}
+                    style={{ cursor: 'pointer', minWidth: '180px' }}
+                  >
+                    <div className="rarity-label">{card.rarity || 'Common'}</div>
+                    <h3>{card.icon || ''} {card.name}</h3>
+                    <p>{card.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center' }}>
+              <h2 style={{ fontSize: '3rem', color: '#4ade80', textTransform: 'uppercase' }}>Kolo skončilo!</h2>
+              <p style={{ color: '#aaa', fontSize: '1.2rem', marginTop: '20px' }}>⏳ Čekej na ostatní hráče...</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -194,7 +247,7 @@ function App() {
       )}
 
       {/* MENU + LOBBY — skryté ve hře */}
-      {currentView !== 'game' && currentView !== 'gameover' && (
+      {currentView !== 'game' && currentView !== 'gameover' && currentView !== 'upgrade' && (
         <div className="App-container" style={{ width: '100%', maxWidth: '600px', position: 'relative', zIndex: 20 }}>
 
           {currentView === 'menu' && (
