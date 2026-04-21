@@ -627,7 +627,7 @@ setInterval(() => {
     });
 }, GRAVITY_CHANGE_INTERVAL);
 
-const TICK_RATE = 1000 / 60;
+const TICK_RATE = 1000 / 50;
 
 setInterval(() => {
     Object.values(rooms).forEach(room => {
