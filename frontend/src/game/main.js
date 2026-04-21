@@ -39,9 +39,10 @@ window.saveCrosshairSettings = function() {
 let firstFrameLogged = false;
 
 function resizeCanvas(canvas) {
-    // Používáme offsetWidth/Height, které respektují CSS (100vw/100vh)
-    const w = canvas.offsetWidth;
-    const h = canvas.offsetHeight;
+    // OPRAVA: offsetWidth/Height vrací 0 pokud canvas ještě nebyl layout-ován po display:none->block
+    // Používáme window.innerWidth/Height jako zálohu, aby první frame nebyl prázdný
+    const w = canvas.offsetWidth || window.innerWidth;
+    const h = canvas.offsetHeight || window.innerHeight;
     if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -83,22 +84,32 @@ export function initGameEngine() {
         return;
     }
 
-    resizeCanvas(canvas);
-    state.canvas = canvas;
-
-    document.addEventListener('contextmenu', event => event.preventDefault());
-    window.addEventListener('resize', () => resizeCanvas(canvas));
-
-    console.log(`🚀 Herní engine nastartován! Rozlišení: ${canvas.width}x${canvas.height}`);
-
-    initInputs();
-    requestAnimationFrame(renderLoop);
-
-    setInterval(() => {
-        if (state.latestServerData) {
-            updateLocalGame();
+    // OPRAVA: Počkáme jeden frame, aby prohlížeč stihl layout po display:none->block
+    // Bez toho canvas.offsetWidth = 0 a první frame se nevykreslí
+    requestAnimationFrame(() => {
+        resizeCanvas(canvas);
+        // Pokud offsetWidth stále 0, vynutíme window rozměry
+        if (canvas.width === 0) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
-    }, 1000 / 60);
+        state.canvas = canvas;
+        state.ctx = canvas.getContext('2d');
 
-    engineStarted = true;
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        window.addEventListener('resize', () => resizeCanvas(canvas));
+
+        console.log(`🚀 Herní engine nastartován! Rozlišení: ${canvas.width}x${canvas.height}`);
+
+        initInputs();
+        requestAnimationFrame(renderLoop);
+
+        setInterval(() => {
+            if (state.latestServerData) {
+                updateLocalGame();
+            }
+        }, 1000 / 60);
+
+        engineStarted = true;
+    });
 }

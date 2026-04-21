@@ -156,23 +156,7 @@ const loadSharedFile = (fileName) => {
                     return require(moduleName);
                 };
 
-                // OPRAVA: Odstraníme ES6 export/import řádky před spuštěním.
-                // gameConfig.js používá čistý ES6 export, ale backend potřebuje CommonJS.
-                let sanitized = content
-                    // "export default X" -> "module.exports = X"  
-                    .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
-                    // "export { CONFIG }" -> odstraníme (zpracujeme níže)
-                    .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
-                        // Převedeme "export { CONFIG }" na "module.exports = CONFIG;"
-                        const trimmed = names.trim();
-                        return trimmed ? `module.exports = ${trimmed.split(',')[0].trim()};` : '';
-                    })
-                    // "export const X" -> "const X"  (proměnná zůstane lokální, exports níže)
-                    .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
-                    // import řádky pryč
-                    .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
-
-                const wrapper = new Function('module', 'exports', 'require', sanitized);
+                const wrapper = new Function('module', 'exports', 'require', content);
                 wrapper(m, m.exports, customRequire);
                 return m.exports;
             } catch (err) {
@@ -418,7 +402,8 @@ io.on('connection', (socket) => {
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
 
-        if (playerIds.length >= 1 && playerIds.every(id => room.players[id].isReady)) {
+        // OPRAVA: >= 1 -> >= 2 (hra nesmí začít s jedním hráčem)
+        if (playerIds.length >= 2 && playerIds.every(id => room.players[id].isReady)) {
             if (room.settings.gameMode === 'TDM' && playerIds.length > 1) {
                 const hasRed = playerIds.some(id => room.players[id].team === 'red');
                 const hasBlue = playerIds.some(id => room.players[id].team === 'blue');

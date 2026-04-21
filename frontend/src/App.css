@@ -3,14 +3,14 @@
 ========================================== */
 
 /* Nejnižší vrstva: Herní plátno (Canvas generovaný Reactem) */
+/* OPRAVA: display:block odstraněno - React řídí display přes inline styl (block/none) */
 #game {
-    display: block;
-    position: fixed; /* Zajišťuje absolutní nehybnost na pozadí */
+    position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 1; /* Musí být pod UI */
+    z-index: 1;
     background-color: #0b0c10;
 }
 
@@ -44,7 +44,7 @@
 
 /* 5. Overlays (Konec hry, Karty, Lobby, Menu) */
 .overlay {
-    position: absolute;
+    position: fixed; /* OPRAVA: 'absolute' bylo relativní k App-container (600px), ne k viewportu! */
     top: 0;
     left: 0;
     width: 100vw;
