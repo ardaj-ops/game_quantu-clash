@@ -7,14 +7,13 @@ export function initInputs() {
         state.playerInputs = {
             up: false, down: false, left: false, right: false,
             click: false, rightClick: false, reload: false, tab: false,
-            ritual: false, 
+            ritual: false, dash: false,
             aimAngle: 0
         };
     }
 
     // --- KLÁVESNICE ---
     window.addEventListener('keydown', (e) => {
-        // Ignorujeme držení klávesy, pokud zrovna uživatel píše do chatu nebo formuláře
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         const key = e.key.toLowerCase();
@@ -28,11 +27,13 @@ export function initInputs() {
         
         if (e.key === 'Tab') {
             state.playerInputs.tab = true;
-            e.preventDefault(); // Zabrání přepínání UI elementů v prohlížeči, když hráč chce vidět skóre
+            e.preventDefault(); 
         }
     });
 
     window.addEventListener('keyup', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
         const key = e.key.toLowerCase();
         if (key === 'w' || key === 'arrowup') state.playerInputs.up = false;
         if (key === 's' || key === 'arrowdown') state.playerInputs.down = false;
@@ -40,54 +41,45 @@ export function initInputs() {
         if (key === 'd' || key === 'arrowright') state.playerInputs.right = false;
         
         if (key === 'r') state.playerInputs.reload = false;
-        if (key === 'f') state.playerInputs.ritual = false; 
-        if (e.key === 'Tab') state.playerInputs.tab = false;
-    });
-
-    // --- MYŠ ---
-    window.addEventListener('mousedown', (e) => {
-        // OPRAVA: Pokud uživatel kliká na UI (React/HTML prvky), ignoruj to!
-        // Střílet a dashovat chceme POUZE když kliká na herní canvas.
-        if (e.target.id !== 'game') return;
-
-        if (e.button === 0) state.playerInputs.click = true;       // Levé tlačítko (Střelba)
-        if (e.button === 2) state.playerInputs.rightClick = true;  // Pravé tlačítko (Dash/Schopnost)
-    });
-
-    window.addEventListener('mouseup', (e) => {
-        // MouseUp zachytáváme všude (bez filtru na target), abychom zabránili bugu,
-        // kdy hráč klikne, vyjede myší mimo okno, pustí myš a zbraň by střílela donekonečna.
-        if (e.button === 0) state.playerInputs.click = false;
-        if (e.button === 2) state.playerInputs.rightClick = false;
-    });
-
-    // Zamezení vyskakování kontextového menu prohlížeče při pravém kliku (dash)
-    window.addEventListener('contextmenu', (e) => {
-        // Blokujeme to jen na plátně, aby mohl hráč normálně klikat pravým v UI, kdyby potřeboval
-        if (e.target.id === 'game') {
+        if (key === 'f') state.playerInputs.ritual = false;
+        
+        if (e.key === 'Tab') {
+            state.playerInputs.tab = false;
             e.preventDefault();
         }
     });
 
-    // --- SLEDOVÁNÍ MYŠI ---
+    // GLOBÁLNÍ BLOKOVÁNÍ KONTEXTOVÉHO MENU (zajišťuje plynulý dash)
+    window.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+    });
+
+    // --- SLEDOVÁNÍ MYŠI A KLIKÁNÍ ---
+    window.addEventListener('mousedown', (e) => {
+        if (e.button === 0) state.playerInputs.click = true;
+        if (e.button === 2) {
+            state.playerInputs.rightClick = true;
+            state.playerInputs.dash = true; // Zde je oprava pro Dash!
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) state.playerInputs.click = false;
+        if (e.button === 2) {
+            state.playerInputs.rightClick = false;
+            state.playerInputs.dash = false; // Dash se musí vypnout po uvolnění
+        }
+    });
+
     window.addEventListener('mousemove', (e) => {
-        // 1. ČISTÉ POZICE MONITORU (Pro UI a HUD)
-        // Toto si necháváme pro render.js, aby věděl, kam nakreslit zaměřovač atd.
         state.currentMouseX = e.clientX;
         state.currentMouseY = e.clientY;
 
-        // 2. PŘEPOČET NA HERNÍ SVĚT (Pro fyziku a střelbu)
-        // Získáme aktuální nastavení kamery z render.js (pokud už naběhla, jinak dáme výchozí nuly)
         const scale = state.gameScale || 1;
         const offsetX = state.gameOffsetX || 0;
         const offsetY = state.gameOffsetY || 0;
 
-        // Vypočítáme, kam přesně v MAPĚ hráč ukazuje
         state.worldMouseX = (e.clientX - offsetX) / scale;
         state.worldMouseY = (e.clientY - offsetY) / scale;
-
-        // Poznámka: Výpočet samotného 'aimAngle' by se měl provádět až v herní smyčce 
-        // pomocí 'state.worldMouseX' a reálných souřadnic hráče (player.x, player.y),
-        // protože předpoklad, že hráč je vždy fixně uprostřed obrazovky, neplatí na okrajích mapy.
     });
 }

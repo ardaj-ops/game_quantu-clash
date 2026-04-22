@@ -36,13 +36,7 @@ try {
     process.exit(1);
 }
 
-// ==========================================
-// ZABEZPEČENÉ NAČTENÍ FUNKCÍ (FALLBACKS)
-// ==========================================
-const generateMap = gameHelper.generateMap || ((w, h) => {
-    console.warn('⚠️ Použita ZÁLOŽNÍ generateMap');
-    return { obstacles: [], breakables: [] };
-});
+const generateMap = gameHelper.generateMap || ((w, h) => ({ obstacles: [], breakables: [] }));
 const getValidSpawnPoint = gameHelper.getValidSpawnPoint || ((index, w, h) => ({ x: w / 2, y: h / 2 }));
 const generateCardsForPlayer = gameHelper.generateCardsForPlayer || ((player, cards) => []);
 
@@ -90,46 +84,22 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 
-// ==========================================
-// 1. NASTAVENÍ CORS A STATICKÝCH SOUBORŮ
-// ==========================================
-const allowedOrigins = [
-    "https://quantum-clash-gq1w.onrender.com",
-    "http://localhost:5173",
-    "http://localhost:3000"
-];
+const allowedOrigins = ["https://quantum-clash-gq1w.onrender.com", "http://localhost:5173", "http://localhost:3000"];
+app.use(cors({ origin: allowedOrigins, methods: ["GET", "POST", "OPTIONS"] }));
 
-app.use(cors({
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "OPTIONS"]
-}));
-
-const io = new Server(server, {
-    cors: {
-        origin: allowedOrigins,
-        methods: ["GET", "POST", "OPTIONS"],
-        credentials: true
-    }
-});
+const io = new Server(server, { cors: { origin: allowedOrigins, methods: ["GET", "POST", "OPTIONS"], credentials: true } });
 
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
 const frontendPublicPath = path.join(__dirname, '..', 'frontend', 'public');
 const staticPath = fs.existsSync(frontendDistPath) ? frontendDistPath : frontendPublicPath;
 
 app.use(express.static(staticPath));
-
 app.get('/', (req, res) => {
     const indexPath = path.join(staticPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.send("🚀 Backend Quantum Clash úspěšně běží a je připraven na Socket.io spojení!");
-    }
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.send("🚀 Backend běží!");
 });
 
-// ==========================================
-// 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
-// ==========================================
 const loadSharedFile = (fileName, windowMock = undefined) => {
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
@@ -142,9 +112,7 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
     for (const p of pathsToTry) {
         if (fs.existsSync(p)) {
             try {
-                console.log(`📄 Načítám sdílený soubor: ${p}`);
                 const raw = fs.readFileSync(p, 'utf-8');
-
                 const sanitized = raw
                     .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
@@ -156,13 +124,10 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
 
                 const m = { exports: {} };
                 const fileDir = path.dirname(p);
-
                 const customRequire = (moduleName) => {
                     if (moduleName.startsWith('.')) {
                         const basename = path.basename(moduleName, '.js');
-                        if (basename === 'gameConfig' && windowMock && windowMock.CONFIG) {
-                            return windowMock.CONFIG;
-                        }
+                        if (basename === 'gameConfig' && windowMock && windowMock.CONFIG) return windowMock.CONFIG;
                         let resolvedPath = path.join(fileDir, moduleName);
                         if (!resolvedPath.endsWith('.js')) resolvedPath += '.js';
                         if (fs.existsSync(resolvedPath)) return require(resolvedPath);
@@ -173,17 +138,12 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                 const wrapper = new Function('module', 'exports', 'require', 'window', sanitized);
                 wrapper(m, m.exports, customRequire, windowMock || {});
                 return m.exports;
-            } catch (err) {
-                console.warn(`⚠️ Soubor ${fileName} nelze načíst:`, err.message);
-                return null;
-            }
+            } catch (err) { return null; }
         }
     }
-    console.warn(`⚠️ Nepodařilo se najít sdílený soubor ${fileName}.`);
     return null;
 };
 
-// --- Načtení Konfigurace ---
 const gameConfig = loadSharedFile('gameConfig.js') || {};
 const {
     MAP_WIDTH = 1920, MAP_HEIGHT = 1080, PLAYER_RADIUS = 20,
@@ -195,38 +155,16 @@ const {
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
-const fullConfig = {
-    MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
-    BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE, BASE_BULLET_SPEED, BASE_MOVE_SPEED,
-    BASE_AMMO, BASE_RELOAD_TIME,
-    MAX_CAP_HP, MIN_CAP_HP, MAX_CAP_DAMAGE, MIN_CAP_FIRE_RATE,
-    MAX_CAP_MOVE_SPEED, MIN_CAP_MOVE_SPEED, MAX_CAP_BULLET_SPEED, MAX_CAP_AMMO,
-    MAX_CAP_LIFESTEAL, MAX_CAP_BOUNCES, MAX_CAP_PIERCE,
-    GRAVITY_OPTIONS, GRAVITY_CHANGE_INTERVAL,
-    ...gameConfig
-};
+const fullConfig = { MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS, BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE, BASE_BULLET_SPEED, BASE_MOVE_SPEED, BASE_AMMO, BASE_RELOAD_TIME, MAX_CAP_HP, MIN_CAP_HP, MAX_CAP_DAMAGE, MIN_CAP_FIRE_RATE, MAX_CAP_MOVE_SPEED, MIN_CAP_MOVE_SPEED, MAX_CAP_BULLET_SPEED, MAX_CAP_AMMO, MAX_CAP_LIFESTEAL, MAX_CAP_BOUNCES, MAX_CAP_PIERCE, GRAVITY_OPTIONS, GRAVITY_CHANGE_INTERVAL, ...gameConfig };
 
-// --- Načtení Karet ---
 let availableCards = [];
 const rawCards = loadSharedFile('cards.js', { CONFIG: fullConfig });
-if (rawCards) {
-    availableCards = Array.isArray(rawCards) ? rawCards :
-        (rawCards.availableCards || Object.values(rawCards).filter(v => Array.isArray(v))[0] || []);
-}
-if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
-else console.log(`✅ Načteno ${availableCards.length} karet.`);
+if (rawCards) availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards).filter(v => Array.isArray(v))[0] || []);
 
-const uiCatalog = availableCards.map(c => ({
-    name: c.name, initials: c.initials, icon: c.icon,
-    desc: c.desc || c.description || '',
-    rarity: c.rarity
-}));
+const uiCatalog = availableCards.map(c => ({ name: c.name, initials: c.initials, icon: c.icon, desc: c.desc || c.description || '', rarity: c.rarity }));
 
 const rooms = {};
 
-// ==========================================
-// 3. POMOCNÉ FUNKCE
-// ==========================================
 const broadcastLobbyUpdate = (room) => {
     if (!room) return;
     io.to(room.id).emit('lobbyUpdated', { hostId: room.hostId, players: room.players });
@@ -237,12 +175,8 @@ const generateRoomCode = () => {
     return Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 };
 
-// ==========================================
-// 4. HERNÍ LOGIKA PRO KOLA A SMRT
-// ==========================================
 const startNextRound = (room) => {
     if (!room) return;
-
     if (Object.keys(room.players).length < 1) {
         room.gameState = 'LOBBY';
         io.to(room.id).emit('gameStateChanged', { state: 'LOBBY', roomCode: room.id });
@@ -251,16 +185,12 @@ const startNextRound = (room) => {
         return;
     }
 
-    console.log(`🎮 Hra v místnosti ${room.id} začíná!`);
     room.roundNumber = (room.roundNumber || 0) + 1;
-
     const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT);
     room.obstacles = mapData.obstacles;
     room.breakables = mapData.breakables;
     room.deadPlayersThisRound = [];
     if (room.processedHits) room.processedHits.clear();
-
-    io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
 
     const playerIds = Object.keys(room.players);
     playerIds.forEach((id, index) => {
@@ -280,24 +210,16 @@ const startNextRound = (room) => {
     }
 
     io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
-    io.to(room.id).emit('gameStateChanged', {
-        state: 'PLAYING',
-        obstacles: room.obstacles,
-        breakables: room.breakables
-    });
+    io.to(room.id).emit('gameStateChanged', { state: 'PLAYING', obstacles: room.obstacles, breakables: room.breakables });
 };
 
 const handleDeath = (room, victimId) => {
     if (!room || room.gameState !== 'PLAYING') return;
-
     if (room.players[victimId]) {
         if (!room.deadPlayersThisRound.includes(victimId)) room.deadPlayersThisRound.push(victimId);
-        
-        // OPRAVA: Pokud má mrtvý hráč aktivní doménu, musíme ji bezpečně vypnout
         if (room.players[victimId].domainActive && DomainManager && typeof DomainManager.deactivateDomain === 'function') {
             DomainManager.deactivateDomain(room.players[victimId], Object.values(room.players));
         }
-        
         room.players[victimId].hp = 0;
         room.players[victimId].domainActive = false;
     }
@@ -308,9 +230,7 @@ const handleDeath = (room, victimId) => {
 
     if (room.settings.gameMode === 'TDM' && alive.length > 0) {
         let firstAliveTeam = room.players[alive[0]].team;
-        if (firstAliveTeam !== "none" && alive.every(id => room.players[id].team === firstAliveTeam)) {
-            roundWinnerTeam = firstAliveTeam;
-        }
+        if (firstAliveTeam !== "none" && alive.every(id => room.players[id].team === firstAliveTeam)) roundWinnerTeam = firstAliveTeam;
     } else if (alive.length <= 1) {
         roundWinnerId = alive.length === 1 ? alive[0] : null;
     }
@@ -350,9 +270,6 @@ const handleDeath = (room, victimId) => {
     }
 };
 
-// ==========================================
-// 5. SOCKET.IO EVENTY
-// ==========================================
 io.on('connection', (socket) => {
     socket.emit('mapData', { mapWidth: MAP_WIDTH, mapHeight: MAP_HEIGHT });
     socket.emit('initCatalog', uiCatalog);
@@ -360,20 +277,16 @@ io.on('connection', (socket) => {
     socket.on('createRoom', (data = {}) => {
         const code = generateRoomCode();
         const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT);
-
         rooms[code] = {
             id: code, hostId: socket.id, players: {}, upgradeQueue: [],
             gameState: 'LOBBY', teamScores: {}, deadPlayersThisRound: [],
             settings: { gameMode: 'FFA', maxRounds: 5, gravityTwist: false },
             currentGravity: GRAVITY_OPTIONS.length ? GRAVITY_OPTIONS[0] : { name: "Normal", x: 0, y: 0 },
-            obstacles: mapData.obstacles, breakables: mapData.breakables,
-            processedHits: new Set()
+            obstacles: mapData.obstacles, breakables: mapData.breakables, processedHits: new Set()
         };
-
         socket.join(code);
         socket.roomId = code;
         rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, "none", data.cosmetic, true);
-
         socket.emit('roomCreated', { code, isHost: true });
         socket.emit('settingsUpdated', rooms[code].settings);
         broadcastLobbyUpdate(rooms[code]);
@@ -383,7 +296,6 @@ io.on('connection', (socket) => {
         if (!data || !data.code) return;
         const code = String(data.code).toUpperCase();
         const room = rooms[code];
-
         if (!room) return socket.emit('errorMsg', 'Místnost neexistuje.');
         if (Object.keys(room.players).length >= 6) return socket.emit('errorMsg', 'Místnost je plná.');
         if (room.gameState !== 'LOBBY') return socket.emit('errorMsg', 'Hra už začala.');
@@ -392,7 +304,6 @@ io.on('connection', (socket) => {
         socket.roomId = code;
         const pTeam = (data.team && room.settings.gameMode !== 'FFA') ? data.team : "none";
         rooms[code].players[socket.id] = createPlayerTemplate(data.name, data.color, pTeam, data.cosmetic, false);
-
         socket.emit('roomJoined', { code, isHost: false });
         socket.emit('settingsUpdated', room.settings);
         broadcastLobbyUpdate(room);
@@ -401,9 +312,7 @@ io.on('connection', (socket) => {
     socket.on('updateSettings', (newSettings) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || room.hostId !== socket.id || !newSettings) return;
-
         room.settings = { ...room.settings, ...newSettings };
-
         if (room.settings.gameMode === 'TDM') {
             let redCount = 0, blueCount = 0;
             const players = Object.values(room.players);
@@ -417,7 +326,6 @@ io.on('connection', (socket) => {
         } else {
             Object.values(room.players).forEach(p => p.team = "none");
         }
-
         io.to(room.id).emit('settingsUpdated', room.settings);
         broadcastLobbyUpdate(room);
     });
@@ -425,20 +333,17 @@ io.on('connection', (socket) => {
     socket.on('updateProfile', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id] || !data) return;
-
         const p = room.players[socket.id];
         if (data.name) p.name = String(data.name).substring(0, 15);
         if (data.color) p.color = String(data.color).substring(0, 7);
         if (data.cosmetic !== undefined) p.cosmetic = data.cosmetic;
         if (data.team !== undefined) p.team = (room.settings.gameMode !== 'FFA') ? data.team : "none";
-
         broadcastLobbyUpdate(room);
     });
 
     socket.on('toggleReady', (status) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'LOBBY' || !room.players[socket.id]) return;
-
         room.players[socket.id].isReady = !!status;
         const playerIds = Object.keys(room.players);
         broadcastLobbyUpdate(room);
@@ -447,19 +352,13 @@ io.on('connection', (socket) => {
             if (room.settings.gameMode === 'TDM' && playerIds.length > 1) {
                 const hasRed = playerIds.some(id => room.players[id].team === 'red');
                 const hasBlue = playerIds.some(id => room.players[id].team === 'blue');
-
                 if (!hasRed || !hasBlue) {
                     room.players[socket.id].isReady = false;
                     broadcastLobbyUpdate(room);
                     return socket.emit('errorMsg', 'V TDM musí být alespoň jeden hráč v každém týmu!');
                 }
             }
-
-            playerIds.forEach(id => {
-                room.players[id].score = 0;
-                resetPlayerStatsToBase(room.players[id]);
-            });
-
+            playerIds.forEach(id => { room.players[id].score = 0; resetPlayerStatsToBase(room.players[id]); });
             room.teamScores = {};
             startNextRound(room);
         }
@@ -476,13 +375,11 @@ io.on('connection', (socket) => {
         const roomCode = typeof arg1 === 'string' ? arg1 : socket.roomId;
         const data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[roomCode || socket.roomId];
-
         if (room && room.gameState === 'PLAYING' && room.players[socket.id] && data) {
             const currentDash = room.players[socket.id].inputs.dash || false;
             room.players[socket.id].inputs = { ...room.players[socket.id].inputs, ...data, dash: currentDash || !!data.dash };
         }
     };
-
     socket.on('PlayerInput', handleInput);
     socket.on('playerInput', handleInput);
 
@@ -497,7 +394,6 @@ io.on('connection', (socket) => {
     socket.on('clientSync', (arg1, arg2) => {
         const data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-
         if (room && room.gameState === 'PLAYING' && data) {
             const p = room.players[socket.id];
             if (p && p.hp > 0 && typeof data.x === 'number' && typeof data.y === 'number') {
@@ -515,42 +411,33 @@ io.on('connection', (socket) => {
     socket.on('playerShot', (arg1, arg2) => {
         const bulletsData = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-        if (room && room.gameState === 'PLAYING') {
-            socket.to(socket.roomId).emit('enemyShot', bulletsData);
-        }
+        if (room && room.gameState === 'PLAYING') socket.to(socket.roomId).emit('enemyShot', bulletsData);
     });
 
     socket.on('bulletHitPlayer', (arg1, arg2) => {
         const data = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-
         if (room && room.gameState === 'PLAYING' && data && data.targetId) {
             const target = room.players[data.targetId];
             const shooter = room.players[socket.id];
-
             if (target && shooter && target.hp > 0) {
                 if (data.bulletId) {
                     const hitHash = `${data.bulletId}-${data.targetId}`;
                     if (room.processedHits.has(hitHash)) return;
                     room.processedHits.add(hitHash);
-
                     if (room.processedHits.size > 2000) {
                         const iterator = room.processedHits.values();
                         for (let i = 0; i < 500; i++) room.processedHits.delete(iterator.next().value);
                     }
                 }
-
                 const damageFromClient = Number(data.damage) || 0;
                 const maxAllowedDamage = shooter.damage * 3;
                 const safeDamage = Math.min(damageFromClient, maxAllowedDamage);
-
                 target.hp -= safeDamage;
-
                 if (data.lifesteal > 0 && shooter.hp > 0) {
                     const healAmount = Math.floor(safeDamage * Number(data.lifesteal));
                     shooter.hp = Math.min(shooter.maxHp, shooter.hp + healAmount);
                 }
-
                 if (target.hp <= 0) handleDeath(room, data.targetId);
                 io.to(socket.roomId).emit('playerDamaged', { targetId: data.targetId, newHp: target.hp, shooterId: socket.id });
             }
@@ -572,7 +459,8 @@ io.on('connection', (socket) => {
         if (socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
     });
 
-    socket.on('pickCard', (cardIndex) => {
+    // ZDE JE OPRAVA PRO KARTY: Přejmenováno z pickCard na selectCard
+    socket.on('selectCard', (cardIndex) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'UPGRADE' || socket.id !== room.currentLoserId) return;
 
@@ -606,7 +494,6 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         const code = socket.roomId;
         if (!code) return;
-
         const room = rooms[code];
         if (!room) return;
 
@@ -638,21 +525,14 @@ io.on('connection', (socket) => {
                     let cardsToSend = generateCardsForPlayer(nextPlayer, availableCards);
                     io.to(room.id).emit('gameStateChanged', { state: 'UPGRADE', loserId: room.currentLoserId, cards: cardsToSend });
                     io.to(room.id).emit('showCards', cardsToSend);
-                } else {
-                    startNextRound(room);
-                }
-            } else {
-                startNextRound(room);
-            }
+                } else startNextRound(room);
+            } else startNextRound(room);
         } else {
             broadcastLobbyUpdate(room);
         }
     });
 });
 
-// ==========================================
-// 6. GLOBÁLNÍ INTERVALY HER (TICK RATE)
-// ==========================================
 setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (room && room.gameState === 'PLAYING' && room.settings.gravityTwist && GRAVITY_OPTIONS.length > 0) {
@@ -674,23 +554,19 @@ setInterval(() => {
         if (!room) return;
 
         if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
-            // OPRAVA ZDE:
-            // DomainManager očekává signaturu: (players, enemies, projectiles, deltaTime)
-            // Změněno tak, aby se správně předalo pole nepřátel (enemiesArray) místo celého objektu room.
             const enemiesArray = Object.values(room.players);
-            
-            // Třetí argument projektily - protože je drží klient, můžeme bezpečně poslat prázdné pole, 
-            // doména si s tím uvnitř poradí.
             DomainManager.updateDomains(room.players, enemiesArray, [], TICK_RATE);
         }
 
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
+            
+            // ZDE JE OPRAVA POHYBU: Používáme .toFixed(2) místo Math.round()
             leanPlayers[id] = {
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                x: Math.round(p.x),
-                y: Math.round(p.y),
+                x: Number((p.x || 0).toFixed(2)),
+                y: Number((p.y || 0).toFixed(2)),
                 hp: Math.round(p.hp),
                 maxHp: p.maxHp,
                 aimAngle: Number(p.aimAngle.toFixed(2)),
