@@ -130,9 +130,6 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
-// windowMock: objekt předaný jako 'window' uvnitř wrapperu.
-// cards.js dělá: typeof window !== 'undefined' ? window.CONFIG : require(...)
-// Bez tohoto by require('./gameConfig') selhal na ES6 souboru.
 const loadSharedFile = (fileName, windowMock = undefined) => {
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
@@ -148,8 +145,6 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                 console.log(`📄 Načítám sdílený soubor: ${p}`);
                 const raw = fs.readFileSync(p, 'utf-8');
 
-                // OPRAVA: Odstraníme ES6 export/import syntax.
-                // gameConfig.js má 'export { CONFIG }' a 'export const' — ty crashují new Function().
                 const sanitized = raw
                     .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
@@ -163,8 +158,6 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                 const fileDir = path.dirname(p);
 
                 const customRequire = (moduleName) => {
-                    // OPRAVA: Pokud cards.js zkusí require('./gameConfig'), vrátíme windowMock.CONFIG
-                    // místo pokusu načíst ES6 soubor nativním require() (ten by selhal).
                     if (moduleName.startsWith('.')) {
                         const basename = path.basename(moduleName, '.js');
                         if (basename === 'gameConfig' && windowMock && windowMock.CONFIG) {
@@ -177,7 +170,6 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                     return require(moduleName);
                 };
 
-                // Předáváme 'window' jako 4. parametr — cards.js ho potřebuje pro CFG
                 const wrapper = new Function('module', 'exports', 'require', 'window', sanitized);
                 wrapper(m, m.exports, customRequire, windowMock || {});
                 return m.exports;
@@ -203,7 +195,6 @@ const {
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
-// Sestavíme kompletní config objekt pro předání do cards.js jako window.CONFIG
 const fullConfig = {
     MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
     BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE, BASE_BULLET_SPEED, BASE_MOVE_SPEED,
@@ -216,9 +207,6 @@ const fullConfig = {
 };
 
 // --- Načtení Karet ---
-// OPRAVA: Předáváme { CONFIG: fullConfig } jako window mock.
-// cards.js dělá: typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig')
-// require('./gameConfig') by selhal (ES6 soubor) — windowMock to obchází.
 let availableCards = [];
 const rawCards = loadSharedFile('cards.js', { CONFIG: fullConfig });
 if (rawCards) {
@@ -228,7 +216,6 @@ if (rawCards) {
 if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
 else console.log(`✅ Načteno ${availableCards.length} karet.`);
 
-// OPRAVA: cards používají 'description' ne 'desc' — uiCatalog byl vždy prázdný
 const uiCatalog = availableCards.map(c => ({
     name: c.name, initials: c.initials, icon: c.icon,
     desc: c.desc || c.description || '',
@@ -292,9 +279,6 @@ const startNextRound = (room) => {
         io.to(room.id).emit('gravityChanged', room.currentGravity.name);
     }
 
-    // OPRAVA: Posíláme mapUpdate i gameStateChanged s daty mapy uvnitř.
-    // Engine se načítá dynamicky a může spustit listener AŽ PO odeslání mapUpdate,
-    // takže by překážky nikdy nedorazily. Teď jsou v gameStateChanged jako záloha.
     io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
     io.to(room.id).emit('gameStateChanged', {
         state: 'PLAYING',
@@ -308,6 +292,12 @@ const handleDeath = (room, victimId) => {
 
     if (room.players[victimId]) {
         if (!room.deadPlayersThisRound.includes(victimId)) room.deadPlayersThisRound.push(victimId);
+        
+        // OPRAVA: Pokud má mrtvý hráč aktivní doménu, musíme ji bezpečně vypnout
+        if (room.players[victimId].domainActive && DomainManager && typeof DomainManager.deactivateDomain === 'function') {
+            DomainManager.deactivateDomain(room.players[victimId], Object.values(room.players));
+        }
+        
         room.players[victimId].hp = 0;
         room.players[victimId].domainActive = false;
     }
@@ -684,7 +674,14 @@ setInterval(() => {
         if (!room) return;
 
         if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
-            DomainManager.updateDomains(room.players, room, TICK_RATE);
+            // OPRAVA ZDE:
+            // DomainManager očekává signaturu: (players, enemies, projectiles, deltaTime)
+            // Změněno tak, aby se správně předalo pole nepřátel (enemiesArray) místo celého objektu room.
+            const enemiesArray = Object.values(room.players);
+            
+            // Třetí argument projektily - protože je drží klient, můžeme bezpečně poslat prázdné pole, 
+            // doména si s tím uvnitř poradí.
+            DomainManager.updateDomains(room.players, enemiesArray, [], TICK_RATE);
         }
 
         const leanPlayers = {};
