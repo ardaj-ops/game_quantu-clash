@@ -2,7 +2,6 @@
 import { state } from './state.js';
 
 export function initInputs() {
-    // Inicializujeme vstupy do centrálního stavu
     if (!state.playerInputs) {
         state.playerInputs = {
             up: false, down: false, left: false, right: false,
@@ -49,7 +48,7 @@ export function initInputs() {
         }
     });
 
-    // GLOBÁLNÍ BLOKOVÁNÍ KONTEXTOVÉHO MENU (zajišťuje plynulý dash)
+    // GLOBÁLNÍ BLOKOVÁNÍ KONTEXTOVÉHO MENU (zamezí oknu při pravém kliku)
     window.addEventListener('contextmenu', (e) => {
         e.preventDefault();
     });
@@ -59,7 +58,12 @@ export function initInputs() {
         if (e.button === 0) state.playerInputs.click = true;
         if (e.button === 2) {
             state.playerInputs.rightClick = true;
-            state.playerInputs.dash = true; // Zde je oprava pro Dash!
+            state.playerInputs.dash = true;
+            
+            // OPRAVA DASH: Okamžitě řekneme serveru, že hráč dashnul!
+            if (window.gameSocket) {
+                window.gameSocket.emit('Dash');
+            }
         }
     });
 
@@ -67,7 +71,7 @@ export function initInputs() {
         if (e.button === 0) state.playerInputs.click = false;
         if (e.button === 2) {
             state.playerInputs.rightClick = false;
-            state.playerInputs.dash = false; // Dash se musí vypnout po uvolnění
+            state.playerInputs.dash = false;
         }
     });
 

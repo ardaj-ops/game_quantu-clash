@@ -459,12 +459,12 @@ io.on('connection', (socket) => {
         if (socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
     });
 
-    // ZDE JE OPRAVA PRO KARTY: Přejmenováno z pickCard na selectCard
-    socket.on('selectCard', (cardIndex) => {
+    // OPRAVA KARET: Nyní server hledá kartu podle jejího přesného Jména (name), nikoliv podle náhodného ID/Indexu!
+    socket.on('selectCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'UPGRADE' || socket.id !== room.currentLoserId) return;
 
-        const card = availableCards[cardIndex];
+        const card = availableCards.find(c => c.name === cardName);
         const p = room.players[socket.id];
 
         if (card && p) {
@@ -562,7 +562,6 @@ setInterval(() => {
         for (const id in room.players) {
             const p = room.players[id];
             
-            // ZDE JE OPRAVA POHYBU: Používáme .toFixed(2) místo Math.round()
             leanPlayers[id] = {
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
                 x: Number((p.x || 0).toFixed(2)),
