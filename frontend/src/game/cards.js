@@ -1,9 +1,9 @@
 //cards.js
-constCFG=(typeofwindow!=='undefined'&&window.CONFIG)?window.CONFIG:{
-MAX_CAP_HP:600,MIN_CAP_HP:30,MAX_CAP_DAMAGE:999,MIN_CAP_FIRE_RATE:50,
-MAX_CAP_MOVE_SPEED:3.5,MIN_CAP_MOVE_SPEED:0.2,MAX_CAP_BULLET_SPEED:80,
-MIN_CAP_BULLET_SPEED:3,MAX_CAP_AMMO:99,MAX_CAP_LIFESTEAL:0.50,
-MAX_CAP_BOUNCES:10,MAX_CAP_PIERCE:15
+const CFG = (typeof window !== 'undefined' && window.CONFIG) ? window.CONFIG : {
+    MAX_CAP_HP: 600, MIN_CAP_HP: 30, MAX_CAP_DAMAGE: 999, MIN_CAP_FIRE_RATE: 50,
+    MAX_CAP_MOVE_SPEED: 3.5, MIN_CAP_MOVE_SPEED: 0.2, MAX_CAP_BULLET_SPEED: 80,
+    MIN_CAP_BULLET_SPEED: 3, MAX_CAP_AMMO: 99, MAX_CAP_LIFESTEAL: 0.50,
+    MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15
 };
 
 constavailableCards=[
@@ -144,6 +144,7 @@ function getValidCardsForPlayer(player) {
     });
 }
 
+// ÚPLNÝ KONEC SOUBORU cards.js
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { availableCards, getValidCardsForPlayer };
 } else if (typeof window !== 'undefined') {
