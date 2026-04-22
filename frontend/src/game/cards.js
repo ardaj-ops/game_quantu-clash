@@ -144,10 +144,14 @@ function getValidCardsForPlayer(player) {
     });
 }
 
-// ÚPLNÝ KONEC SOUBORU cards.js
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { availableCards, getValidCardsForPlayer };
-} else if (typeof window !== 'undefined') {
+// =========================================================================
+// EXPORT PRO SERVER I KLIENT
+// =========================================================================
+if (typeof window !== 'undefined') {
     window.availableCards = availableCards;
     window.getValidCardsForPlayer = getValidCardsForPlayer;
+}
+
+if (typeof module !== 'undefined') {
+    module.exports = { availableCards, getValidCardsForPlayer };
 }
