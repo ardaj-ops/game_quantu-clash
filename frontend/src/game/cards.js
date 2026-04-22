@@ -1,11 +1,13 @@
 // cards.js
-// OPRAVA: Odstraněn require('./gameConfig.js') — ten soubor používá ES6 export
-// a na backendu by selhal. Server nyní předává CONFIG přes window mock.
-// Frontend má window.CONFIG nastaveno globálně z gameConfig.js.
+// OPRAVA: Odstraněn require('./gameConfig.js') — ten soubor je ES6 a crashuje Node require().
+// Server předává CONFIG přes window mock ({ CONFIG: fullConfig }) v loadSharedFile().
+// Frontend má window.CONFIG nastaveno přes gameConfig.js.
+// Záložní objekt obsahuje všechny hodnoty z gameConfig.js kdyby selhal i window.CONFIG.
 const CFG = (typeof window !== 'undefined' && window.CONFIG) ? window.CONFIG : {
     MAX_CAP_HP: 600, MIN_CAP_HP: 30, MAX_CAP_DAMAGE: 999, MIN_CAP_FIRE_RATE: 50,
     MAX_CAP_MOVE_SPEED: 3.5, MIN_CAP_MOVE_SPEED: 0.2, MAX_CAP_BULLET_SPEED: 80,
-    MAX_CAP_AMMO: 99, MAX_CAP_LIFESTEAL: 0.50, MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15
+    MIN_CAP_BULLET_SPEED: 3, MAX_CAP_AMMO: 99, MAX_CAP_LIFESTEAL: 0.50,
+    MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15
 };
 
 const availableCards = [

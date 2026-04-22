@@ -39,8 +39,8 @@ window.saveCrosshairSettings = function() {
 let firstFrameLogged = false;
 
 function resizeCanvas(canvas) {
-    // OPRAVA: offsetWidth/Height vrací 0 pokud canvas ještě nebyl layout-ován po display:none->block
-    // Používáme window.innerWidth/Height jako zálohu, aby první frame nebyl prázdný
+    // OPRAVA: offsetWidth je 0 hned po display:none->block, dokud prohlížeč neudělá layout.
+    // Použijeme window.innerWidth jako zálohu.
     const w = canvas.offsetWidth || window.innerWidth;
     const h = canvas.offsetHeight || window.innerHeight;
     if (canvas.width !== w || canvas.height !== h) {
@@ -84,28 +84,23 @@ export function initGameEngine() {
         return;
     }
 
-    // OPRAVA: Počkáme jeden frame, aby prohlížeč stihl layout po display:none->block
-    // Bez toho canvas.offsetWidth = 0 a první frame se nevykreslí
+    // OPRAVA: Čekáme jeden frame aby prohlížeč stihl layout po display:none->block.
+    // Bez toho canvas.offsetWidth = 0 a první frame je prázdný (canvas 0×0).
     requestAnimationFrame(() => {
         resizeCanvas(canvas);
-        // Pokud offsetWidth stále 0, vynutíme window rozměry
-        if (canvas.width === 0) {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
         state.canvas = canvas;
         state.ctx = canvas.getContext('2d');
 
-        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.addEventListener('contextmenu', e => e.preventDefault());
         window.addEventListener('resize', () => resizeCanvas(canvas));
 
-        console.log(`🚀 Herní engine nastartován! Rozlišení: ${canvas.width}x${canvas.height}`);
+        console.log(`🚀 Engine nastartován: ${canvas.width}×${canvas.height}`);
 
         initInputs();
         requestAnimationFrame(renderLoop);
 
         setInterval(() => {
-            if (state.latestServerData) {
+            if (state.latestServerData && state.latestServerData.gameState === 'PLAYING') {
                 updateLocalGame();
             }
         }, 1000 / 60);

@@ -130,8 +130,9 @@ app.get('/', (req, res) => {
 // ==========================================
 // 2. NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ
 // ==========================================
-// windowMock: volitelný objekt, který se předá jako 'window' do wrapperu.
-// Potřebné pro cards.js, které dělá: typeof window !== 'undefined' ? window.CONFIG : require(...)
+// windowMock: objekt předaný jako 'window' uvnitř wrapperu.
+// cards.js dělá: typeof window !== 'undefined' ? window.CONFIG : require(...)
+// Bez tohoto by require('./gameConfig') selhal na ES6 souboru.
 const loadSharedFile = (fileName, windowMock = undefined) => {
     const pathsToTry = [
         path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
@@ -147,31 +148,26 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                 console.log(`📄 Načítám sdílený soubor: ${p}`);
                 const raw = fs.readFileSync(p, 'utf-8');
 
-                // OPRAVA: Odstraníme ES6 export/import syntax, která zastavuje new Function().
-                // gameConfig.js a jiné frontend soubory používají 'export const X' nebo 'export { X }'.
+                // OPRAVA: Odstraníme ES6 export/import syntax.
+                // gameConfig.js má 'export { CONFIG }' a 'export const' — ty crashují new Function().
                 const sanitized = raw
-                    // "export default X"  ->  "module.exports = X"
                     .replace(/^\s*export\s+default\s+/gm, 'module.exports = ')
-                    // "export { CONFIG }"  ->  "module.exports = CONFIG;"
                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, (_, names) => {
                         const first = names.trim().split(',')[0].trim();
                         return first ? `module.exports = ${first};` : '';
                     })
-                    // "export const X"  ->  "const X"
                     .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
-                    // "import X from '...'"  ->  odstraníme
                     .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
 
                 const m = { exports: {} };
                 const fileDir = path.dirname(p);
 
                 const customRequire = (moduleName) => {
-                    // OPRAVA: Pokud soubor importuje gameConfig relativně, vrátíme
-                    // ho z windowMock (pokud existuje), aby se nespouštěl nativní require
-                    // na ES6 souboru, který by selhal.
+                    // OPRAVA: Pokud cards.js zkusí require('./gameConfig'), vrátíme windowMock.CONFIG
+                    // místo pokusu načíst ES6 soubor nativním require() (ten by selhal).
                     if (moduleName.startsWith('.')) {
                         const basename = path.basename(moduleName, '.js');
-                        if ((basename === 'gameConfig') && windowMock && windowMock.CONFIG) {
+                        if (basename === 'gameConfig' && windowMock && windowMock.CONFIG) {
                             return windowMock.CONFIG;
                         }
                         let resolvedPath = path.join(fileDir, moduleName);
@@ -181,7 +177,7 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                     return require(moduleName);
                 };
 
-                // Předáme 'window' jako parametr — cards.js ho potřebuje pro CFG
+                // Předáváme 'window' jako 4. parametr — cards.js ho potřebuje pro CFG
                 const wrapper = new Function('module', 'exports', 'require', 'window', sanitized);
                 wrapper(m, m.exports, customRequire, windowMock || {});
                 return m.exports;
@@ -201,30 +197,42 @@ const {
     MAP_WIDTH = 1920, MAP_HEIGHT = 1080, PLAYER_RADIUS = 20,
     BASE_HP = 100, BASE_DAMAGE = 20, BASE_FIRE_RATE = 400, BASE_BULLET_SPEED = 15, BASE_MOVE_SPEED = 0.8,
     BASE_AMMO = 10, BASE_RELOAD_TIME = 1500,
-    MAX_CAP_HP = 500, MIN_CAP_HP = 10, MAX_CAP_DAMAGE = 150, MIN_CAP_FIRE_RATE = 50,
-    MAX_CAP_MOVE_SPEED = 2.8, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 45, MAX_CAP_AMMO = 50,
+    MAX_CAP_HP = 600, MIN_CAP_HP = 30, MAX_CAP_DAMAGE = 999, MIN_CAP_FIRE_RATE = 50,
+    MAX_CAP_MOVE_SPEED = 3.5, MIN_CAP_MOVE_SPEED = 0.2, MAX_CAP_BULLET_SPEED = 80, MAX_CAP_AMMO = 99,
+    MAX_CAP_LIFESTEAL = 0.5, MAX_CAP_BOUNCES = 10, MAX_CAP_PIERCE = 15,
     GRAVITY_OPTIONS = [{ name: "Normal", x: 0, y: 0 }], GRAVITY_CHANGE_INTERVAL = 10000
 } = gameConfig;
 
-// OPRAVA: Předáme načtený gameConfig jako window.CONFIG do cards.js.
-// cards.js dělá: const CFG = typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig.js')
-// Nativní require() na ES6 souboru by selhal — tímto to obcházíme.
-const configForCards = { ...gameConfig, MAP_WIDTH, MAP_HEIGHT, BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE,
-    BASE_BULLET_SPEED, BASE_MOVE_SPEED, BASE_AMMO, MAX_CAP_HP, MIN_CAP_HP, MAX_CAP_DAMAGE,
-    MIN_CAP_FIRE_RATE, MAX_CAP_MOVE_SPEED, MIN_CAP_MOVE_SPEED, MAX_CAP_BULLET_SPEED, MAX_CAP_AMMO,
-    MAX_CAP_LIFESTEAL: 0.5, MAX_CAP_BOUNCES: 10, MAX_CAP_PIERCE: 15 };
+// Sestavíme kompletní config objekt pro předání do cards.js jako window.CONFIG
+const fullConfig = {
+    MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
+    BASE_HP, BASE_DAMAGE, BASE_FIRE_RATE, BASE_BULLET_SPEED, BASE_MOVE_SPEED,
+    BASE_AMMO, BASE_RELOAD_TIME,
+    MAX_CAP_HP, MIN_CAP_HP, MAX_CAP_DAMAGE, MIN_CAP_FIRE_RATE,
+    MAX_CAP_MOVE_SPEED, MIN_CAP_MOVE_SPEED, MAX_CAP_BULLET_SPEED, MAX_CAP_AMMO,
+    MAX_CAP_LIFESTEAL, MAX_CAP_BOUNCES, MAX_CAP_PIERCE,
+    GRAVITY_OPTIONS, GRAVITY_CHANGE_INTERVAL,
+    ...gameConfig
+};
 
 // --- Načtení Karet ---
+// OPRAVA: Předáváme { CONFIG: fullConfig } jako window mock.
+// cards.js dělá: typeof window !== 'undefined' ? window.CONFIG : require('./gameConfig')
+// require('./gameConfig') by selhal (ES6 soubor) — windowMock to obchází.
 let availableCards = [];
-const rawCards = loadSharedFile('cards.js', { CONFIG: configForCards });
+const rawCards = loadSharedFile('cards.js', { CONFIG: fullConfig });
 if (rawCards) {
-    availableCards = Array.isArray(rawCards) ? rawCards : (rawCards.availableCards || Object.values(rawCards) || []);
+    availableCards = Array.isArray(rawCards) ? rawCards :
+        (rawCards.availableCards || Object.values(rawCards).filter(v => Array.isArray(v))[0] || []);
 }
 if (availableCards.length === 0) console.warn("⚠️ Nebyly nalezeny žádné karty v cards.js.");
-else console.log(`✅ Načteno ${availableCards.length} karet z cards.js.`);
+else console.log(`✅ Načteno ${availableCards.length} karet.`);
 
+// OPRAVA: cards používají 'description' ne 'desc' — uiCatalog byl vždy prázdný
 const uiCatalog = availableCards.map(c => ({
-    name: c.name, initials: c.initials, icon: c.icon, desc: c.desc, rarity: c.rarity
+    name: c.name, initials: c.initials, icon: c.icon,
+    desc: c.desc || c.description || '',
+    rarity: c.rarity
 }));
 
 const rooms = {};
@@ -284,8 +292,9 @@ const startNextRound = (room) => {
         io.to(room.id).emit('gravityChanged', room.currentGravity.name);
     }
 
-    // OPRAVA: Pošleme mapUpdate PŘED gameStateChanged, ale také data mapy
-    // přímo v gameStateChanged jako zálohu (engine nemusí být ready pro mapUpdate)
+    // OPRAVA: Posíláme mapUpdate i gameStateChanged s daty mapy uvnitř.
+    // Engine se načítá dynamicky a může spustit listener AŽ PO odeslání mapUpdate,
+    // takže by překážky nikdy nedorazily. Teď jsou v gameStateChanged jako záloha.
     io.to(room.id).emit('mapUpdate', { obstacles: room.obstacles, breakables: room.breakables });
     io.to(room.id).emit('gameStateChanged', {
         state: 'PLAYING',
@@ -668,7 +677,7 @@ setInterval(() => {
     });
 }, GRAVITY_CHANGE_INTERVAL);
 
-const TICK_RATE = 1000 / 60;
+const TICK_RATE = 1000 / 50;
 
 setInterval(() => {
     Object.values(rooms).forEach(room => {

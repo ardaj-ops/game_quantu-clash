@@ -30,10 +30,12 @@ function App() {
     gravityTwist: false
   });
 
-  // Ammo v React state (aktualizováno přes socket, ne přímý DOM)
+  // Ammo v React state — aktualizováno přes socket.on('gameUpdate'), ne přes DOM
   const [ammo, setAmmo] = useState({ current: 0, max: 0 });
-  // Data pro výběr karet po kole
+  // Data pro výběr karet po kole { loserId, cards[] }
   const [upgradeData, setUpgradeData] = useState(null);
+  // Vítěz pro game over screen
+  const [winnerName, setWinnerName] = useState('');
 
   useEffect(() => {
     localStorage.setItem('qc_nickname', nickname);
@@ -80,7 +82,7 @@ function App() {
           initGameEngine();
         });
       } else if (data.state === 'UPGRADE') {
-        // Výběr karet po skončení kola
+        // OPRAVA: UPGRADE nebyl nikdy zpracován — karta fáze se vůbec nezobrazila
         setUpgradeData({ loserId: data.loserId, cards: data.cards || [] });
         setCurrentView('upgrade');
       } else if (data.state === 'LOBBY') {
@@ -88,12 +90,13 @@ function App() {
         setIsReady(false);
         setUpgradeData(null);
       } else if (data.state === 'GAMEOVER') {
+        setWinnerName(data.winnerName || '');
         setCurrentView('gameover');
         setUpgradeData(null);
       }
     };
 
-    // OPRAVA ammo: čteme ze socket eventu, ne přes module export (který je readonly)
+    // OPRAVA: ammo čteme přímo ze socket eventu, ne přes DOM nebo module export
     const onGameUpdate = (data) => {
       if (data.players && socket.id && data.players[socket.id]) {
         const me = data.players[socket.id];
@@ -176,22 +179,24 @@ function App() {
         }}
       />
 
-      {/* HUD — ammo čteme z React state, ne DOM */}
+      {/* HUD — ammo z React state (ne DOM), pouze ve hře */}
       {currentView === 'game' && (
-        <div id="game-hud" style={{
+        <div style={{
           position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
           pointerEvents: 'none', zIndex: 10
         }}>
           <div style={{
             position: 'absolute', bottom: '30px', right: '30px',
-            color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right',
-            pointerEvents: 'none'
+            color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right'
           }}>
             <h2 style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>
               {ammo.current} / {ammo.max}
             </h2>
             <div style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
-              <div style={{ width: ammo.max > 0 ? `${(ammo.current / ammo.max) * 100}%` : '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }}></div>
+              <div style={{
+                width: ammo.max > 0 ? `${Math.max(0, (ammo.current / ammo.max) * 100)}%` : '100%',
+                height: '100%', background: '#45f3ff', transition: 'width 0.1s linear'
+              }}></div>
             </div>
           </div>
         </div>
@@ -199,10 +204,10 @@ function App() {
 
       {/* VÝBĚR KARET po skončení kola */}
       {currentView === 'upgrade' && upgradeData && (
-        <div className="overlay" style={{ zIndex: 30 }}>
+        <div className="overlay" style={{ zIndex: 30, background: 'rgba(0,0,0,0.8)' }}>
           {upgradeData.loserId === socket.id ? (
             <>
-              <h2 style={{ fontSize: '3rem', color: '#f43f5e', textTransform: 'uppercase', marginBottom: '10px' }}>
+              <h2 style={{ fontSize: '3rem', color: '#f43f5e', textTransform: 'uppercase', margin: '0 0 10px 0' }}>
                 Prohrál jsi kolo!
               </h2>
               <p style={{ color: 'white', fontSize: '1.2rem', marginBottom: '30px' }}>Vyber si vylepšení:</p>
@@ -211,16 +216,16 @@ function App() {
                   <div
                     key={i}
                     className={`card card-${(card.rarity || 'common').toLowerCase()}`}
+                    style={{ cursor: 'pointer', minWidth: '180px', maxWidth: '220px' }}
                     onClick={() => {
                       socket.emit('pickCard', card.globalIndex ?? i);
                       setUpgradeData(null);
                       setCurrentView('game');
                     }}
-                    style={{ cursor: 'pointer', minWidth: '180px' }}
                   >
                     <div className="rarity-label">{card.rarity || 'Common'}</div>
                     <h3>{card.icon || ''} {card.name}</h3>
-                    <p>{card.desc || card.description}</p>
+                    <p>{card.desc || card.description || ''}</p>
                   </div>
                 ))}
               </div>
@@ -236,16 +241,19 @@ function App() {
 
       {/* GAME OVER */}
       {currentView === 'gameover' && (
-        <div className="overlay" style={{ zIndex: 20, position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)' }}>
-          <h1 style={{ fontSize: '6rem', margin: 0, color: '#f43f5e' }}>🏆 KONEC HRY 🏆</h1>
-          <h2 id="winnerText" style={{ fontSize: '3rem', color: 'white', marginBottom: '50px', textTransform: 'uppercase' }}>Konec hry!</h2>
-          <button className="menu-btn" onClick={() => { setCurrentView('menu'); socket.emit('leaveRoom'); }} style={{ padding: '15px 30px', fontSize: '1.2rem' }}>
+        <div className="overlay" style={{ zIndex: 30, background: 'rgba(0,0,0,0.9)' }}>
+          <h1 style={{ fontSize: '5rem', margin: '0 0 20px 0', color: '#f43f5e' }}>🏆 KONEC HRY 🏆</h1>
+          <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '50px', textTransform: 'uppercase' }}>
+            {winnerName ? `Vítěz: ${winnerName}` : 'Konec hry!'}
+          </h2>
+          <button className="menu-btn" onClick={() => { setCurrentView('menu'); setWinnerName(''); socket.emit('leaveRoom'); }}
+            style={{ padding: '15px 30px', fontSize: '1.2rem', background: '#4ade80', color: '#000' }}>
             Zpět do Menu
           </button>
         </div>
       )}
 
-      {/* MENU + LOBBY — skryté ve hře */}
+      {/* MENU + LOBBY — skryté ve hře, upgradu a game over */}
       {currentView !== 'game' && currentView !== 'gameover' && currentView !== 'upgrade' && (
         <div className="App-container" style={{ width: '100%', maxWidth: '600px', position: 'relative', zIndex: 20 }}>
 

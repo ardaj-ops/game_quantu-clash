@@ -6,8 +6,8 @@ export const state = {
     latestServerData: null,
     localObstacles: [],
     localBreakables: [],
-    localBullets: [],   // Střely vystřelené MNOU (lokální predikce)
-    remoteBullets: [],  // Střely ostatních hráčů (přijaty ze serveru přes enemyShot)
+    localBullets: [],
+    remoteBullets: [],  // Střely ostatních hráčů přijaté přes enemyShot
     CARD_CATALOG: [],
     
     // Zobrazení

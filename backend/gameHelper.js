@@ -64,47 +64,55 @@ const getValidSpawnPoint = (playerIndex, mapWidth, mapHeight, obstacles, breakab
 
 const generateCardsForPlayer = (player, availableCards) => {
     if (!availableCards?.length || !player) return [];
-    
-    // Filtrace karet platných pro hráče
+
+    // OPRAVA: Filtrování karet podle pravidel z cards.js getValidCardsForPlayer:
+    // 1. Transcended karty BEZ requiresDomain = domény — pouze hráčům bez domény
+    // 2. requiresDomain = true → hráč musí mít NĚJAKOU doménu
+    // 3. specificDomain → hráč musí mít PŘESNĚ tuto doménu
     let validCards = availableCards
         .map((c, i) => ({ originalIndex: i, data: c }))
-        .filter(c => {
-            if (c.data.requiresDomain && !player.domainType) return false;
-            if (c.data.specificDomain && player.domainType !== c.data.specificDomain) return false;
+        .filter(({ data: c }) => {
+            // Transcended karty co dávají doménu → jen hráčům co ji ještě nemají
+            if (c.rarity === 'transcended' && !c.requiresDomain && !c.specificDomain) {
+                if (player.domainType) return false;
+            }
+            // Karty vyžadující NĚJAKOU doménu
+            if (c.requiresDomain && !c.specificDomain) {
+                if (!player.domainType) return false;
+            }
+            // Karty vyžadující KONKRÉTNÍ doménu
+            if (c.specificDomain) {
+                if (player.domainType !== c.specificDomain) return false;
+            }
             return true;
         });
 
-    // Použití Setu pro rychlejší a čistší vyhledávání duplikátů
     let pickedIndices = new Set();
     let cardsToSend = [];
-    
+
     while (cardsToSend.length < 3 && pickedIndices.size < validCards.length) {
-        let unpickedValidCards = validCards.filter(c => !pickedIndices.has(c.originalIndex));
-        if (unpickedValidCards.length === 0) break;
+        let unpicked = validCards.filter(c => !pickedIndices.has(c.originalIndex));
+        if (unpicked.length === 0) break;
 
         let totalWeight = 0;
-        let weightedCards = unpickedValidCards.map(c => {
-            let weight = RARITY_WEIGHTS[(c.data.rarity || 'common').toLowerCase()] || 10;
-            totalWeight += weight;
-            return { card: c, weight };
+        let weighted = unpicked.map(c => {
+            let w = RARITY_WEIGHTS[(c.data.rarity || 'common').toLowerCase()] || 10;
+            totalWeight += w;
+            return { card: c, weight: w };
         });
 
-        let randomPick = Math.random() * totalWeight;
-        let cumulativeWeight = 0;
-        let selected = weightedCards[weightedCards.length - 1].card; 
-
-        for (let item of weightedCards) {
-            cumulativeWeight += item.weight;
-            if (randomPick <= cumulativeWeight) { 
-                selected = item.card; 
-                break; 
-            }
+        let pick = Math.random() * totalWeight;
+        let cum = 0;
+        let selected = weighted[weighted.length - 1].card;
+        for (let item of weighted) {
+            cum += item.weight;
+            if (pick <= cum) { selected = item.card; break; }
         }
 
         pickedIndices.add(selected.originalIndex);
         cardsToSend.push({ ...selected.data, globalIndex: selected.originalIndex });
     }
-    
+
     return cardsToSend;
 };
 

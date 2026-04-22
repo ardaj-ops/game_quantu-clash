@@ -1,36 +1,39 @@
 // game/network.js
 import { state } from './state.js';
-import { CONFIG } from './gameConfig.js';
 
-// KRITICKÁ OPRAVA: Používáme SDÍLENÝ socket z App.jsx (window.gameSocket).
-// Původní kód dělal io(BACKEND_URL) = nové spojení = server viděl engine
-// jako jiného hráče, enemyShot chodil na špatnou instanci atd.
+// ==========================================
+// KRITICKÁ OPRAVA: Používáme window.gameSocket (sdílený socket z App.jsx).
+//
+// Původní kód dělal: io(BACKEND_URL) = NOVÉ spojení.
+// Tento nový socket NENÍ v herní místnosti (room) — server posílá
+// mapUpdate/gameStateChanged jen hráčům v místnosti.
+// Výsledek: engine nikdy nedostal překážky → prázdná mapa.
+// ==========================================
 export const socket = window.gameSocket;
 
 if (!socket) {
-    console.error("❌ HERNÍ ENGINE: window.gameSocket není dostupný!");
+    console.error("❌ window.gameSocket chybí! App.jsx ho musí nastavit před initGameEngine().");
 } else {
-    console.log('✅ HERNÍ ENGINE: Sdílený socket nalezen. ID:', socket.id);
+    console.log('✅ HERNÍ ENGINE sdílený socket ID:', socket.id);
 
-    // Herní stav (polohy hráčů, HP, skóre...)
-    const updateGameState = (serverData) => { state.latestServerData = serverData; };
-    socket.on('gameUpdate', updateGameState);
-    socket.on('gameState', updateGameState);
-    socket.on('update', updateGameState);
+    // Herní stav (polohy hráčů, HP, skóre)
+    const onGameUpdate = (d) => { state.latestServerData = d; };
+    socket.on('gameUpdate', onGameUpdate);
+    socket.on('gameState', onGameUpdate);
+    socket.on('update', onGameUpdate);
 
-    // Mapa — přijímáme z mapUpdate i z gameStateChanged (viz server.js fix)
+    // Mapa překážek
     socket.on('mapUpdate', (data) => {
         if (data.obstacles) state.localObstacles = data.obstacles;
         if (data.breakables) state.localBreakables = data.breakables;
-        console.log(`🗺️ Mapa: ${data.obstacles?.length || 0} zdí, ${data.breakables?.length || 0} bloků`);
+        console.log(`🗺️ mapUpdate: ${data.obstacles?.length||0} zdí, ${data.breakables?.length||0} bloků`);
     });
 
+    // gameStateChanged — záloha pro data mapy (engine se načítá async, může přijít před mapUpdate listenerem)
     socket.on('gameStateChanged', (data) => {
-        console.log(`🔄 ENGINE: Stav -> [${data.state}]`);
-        // OPRAVA: Mapa je teď součástí gameStateChanged payloadu
-        if (data.obstacles) state.localObstacles = data.obstacles;
-        if (data.breakables) state.localBreakables = data.breakables;
-        // Reset střel při návratu do lobby
+        console.log(`🔄 ENGINE stav: [${data.state}]`);
+        if (data.obstacles) { state.localObstacles = data.obstacles; }
+        if (data.breakables) { state.localBreakables = data.breakables; }
         if (data.state === 'LOBBY' || data.state === 'GAMEOVER') {
             state.latestServerData = null;
             state.localBullets = [];
@@ -38,39 +41,20 @@ if (!socket) {
         }
     });
 
-    // OPRAVA: enemyShot listener ÚPLNĚ CHYBĚL.
-    // Střely ostatních hráčů se proto nikdy nekreslily — vidět byly jen vlastní.
+    // Střely ostatních hráčů
     socket.on('enemyShot', (bulletsData) => {
         if (!bulletsData) return;
-        const bullets = Array.isArray(bulletsData) ? bulletsData : [bulletsData];
-        bullets.forEach(b => {
-            if (b) state.remoteBullets.push({ ...b, createdAt: Date.now() });
-        });
+        if (!state.remoteBullets) state.remoteBullets = [];
+        const arr = Array.isArray(bulletsData) ? bulletsData : [bulletsData];
+        arr.forEach(b => { if (b) state.remoteBullets.push({ ...b, createdAt: Date.now() }); });
     });
 
-    socket.on('showCards', (cards) => {
-        console.log(`🃏 ENGINE: Karty přijaty (${cards?.length || 0}).`);
-    });
-
-    socket.on('initCatalog', (catalogData) => {
-        state.CARD_CATALOG = catalogData;
+    socket.on('initCatalog', (catalog) => {
+        state.CARD_CATALOG = catalog;
     });
 }
 
-// Odesílání vstupů
-export function sendInputsToServer() {
-    if (!socket || !state.playerInputs) return;
-    socket.emit('playerInput', state.playerInputs);
-}
-
-export function joinGame(playerName) {
-    if (!socket) return;
-    socket.emit('joinGame', { name: playerName || "Hráč_" + Math.floor(Math.random() * 1000) });
-}
-
-// OPRAVA: selectUpgradeCard nyní emituje 'pickCard' s indexem (server očekává pickCard)
 export function selectUpgradeCard(cardIndex) {
     if (!socket) return;
     socket.emit('pickCard', cardIndex);
-    console.log(`🃏 Volba karty: index ${cardIndex}`);
 }
