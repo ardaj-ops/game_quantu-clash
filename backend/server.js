@@ -561,17 +561,20 @@ setInterval(() => {
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
-            
             leanPlayers[id] = {
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                x: Number((p.x || 0).toFixed(2)),
-                y: Number((p.y || 0).toFixed(2)),
+                x: Math.round(p.x),
+                y: Math.round(p.y),
                 hp: Math.round(p.hp),
                 maxHp: p.maxHp,
                 aimAngle: Number(p.aimAngle.toFixed(2)),
                 ammo: p.ammo, maxAmmo: p.maxAmmo,
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
-                domainActive: p.domainActive, score: p.score
+                domainActive: p.domainActive, score: p.score,
+                
+                // PŘIDÁNO: React UI potřebuje tyto stavy, jinak zamrzne lobby a výběr karet!
+                isReady: p.isReady, 
+                hasSelectedCard: p.hasSelectedCard // (nebo cardSelected - použij název, který v kódu máš)
             };
         }
 

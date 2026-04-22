@@ -103,12 +103,17 @@ function App() {
       }
     };
 
-    const onGameUpdate = (data) => {
-      if (data.players && socket.id && data.players[socket.id]) {
-        const me = data.players[socket.id];
-        setAmmo({ current: me.ammo ?? 0, max: me.maxAmmo ?? 0 });
-      }
-    };
+    // React state 'players' upravuj JEN když někdo přijde/odejde/dá ready.
+socket.on('gameUpdate', (data) => {
+    // Pro rychlé věci upravuj přímo DOM prvky (vanilla JS v Reactu)
+    const me = data.players[socket.id];
+    if (me) {
+        const ammoCounter = document.getElementById('ammo-counter-text');
+        if (ammoCounter) {
+            ammoCounter.innerText = `${me.ammo} / ${me.maxAmmo}`;
+        }
+    }
+});
 
     // Registrace event listenerů
     socket.on('connect', onConnect);
