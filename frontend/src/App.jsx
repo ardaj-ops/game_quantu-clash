@@ -33,7 +33,6 @@ function App() {
   });
 
   // === STAV HRY ===
-  const [ammo, setAmmo] = useState({ current: 0, max: 0 });
   const [upgradeData, setUpgradeData] = useState(null);
   const [winnerName, setWinnerName] = useState('');
 
@@ -103,17 +102,24 @@ function App() {
       }
     };
 
-    // React state 'players' upravuj JEN když někdo přijde/odejde/dá ready.
-socket.on('gameUpdate', (data) => {
-    // Pro rychlé věci upravuj přímo DOM prvky (vanilla JS v Reactu)
-    const me = data.players[socket.id];
-    if (me) {
-        const ammoCounter = document.getElementById('ammo-counter-text');
-        if (ammoCounter) {
-            ammoCounter.innerText = `${me.ammo} / ${me.maxAmmo}`;
+    // OPRAVA VÝKONU: Zde už neupdatujeme React state, ale přímo DOM elementy!
+    // Tím se zabrání lagu při příjmu dat ze serveru.
+    const onGameUpdate = (data) => {
+      if (data.players && socket.id && data.players[socket.id]) {
+        const me = data.players[socket.id];
+        
+        const ammoText = document.getElementById('ammoDisplay');
+        const ammoBar = document.getElementById('ammo-bar-fill');
+        
+        if (ammoText) {
+            ammoText.innerText = `${me.ammo ?? 0} / ${me.maxAmmo ?? 0}`;
         }
-    }
-});
+        if (ammoBar) {
+            const pct = me.maxAmmo > 0 ? Math.max(0, (me.ammo / me.maxAmmo) * 100) : 100;
+            ammoBar.style.width = `${pct}%`;
+        }
+      }
+    };
 
     // Registrace event listenerů
     socket.on('connect', onConnect);
@@ -124,7 +130,7 @@ socket.on('gameUpdate', (data) => {
     socket.on('settingsUpdated', setGameSettings);
     socket.on('errorMsg', setErrorMsg);
     socket.on('gameStateChanged', onGameStateChange);
-    socket.on('gameUpdate', onGameUpdate);
+    socket.on('gameUpdate', onGameUpdate); // Správně nadefinováno
 
     // Cleanup při odmontování komponenty
     return () => {
@@ -136,7 +142,7 @@ socket.on('gameUpdate', (data) => {
       socket.off('settingsUpdated');
       socket.off('errorMsg');
       socket.off('gameStateChanged', onGameStateChange);
-      socket.off('gameUpdate', onGameUpdate);
+      socket.off('gameUpdate', onGameUpdate); // Zde už to nespadne!
     };
   }, []);
 
@@ -167,16 +173,16 @@ socket.on('gameUpdate', (data) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // === RENDER FUNKCE (Pro lepší čitelnost JSX) ===
+  // === RENDER FUNKCE ===
 
   const renderGameHUD = () => (
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: 10 }}>
       <div style={{ position: 'absolute', bottom: '30px', right: '30px', color: 'white', fontFamily: 'Arial, sans-serif', textAlign: 'right' }}>
-        <h2 style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>
-          {ammo.current} / {ammo.max}
+        <h2 id="ammoDisplay" style={{ fontSize: '32px', margin: '0 0 10px 0', textShadow: '0 0 10px rgba(0,0,0,0.5)' }}>
+          0 / 0
         </h2>
         <div style={{ width: '150px', height: '12px', background: 'rgba(0,0,0,0.5)', border: '2px solid white', borderRadius: '6px', overflow: 'hidden', float: 'right' }}>
-          <div style={{ width: ammo.max > 0 ? `${Math.max(0, (ammo.current / ammo.max) * 100)}%` : '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }} />
+          <div id="ammo-bar-fill" style={{ width: '100%', height: '100%', background: '#45f3ff', transition: 'width 0.1s linear' }} />
         </div>
       </div>
     </div>
@@ -194,7 +200,7 @@ socket.on('gameUpdate', (data) => {
               {upgradeData.cards.map((card, i) => (
                 <div key={i} className={`card card-${(card.rarity || 'common').toLowerCase()}`} style={{ cursor: 'pointer', minWidth: '180px', maxWidth: '220px' }}
                   onClick={() => {
-                    socket.emit('pickCard', card.globalIndex ?? i);
+                    socket.emit('selectCard', card.name); // Přepnuto na name!
                     setUpgradeData(null);
                     setCurrentView('game');
                   }}>
