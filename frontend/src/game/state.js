@@ -18,7 +18,7 @@ export const state = {
     // Vstupy a zaměřovač
     currentMouseX: 0,
     currentMouseY: 0,
-    // Souřadnice myši přepočítané na herní svět (využívá physics.js a input.js)
+    // Souřadnice myši přepočítané na herní svět
     worldMouseX: 0,
     worldMouseY: 0,
     crosshairConfig: { color: '#45f3ff', size: 10, shape: 'cross' },
@@ -26,7 +26,7 @@ export const state = {
     playerInputs: { 
         up: false, down: false, left: false, right: false, 
         click: false, rightClick: false, reload: false, tab: false, 
-        ritual: false,
+        ritual: false, dash: false, // OPRAVA: Přidán dash do výchozího stavu
         aimAngle: 0 
     },
     

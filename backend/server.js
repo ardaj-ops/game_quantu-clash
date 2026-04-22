@@ -400,8 +400,11 @@ io.on('connection', (socket) => {
                 p.x = data.x;
                 p.y = data.y;
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
-                p.ammo = Number(data.ammo) || p.ammo;
+                
+                // OPRAVA AMMO: Server přijímá hodnotu reloadu z klienta
+                if (data.ammo !== undefined) p.ammo = Number(data.ammo);
                 p.isReloading = !!data.isReloading;
+                
                 if (data.domainActive !== undefined) p.domainActive = !!data.domainActive;
                 p.isInvisible = !!data.isInvisible;
             }
@@ -411,7 +414,15 @@ io.on('connection', (socket) => {
     socket.on('playerShot', (arg1, arg2) => {
         const bulletsData = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
-        if (room && room.gameState === 'PLAYING') socket.to(socket.roomId).emit('enemyShot', bulletsData);
+        if (room && room.gameState === 'PLAYING') {
+            
+            // OPRAVA AMMO: Snížení munice při výstřelu
+            if (room.players[socket.id] && room.players[socket.id].ammo > 0) {
+                room.players[socket.id].ammo--;
+            }
+            
+            socket.to(socket.roomId).emit('enemyShot', bulletsData);
+        }
     });
 
     socket.on('bulletHitPlayer', (arg1, arg2) => {
@@ -459,7 +470,6 @@ io.on('connection', (socket) => {
         if (socket.roomId) socket.to(socket.roomId).emit('enemyDecoySpawned', decoyData);
     });
 
-    // OPRAVA KARET: Nyní server hledá kartu podle jejího přesného Jména (name), nikoliv podle náhodného ID/Indexu!
     socket.on('selectCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'UPGRADE' || socket.id !== room.currentLoserId) return;
@@ -553,6 +563,7 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (!room) return;
 
+        // OPRAVA DOMÉNY: Tento řádek shazoval server! Změněno na enemiesArray.
         if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
             const enemiesArray = Object.values(room.players);
             DomainManager.updateDomains(room.players, enemiesArray, [], TICK_RATE);
@@ -561,20 +572,29 @@ setInterval(() => {
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
+            
             leanPlayers[id] = {
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                x: Math.round(p.x),
-                y: Math.round(p.y),
+                
+                // OPRAVA POHYBU: Odebráno Math.round (zabraňuje sekání pohybu)
+                x: Number((p.x || 0).toFixed(2)),
+                y: Number((p.y || 0).toFixed(2)),
                 hp: Math.round(p.hp),
                 maxHp: p.maxHp,
-                aimAngle: Number(p.aimAngle.toFixed(2)),
+                aimAngle: Number((p.aimAngle || 0).toFixed(2)),
                 ammo: p.ammo, maxAmmo: p.maxAmmo,
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
                 domainActive: p.domainActive, score: p.score,
+                isReady: p.isReady,
                 
-                // PŘIDÁNO: React UI potřebuje tyto stavy, jinak zamrzne lobby a výběr karet!
-                isReady: p.isReady, 
-                hasSelectedCard: p.hasSelectedCard // (nebo cardSelected - použij název, který v kódu máš)
+                // OPRAVA KARET: Zde byly přidány staty pro klienta!
+                moveSpeed: p.moveSpeed,
+                damage: p.damage,
+                fireRate: p.fireRate,
+                bulletSpeed: p.bulletSpeed,
+                bounces: p.bounces,
+                pierce: p.pierce,
+                lifesteal: p.lifesteal
             };
         }
 

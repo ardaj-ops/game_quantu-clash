@@ -43,25 +43,18 @@ export const CONFIG = {
     MAX_CAP_MOVE_SPEED: 3.5,
     MIN_CAP_MOVE_SPEED: 0.2,
     MAX_CAP_BULLET_SPEED: 80,
-    MIN_CAP_BULLET_SPEED: 3,
     MAX_CAP_AMMO: 99,
     MAX_CAP_LIFESTEAL: 0.50,
     MAX_CAP_BOUNCES: 10,
     MAX_CAP_PIERCE: 15,
 
-    // --- SCHOPNOSTI ---
-    ABILITY_COOLDOWN_DOMAIN: 18000,
-    ABILITY_COOLDOWN_NORMAL: 6000,
-    DOMAIN_RADIUS: 350,
-
-    // --- PROJEKTILY A GRAVITACE ---
-    BULLET_RADIUS: 5,
-    GRAVITY_CHANGE_INTERVAL: 10000,
+    // --- OSTATNÍ ---
     GRAVITY_OPTIONS: [
-        { name: 'Dolů',    x: 0,    y: 0.5  },
-        { name: 'Nahoru',  x: 0,    y: -0.5 },
-        { name: 'Doleva',  x: -0.5, y: 0    },
-        { name: 'Doprava', x: 0.5,  y: 0    },
-        { name: 'Žádná',   x: 0,    y: 0    }
-    ]
+        { name: "Normal", x: 0, y: 0 },
+        { name: "Moon", x: 0, y: 0.2 },
+        { name: "Heavy", x: 0, y: 1.5 },
+        { name: "Windy Left", x: -0.5, y: 0 },
+        { name: "Windy Right", x: 0.5, y: 0 }
+    ],
+    GRAVITY_CHANGE_INTERVAL: 10000
 };
