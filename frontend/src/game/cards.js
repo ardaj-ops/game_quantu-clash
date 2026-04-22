@@ -1,8 +1,4 @@
 //cards.js
-//OPRAVA:Odstraněnrequire('./gameConfig.js')—tensouborjeES6acrashujeNoderequire().
-//ServerpředáváCONFIGpřeswindowmock({CONFIG:fullConfig})vloadSharedFile().
-//Frontendmáwindow.CONFIGnastavenopřesgameConfig.js.
-//ZáložníobjektobsahujevšechnyhodnotyzgameConfig.jskdybyselhaliwindow.CONFIG.
 constCFG=(typeofwindow!=='undefined'&&window.CONFIG)?window.CONFIG:{
 MAX_CAP_HP:600,MIN_CAP_HP:30,MAX_CAP_DAMAGE:999,MIN_CAP_FIRE_RATE:50,
 MAX_CAP_MOVE_SPEED:3.5,MIN_CAP_MOVE_SPEED:0.2,MAX_CAP_BULLET_SPEED:80,
