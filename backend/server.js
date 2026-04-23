@@ -50,7 +50,7 @@ const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- FUNKCE PRO NAČÍTÁNÍ SDÍLENÉHO KÓDU (CONFIG / CARDS) ---
+// --- FUNKCE PRO NAČÍTÁNÍ SDÍLENÉHO KÓDU (BEZPEČNÁ VERZE) ---
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
         path.join(__dirname, 'public', fileName),
@@ -63,10 +63,11 @@ const loadSharedFile = (fileName) => {
             try {
                 let raw = fs.readFileSync(p, 'utf-8');
                 
-                // Odstranění ES6 exportů pro Node.js
+                // Místo 'const' převádíme exporty na 'var', 
+                // aby to nedělalo problémy se scope v izolované funkci
                 const sanitized = raw
-                    .replace(/^\s*export\s+const\s+/gm, 'const ')
-                    .replace(/^\s*export\s+let\s+/gm, 'let ')
+                    .replace(/^\s*export\s+const\s+/gm, 'var ')
+                    .replace(/^\s*export\s+let\s+/gm, 'var ')
                     .replace(/^\s*export\s+var\s+/gm, 'var ')
                     .replace(/^\s*export\s+function\s+/gm, 'function ')
                     .replace(/^\s*export\s+class\s+/gm, 'class ')
@@ -74,11 +75,19 @@ const loadSharedFile = (fileName) => {
                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
                     .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
 
-                const sandbox = {};
-                eval(sanitized + `\nif(typeof CONFIG !== 'undefined') sandbox.data = CONFIG;\nif(typeof availableCards !== 'undefined') sandbox.data = availableCards;\nif(typeof CARDS !== 'undefined') sandbox.data = CARDS;`);
+                // Vytvoříme izolovanou funkci, která je imunní vůči zbytku serveru
+                const extractData = new Function(`
+                    ${sanitized}
+                    if (typeof CONFIG !== 'undefined') return CONFIG;
+                    if (typeof availableCards !== 'undefined') return availableCards;
+                    if (typeof CARDS !== 'undefined') return CARDS;
+                    return {};
+                `);
                 
+                const data = extractData();
                 console.log(`✅ Soubor ${fileName} načten z: ${p}`);
-                return sandbox.data || {};
+                return data;
+
             } catch (err) { 
                 console.error(`❌ Chyba při parsování ${fileName}:`, err.message); 
                 return null; 
