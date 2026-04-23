@@ -77,12 +77,12 @@ const loadSharedFile = (fileName) => {
 
                 // Vytvoříme izolovanou funkci, která je imunní vůči zbytku serveru
                 const extractData = new Function(`
-                    ${sanitized}
-                    if (typeof CONFIG !== 'undefined') return CONFIG;
-                    if (typeof availableCards !== 'undefined') return availableCards;
-                    if (typeof CARDS !== 'undefined') return CARDS;
-                    return {};
-                `);
+    ${sanitized}
+    if (typeof CONFIG !== 'undefined') return CONFIG;
+    if (typeof availableCards !== 'undefined') return availableCards;
+    if (typeof CARDS !== 'undefined') return CARDS;
+    return {};
+`);
                 
                 const data = extractData();
                 console.log(`✅ Soubor ${fileName} načten z: ${p}`);
