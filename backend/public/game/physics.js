@@ -1,7 +1,7 @@
 // game/physics.js
 import { state } from './state.js';
 import { socket } from './network.js';
-import { CONFIG } from '../../gameConfig.js';
+import { CONFIG } from '../gameConfig.js';
 
 // Vrátí true/false - narazil kruh na stěnu?
 export function checkWallCollision(x, y, radius, walls) {

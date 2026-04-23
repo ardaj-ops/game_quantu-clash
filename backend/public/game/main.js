@@ -4,7 +4,7 @@ import './network.js';
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
 import { initInputs } from './input.js';
-import { CONFIG } from '../../gameConfig.js';
+import { CONFIG } from '../gameConfig.js';
 
 // --- 1. INICIALIZACE ZAMĚŘOVAČE Z LOCALSTORAGE ---
 try {
