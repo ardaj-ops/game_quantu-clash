@@ -155,13 +155,19 @@ io.on('connection', (socket) => {
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
         };
+        // 1. ZDE OPRAVA: Aktivace UI u tvůrce
+        socket.emit('roomCreated', { roomId }); 
         joinRoom(socket, roomId, data);
     });
 
     socket.on('joinRoom', (data) => {
         const roomId = (data.roomId || "").toUpperCase();
-        if (rooms[roomId]) joinRoom(socket, roomId, data);
-        else socket.emit('error', 'Místnost neexistuje.');
+        if (rooms[roomId]) {
+            // 2. ZDE OPRAVA: Aktivace UI u hosta
+            socket.emit('roomJoined', { roomId }); 
+            joinRoom(socket, roomId, data);
+        }
+        else socket.emit('errorMsg', 'Místnost neexistuje.'); // Lepší handling chyby
     });
 
     function joinRoom(socket, roomId, data) {
@@ -188,19 +194,22 @@ io.on('connection', (socket) => {
         };
 
         resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map);
-        socket.emit('joinedRoom', { roomId, players: room.players, map: room.map });
-        io.to(roomId).emit('playerJoined', room.players[socket.id]);
+        
+        // 3. ZDE OPRAVA: Odesíláme všem kompletní listinu, aby se jména ukázala v lobby
+        io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
 
     socket.on('playerReady', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
-        room.players[socket.id].isReady = true;
-        io.to(room.id).emit('playerReadyUpdate', { id: socket.id, ready: true });
+        
+        // Přepínání stavu připravenosti (aby hráč mohl vzít Ready zpět)
+        room.players[socket.id].isReady = !room.players[socket.id].isReady; 
+        io.to(room.id).emit('updatePlayerList', Object.values(room.players));
 
         const allReady = Object.values(room.players).every(p => p.isReady);
-        if (allReady && Object.keys(room.players).length >= 1) {
+        if (allReady && Object.keys(room.players).length >= 1) { // Upraveno pro testování s 1 hráčem
             room.gameState = 'PLAYING';
             io.to(room.id).emit('gameStateChanged', { state: 'PLAYING', obstacles: room.map.obstacles, breakables: room.map.breakables });
         }
@@ -216,7 +225,8 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (room) {
             delete room.players[socket.id];
-            io.to(socket.roomId).emit('playerLeft', socket.id);
+            // Odeslání nového listu hráčů, když někdo odejde
+            io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
             if (Object.keys(room.players).length === 0) delete rooms[socket.roomId];
         }
     });

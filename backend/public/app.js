@@ -1,5 +1,5 @@
 import { initGameEngine } from './game/main.js';
-import { CONFIG } from './gameConfig.js';
+
 // Inicializace socketu
 const socket = io();
 window.gameSocket = socket;
@@ -42,6 +42,10 @@ document.getElementById('btn-ready')?.addEventListener('click', () => {
 });
 
 // --- SOCKET EVENTY: LOBBY ---
+socket.on('errorMsg', (msg) => {
+    alert("❌ " + msg);
+});
+
 socket.on('roomCreated', (data) => {
     document.getElementById('lobby-title').innerText = `LOBBY: ${data.roomId}`;
     showScreen('lobby');
@@ -56,8 +60,9 @@ socket.on('updatePlayerList', (players) => {
     const list = document.getElementById('player-list');
     if (!list) return;
     list.innerHTML = players.map(p => `
-        <li style="color: ${p.color}; margin-bottom: 10px;">
-            ${p.name} ${p.isReady ? '✅' : '⏳'}
+        <li style="color: ${p.color}; margin-bottom: 10px; display: flex; justify-content: space-between; max-width: 300px; margin: 0 auto 10px auto;">
+            <span>${p.name}</span>
+            <span>${p.isReady ? '✅ Připraven' : '⏳ Čeká...'}</span>
         </li>
     `).join('');
 });
