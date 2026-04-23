@@ -38,7 +38,15 @@ try {
 
 const generateMap = gameHelper.generateMap || ((w, h) => ({ obstacles: [], breakables: [] }));
 const getValidSpawnPoint = gameHelper.getValidSpawnPoint || ((index, w, h) => ({ x: w / 2, y: h / 2 }));
-const generateCardsForPlayer = gameHelper.generateCardsForPlayer || ((player, cards) => []);
+
+const generateCardsForPlayer = gameHelper.generateCardsForPlayer || ((player, cards) => {
+    let validCards = cards;
+    if (typeof rawCards !== 'undefined' && rawCards && typeof rawCards.getValidCardsForPlayer === 'function') {
+        validCards = rawCards.getValidCardsForPlayer(player);
+    }
+    const shuffled = [...validCards].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, 3);
+});
 
 const applyHardCaps = (p) => {
     if (!p) return;
@@ -84,28 +92,19 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 const server = http.createServer(app);
 
-const allowedOrigins = ["https://quantum-clash-gq1w.onrender.com", "http://localhost:5173", "http://localhost:3000"];
-app.use(cors({ origin: allowedOrigins, methods: ["GET", "POST", "OPTIONS"] }));
+app.use(cors({ origin: "*", methods: ["GET", "POST", "OPTIONS"] }));
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST", "OPTIONS"], credentials: true } });
 
-const io = new Server(server, { cors: { origin: allowedOrigins, methods: ["GET", "POST", "OPTIONS"], credentials: true } });
-
-const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
-const frontendPublicPath = path.join(__dirname, '..', 'frontend', 'public');
-const staticPath = fs.existsSync(frontendDistPath) ? frontendDistPath : frontendPublicPath;
-
-app.use(express.static(staticPath));
+// --- NOVÉ NASTAVENÍ PRO VANILLA JS (Složka public) ---
+app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
-    const indexPath = path.join(staticPath, 'index.html');
-    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-    else res.send("🚀 Backend běží!");
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// --- FUNKCE PRO NAČÍTÁNÍ SDÍLENÉHO KÓDU ---
 const loadSharedFile = (fileName, windowMock = undefined) => {
     const pathsToTry = [
-        path.join(__dirname, '..', 'frontend', 'src', 'game', fileName),
-        path.join(frontendDistPath, fileName),
-        path.join(frontendPublicPath, fileName),
-        path.join(__dirname, 'public', fileName),
+        path.join(__dirname, 'public', 'game', fileName),
         path.join(__dirname, fileName)
     ];
 
@@ -138,7 +137,10 @@ const loadSharedFile = (fileName, windowMock = undefined) => {
                 const wrapper = new Function('module', 'exports', 'require', 'window', sanitized);
                 wrapper(m, m.exports, customRequire, windowMock || {});
                 return m.exports;
-            } catch (err) { return null; }
+            } catch (err) { 
+                console.error("Chyba při parsování sdíleného souboru:", fileName); 
+                return null; 
+            }
         }
     }
     return null;
@@ -401,7 +403,6 @@ io.on('connection', (socket) => {
                 p.y = data.y;
                 p.aimAngle = Number(data.aimAngle) || p.aimAngle;
                 
-                // OPRAVA AMMO: Server přijímá hodnotu reloadu z klienta
                 if (data.ammo !== undefined) p.ammo = Number(data.ammo);
                 p.isReloading = !!data.isReloading;
                 
@@ -415,12 +416,9 @@ io.on('connection', (socket) => {
         const bulletsData = typeof arg1 === 'object' ? arg1 : arg2;
         const room = rooms[socket.roomId];
         if (room && room.gameState === 'PLAYING') {
-            
-            // OPRAVA AMMO: Snížení munice při výstřelu
             if (room.players[socket.id] && room.players[socket.id].ammo > 0) {
                 room.players[socket.id].ammo--;
             }
-            
             socket.to(socket.roomId).emit('enemyShot', bulletsData);
         }
     });
@@ -563,7 +561,6 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (!room) return;
 
-        // OPRAVA DOMÉNY: Tento řádek shazoval server! Změněno na enemiesArray.
         if (room.gameState === 'PLAYING' && DomainManager && typeof DomainManager.updateDomains === 'function') {
             const enemiesArray = Object.values(room.players);
             DomainManager.updateDomains(room.players, enemiesArray, [], TICK_RATE);
@@ -575,8 +572,6 @@ setInterval(() => {
             
             leanPlayers[id] = {
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                
-                // OPRAVA POHYBU: Odebráno Math.round (zabraňuje sekání pohybu)
                 x: Number((p.x || 0).toFixed(2)),
                 y: Number((p.y || 0).toFixed(2)),
                 hp: Math.round(p.hp),
@@ -586,8 +581,6 @@ setInterval(() => {
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
                 domainActive: p.domainActive, score: p.score,
                 isReady: p.isReady,
-                
-                // OPRAVA KARET: Zde byly přidány staty pro klienta!
                 moveSpeed: p.moveSpeed,
                 damage: p.damage,
                 fireRate: p.fireRate,
@@ -609,5 +602,6 @@ setInterval(() => {
 }, TICK_RATE);
 
 server.listen(PORT, () => {
-    console.log(`🚀 Backend Quantum Clash bezpečně běží na portu ${PORT}`);
+    console.log(`\n🚀 SERVER BĚŽÍ NA http://localhost:${PORT}`);
+    console.log(`📂 Servíruji frontend ze složky: ${path.join(__dirname, 'public')}`);
 });

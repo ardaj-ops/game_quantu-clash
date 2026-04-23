@@ -3,20 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0b0c10">
     <title>Quantum Clash</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E🎯%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="index.css">
 </head>
 <body>
-    <noscript>
-        <div style="color: white; text-align: center; padding: 50px; font-family: sans-serif;">
-            <h2>Pro hraní Quantum Clash si musíš zapnout JavaScript! 🚀</h2>
+
+    <div id="menu-screen" class="overlay">
+        <div class="panel">
+            <h1 style="color: #45f3ff; text-align: center;">QUANTUM CLASH</h1>
+            <input type="text" id="player-name" placeholder="Tvoje jméno" value="Hráč" style="width: 100%; margin-bottom: 10px; padding: 10px;">
+            <input type="color" id="player-color" value="#45f3ff" style="width: 100%; margin-bottom: 10px; height: 40px;">
+            
+            <button id="btn-create-room" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold; margin-bottom: 10px;">VYTVOŘIT MÍSTNOST</button>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="room-code" placeholder="KÓD" style="flex: 1; padding: 10px;">
+                <button id="btn-join-room" style="padding: 10px; background: #2ed573; font-weight: bold;">PŘIPOJIT</button>
+            </div>
         </div>
-    </noscript>
+    </div>
 
-    <!-- React vykreslí vše sem: canvas, menu, lobby, HUD -->
-    <div id="root"></div>
+    <div id="lobby-screen" class="overlay" style="display: none;">
+        <div class="panel">
+            <h2 style="color: #45f3ff; text-align: center;">LOBBY: <span id="lobby-room-id"></span></h2>
+            <ul id="player-list" style="list-style: none; padding: 0; min-height: 150px;"></ul>
+            <button id="btn-ready" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold;">PŘIPRAVIT SE</button>
+        </div>
+    </div>
 
-    <script type="module" src="/src/main.jsx"></script>
+    <div id="game-screen" style="display: none;">
+        <div style="position: absolute; bottom: 20px; right: 20px; z-index: 10; color: white; text-align: right; font-family: sans-serif; text-shadow: 0 0 5px black;">
+            <h2 style="margin: 0; font-size: 32px;"><span id="hud-ammo">0 / 0</span></h2>
+            <h3 style="margin: 0; color: #ff2a7a;">HP: <span id="hud-hp">100 / 100</span></h3>
+        </div>
+        <canvas id="game" style="background: #000; width: 100vw; height: 100vh; display: block;"></canvas>
+    </div>
+
+    <div id="card-screen" class="overlay" style="display: none;">
+        <h1 style="color: #ff2a7a; font-size: 3rem; margin-bottom: 20px;">VÝBĚR KARET</h1>
+        <div id="card-container" style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; max-width: 800px;">
+            </div>
+    </div>
+
+    <div id="gameover-screen" class="overlay" style="display: none;">
+        <h1 style="color: #ff2a7a; font-size: 4rem;">🏆 KONEC HRY 🏆</h1>
+        <h2 style="color: white;">Vítěz: <span id="winner-name"></span></h2>
+        <button id="btn-menu-back" style="padding: 15px 30px; background: #2ed573; margin-top: 30px;">Zpět do menu</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
