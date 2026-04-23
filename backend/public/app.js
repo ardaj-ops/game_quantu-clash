@@ -1,5 +1,5 @@
 import { initGameEngine } from './game/main.js';
-
+import { CONFIG } from './gameConfig.js';
 // Inicializace socketu
 const socket = io();
 window.gameSocket = socket;
