@@ -16,28 +16,29 @@
     </noscript>
 
     <div id="menu-screen" class="overlay">
-        <div class="panel">
-            <h1 style="color: #45f3ff; text-align: center;">QUANTUM CLASH</h1>
-            <input type="text" id="player-name" placeholder="Tvoje jméno" value="Hráč" style="width: 100%; margin-bottom: 10px; padding: 10px;">
-            <input type="color" id="player-color" value="#45f3ff" style="width: 100%; margin-bottom: 10px; height: 40px;">
-            
-            <button id="btn-create-room" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold; margin-bottom: 10px; cursor: pointer;">VYTVOŘIT MÍSTNOST</button>
-            
-            <div style="display: flex; gap: 10px;">
-                <input type="text" id="room-code" placeholder="KÓD MÍSTNOSTI" style="flex: 1; padding: 10px;">
-                <button id="btn-join-room" style="padding: 10px; background: #ff2a7a; color: white; border: none; font-weight: bold; cursor: pointer;">PŘIPOJIT</button>
-            </div>
+    <div class="panel">
+        <h1 style="color: #45f3ff; text-align: center;">QUANTUM CLASH</h1>
+        <input type="text" id="player-name" placeholder="Tvoje jméno" style="width: 100%; margin-bottom: 10px; padding: 10px;">
+        <input type="color" id="player-color" value="#45f3ff" style="width: 100%; margin-bottom: 10px; height: 40px;">
+        
+        <button id="btn-create-room" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold; margin-bottom: 10px; cursor: pointer;">VYTVOŘIT MÍSTNOST</button>
+        
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="room-code" placeholder="KÓD MÍSTNOSTI" style="flex: 1; padding: 10px;">
+            <button id="btn-join-room" style="padding: 10px; background: #ff2a7a; color: white; border: none; font-weight: bold; cursor: pointer;">PŘIPOJIT</button>
         </div>
     </div>
+</div>
 
     <div id="lobby-screen" class="overlay" style="display: none;">
-        <div class="panel">
-            <h2 id="lobby-title" style="color: #45f3ff;">LOBBY: ----</h2>
-            <ul id="player-list" style="list-style: none; padding: 0; min-height: 150px; color: white; font-size: 1.2rem;"></ul>
-            <button id="btn-ready" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold; cursor: pointer;">PŘIPRAVIT SE</button>
-        </div>
+    <div class="panel" style="min-width: 350px;">
+        <h2 id="lobby-title" style="color: #45f3ff; text-align: center;">LOBBY: ----</h2>
+        
+        <div id="player-list" style="margin: 20px 0; min-height: 100px; display: flex; flex-direction: column; gap: 10px;"></div>
+        
+        <button id="btn-ready" style="width: 100%; padding: 15px; background: #45f3ff; font-weight: bold; cursor: pointer;">PŘIPRAVIT SE</button>
     </div>
-
+</div>
     <div id="game-screen" style="display: none;">
         <div style="position: absolute; bottom: 20px; right: 20px; z-index: 10; color: white; text-align: right; font-family: sans-serif; text-shadow: 0 0 5px black; pointer-events: none;">
             <h2 style="margin: 0; font-size: 32px;"><span id="hud-ammo">0 / 0</span></h2>

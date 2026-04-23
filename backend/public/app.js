@@ -1,10 +1,8 @@
 import { initGameEngine } from './game/main.js';
 
-// Inicializace socketu
 const socket = io();
 window.gameSocket = socket;
 
-// --- ODKAZY NA HTML ELEMENTY ---
 const screens = {
     menu: document.getElementById('menu-screen'),
     lobby: document.getElementById('lobby-screen'),
@@ -13,115 +11,95 @@ const screens = {
     gameover: document.getElementById('gameover-screen')
 };
 
-// Funkce pro přepínání obrazovek
+// --- LOGIKA LOCAL STORAGE (Ukládání nastavení) ---
+const nameInput = document.getElementById('player-name');
+const colorInput = document.getElementById('player-color');
+
+// Načtení při startu
+window.addEventListener('load', () => {
+    const savedName = localStorage.getItem('qc_player_name');
+    const savedColor = localStorage.getItem('qc_player_color');
+    if (savedName && nameInput) nameInput.value = savedName;
+    if (savedColor && colorInput) colorInput.value = savedColor;
+});
+
+// Ukládání při každé změně (oninput)
+nameInput?.addEventListener('input', () => localStorage.setItem('qc_player_name', nameInput.value));
+colorInput?.addEventListener('input', () => localStorage.setItem('qc_player_color', colorInput.value));
+
 function showScreen(screenName) {
-    Object.values(screens).forEach(s => {
-        if (s) s.style.display = 'none';
-    });
+    Object.values(screens).forEach(s => { if (s) s.style.display = 'none'; });
     if (screens[screenName]) {
         screens[screenName].style.display = (screenName === 'game') ? 'block' : 'flex';
     }
 }
 
-// --- MENU LOGIKA ---
+// --- AKCE V MENU ---
 document.getElementById('btn-create-room')?.addEventListener('click', () => {
-    const name = document.getElementById('player-name').value || 'Hráč';
-    const color = document.getElementById('player-color').value || '#45f3ff';
-    socket.emit('createRoom', { name, color, cosmetics: 'none' });
+    socket.emit('createRoom', { 
+        name: nameInput.value || 'Hráč', 
+        color: colorInput.value, 
+        cosmetics: 'none' 
+    });
 });
 
 document.getElementById('btn-join-room')?.addEventListener('click', () => {
-    const name = document.getElementById('player-name').value || 'Hráč';
-    const color = document.getElementById('player-color').value || '#45f3ff';
     const code = document.getElementById('room-code').value.toUpperCase();
-    if (code) socket.emit('joinRoom', { roomId: code, name, color });
+    if (code) {
+        socket.emit('joinRoom', { 
+            roomId: code, 
+            name: nameInput.value || 'Hráč', 
+            color: colorInput.value 
+        });
+    } else {
+        alert("Zadej kód místnosti!");
+    }
 });
 
 document.getElementById('btn-ready')?.addEventListener('click', () => {
     socket.emit('playerReady');
 });
 
-// --- SOCKET EVENTY: LOBBY ---
-socket.on('errorMsg', (msg) => {
-    alert("❌ " + msg);
-});
-
+// --- LOBBY EVENTY (Tady byla chyba) ---
 socket.on('roomCreated', (data) => {
-    document.getElementById('lobby-title').innerText = `LOBBY: ${data.roomId}`;
+    const roomId = data.roomId || data.id; // Pojistka pro oba názvy
+    document.getElementById('lobby-title').innerText = `MÍSTNOST: ${roomId}`;
     showScreen('lobby');
 });
 
 socket.on('roomJoined', (data) => {
-    document.getElementById('lobby-title').innerText = `LOBBY: ${data.roomId}`;
+    const roomId = data.roomId || data.id;
+    document.getElementById('lobby-title').innerText = `MÍSTNOST: ${roomId}`;
     showScreen('lobby');
 });
 
 socket.on('updatePlayerList', (players) => {
-    const list = document.getElementById('player-list');
-    if (!list) return;
-    list.innerHTML = players.map(p => `
-        <li style="color: ${p.color}; margin-bottom: 10px; display: flex; justify-content: space-between; max-width: 300px; margin: 0 auto 10px auto;">
-            <span>${p.name}</span>
-            <span>${p.isReady ? '✅ Připraven' : '⏳ Čeká...'}</span>
-        </li>
+    const listContainer = document.getElementById('player-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = players.map(p => `
+        <div style="background: rgba(255,255,255,0.1); padding: 10px 15px; border-left: 5px solid ${p.color}; display: flex; justify-content: space-between; border-radius: 5px;">
+            <span style="color: white; font-weight: bold;">${p.name} ${p.id === socket.id ? '(TY)' : ''}</span>
+            <span style="color: ${p.isReady ? '#2ecc71' : '#ff4757'};">${p.isReady ? '✔ READY' : '⏳ ČEKÁ'}</span>
+        </div>
     `).join('');
 });
 
-// --- SOCKET EVENTY: HRA ---
+// --- OSTATNÍ EVENTY ---
+socket.on('errorMsg', (msg) => alert(msg));
+
 socket.on('gameStateChanged', (data) => {
     if (data.state === 'PLAYING') {
         showScreen('game');
-        initGameEngine(); // Nastartuje herní engine a canvas
-    } else if (data.state === 'LOBBY') {
-        showScreen('lobby');
-    } else if (data.state === 'GAMEOVER') {
-        showScreen('gameover');
-        const winnerText = document.getElementById('winner-text');
-        if (winnerText && data.winner) {
-            winnerText.innerText = `Vítěz: ${data.winner.name}`;
-        }
+        initGameEngine();
     }
 });
 
-// --- SOCKET EVENTY: KARTY ---
-socket.on('showCardSelection', (cards) => {
-    showScreen('cards');
-    const container = document.getElementById('card-container');
-    if (!container) return;
-    container.innerHTML = '';
-    
-    cards.forEach(card => {
-        const div = document.createElement('div');
-        div.style.background = '#1f2833';
-        div.style.border = `2px solid ${card.rarity === 'legendary' ? 'gold' : '#45f3ff'}`;
-        div.style.padding = '20px';
-        div.style.borderRadius = '10px';
-        div.style.cursor = 'pointer';
-        div.style.width = '200px';
-        div.style.color = 'white';
-        
-        div.innerHTML = `
-            <h3 style="margin-top: 0;">${card.name}</h3>
-            <p style="color: #aaa; font-size: 0.9rem;">${card.description || card.desc || ''}</p>
-        `;
-        
-        div.addEventListener('click', () => {
-            socket.emit('selectCard', card.name);
-            container.innerHTML = '<h2 style="color: white;">Karta vybrána! Čekám na ostatní...</h2>';
-        });
-        
-        container.appendChild(div);
-    });
-});
-
-// --- BLESKOVÝ UPDATE HUDu ---
-const hudAmmo = document.getElementById('hud-ammo');
-const hudHp = document.getElementById('hud-hp');
-
+// HUD Update
 socket.on('gameUpdate', (data) => {
-    if (data.players && data.players[socket.id]) {
-        const me = data.players[socket.id];
-        if (hudAmmo) hudAmmo.innerText = `${me.ammo} / ${me.maxAmmo || 10}`;
-        if (hudHp) hudHp.innerText = `${Math.round(me.hp)} / ${me.maxHp || 100}`;
+    const me = data.players[socket.id];
+    if (me) {
+        document.getElementById('hud-ammo').innerText = `${me.ammo} / ${me.maxAmmo}`;
+        document.getElementById('hud-hp').innerText = `${Math.round(me.hp)} / ${me.maxHp}`;
     }
 });
