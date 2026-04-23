@@ -1,12 +1,13 @@
 // game/main.js
 import { state } from './state.js';
-import './network.js';
+// ZMĚNA: Importujeme funkci initNetwork, nespouštíme ji hned!
+import { initNetwork } from './network.js'; 
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
 import { initInputs } from './input.js';
-import { CONFIG } from '../gameConfig.js';
+import { CONFIG } from '../gameConfig.js'; // Cesta ../ je správně, pokud je config v public/
 
-// --- 1. INICIALIZACE ZAMĚŘOVAČE Z LOCALSTORAGE ---
+// --- 1. INICIALIZACE ZAMĚŘOVAČE ---
 try {
     const savedCrosshair = localStorage.getItem('crosshairSettings');
     if (savedCrosshair) {
@@ -15,96 +16,65 @@ try {
         state.crosshairConfig = { color: '#45f3ff', size: 10, shape: 'cross' };
     }
 } catch (e) {
-    console.warn("⚠️ Chyba při načítání zaměřovače z localStorage.");
+    console.warn("⚠️ Chyba při načítání zaměřovače.");
 }
-
-// --- 2. UKLÁDÁNÍ Z UI ---
-export function updateCrosshairSettings(shape, color, size) {
-    state.crosshairConfig = { color, size: parseInt(size), shape };
-    localStorage.setItem('crosshairSettings', JSON.stringify(state.crosshairConfig));
-}
-
-window.saveCrosshairSettings = function() {
-    const shapeEl = document.getElementById('crosshairShape');
-    const colorEl = document.getElementById('crosshairColor');
-    const sizeEl = document.getElementById('crosshairSize');
-    if (shapeEl && colorEl && sizeEl) {
-        updateCrosshairSettings(shapeEl.value, colorEl.value, sizeEl.value);
-    }
-    const settingsUI = document.getElementById('settingsUI');
-    if (settingsUI) settingsUI.classList.add('hidden');
-};
-
-// --- 3. HERNÍ SMYČKA ---
-let firstFrameLogged = false;
 
 function resizeCanvas(canvas) {
-    // OPRAVA: offsetWidth je 0 hned po display:none->block, dokud prohlížeč neudělá layout.
-    // Použijeme window.innerWidth jako zálohu.
-    const w = canvas.offsetWidth || window.innerWidth;
-    const h = canvas.offsetHeight || window.innerHeight;
-    if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-    }
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    const scaleX = canvas.width / CONFIG.MAP_WIDTH;
+    const scaleY = canvas.height / CONFIG.MAP_HEIGHT;
+    state.gameScale = Math.min(scaleX, scaleY);
+    
+    state.gameOffsetX = (canvas.width - CONFIG.MAP_WIDTH * state.gameScale) / 2;
+    state.gameOffsetY = (canvas.height - CONFIG.MAP_HEIGHT * state.gameScale) / 2;
 }
 
 function renderLoop() {
-    const canvas = state.canvas || document.getElementById('game');
-
-    if (canvas && canvas.style.display !== 'none') {
-        resizeCanvas(canvas);
-
+    const canvas = state.canvas;
+    if (canvas && state.ctx) {
         if (state.latestServerData) {
-            if (!firstFrameLogged) {
-                console.log("🎨 PRVNÍ FRAME: Kreslím hru!");
-                firstFrameLogged = true;
-            }
             drawGame(state.latestServerData);
         } else {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            state.ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
     }
-
     requestAnimationFrame(renderLoop);
 }
 
-// --- 4. EXPORTOVANÁ FUNKCE PRO REACT ---
 let engineStarted = false;
 
 export function initGameEngine() {
     if (engineStarted) return;
+    engineStarted = true;
 
     const canvas = document.getElementById('game');
-
     if (!canvas) {
-        console.log("⏳ Čekám na React, než vykreslí plátno...");
-        setTimeout(initGameEngine, 100);
+        console.error("❌ Canvas #game nebyl nalezen!");
         return;
     }
 
-    // OPRAVA: Čekáme jeden frame aby prohlížeč stihl layout po display:none->block.
-    // Bez toho canvas.offsetWidth = 0 a první frame je prázdný (canvas 0×0).
-    requestAnimationFrame(() => {
-        resizeCanvas(canvas);
-        state.canvas = canvas;
-        state.ctx = canvas.getContext('2d');
+    // 1. Nastavení plátna
+    resizeCanvas(canvas);
+    state.canvas = canvas;
+    state.ctx = canvas.getContext('2d');
 
-        document.addEventListener('contextmenu', e => e.preventDefault());
-        window.addEventListener('resize', () => resizeCanvas(canvas));
+    // 2. NASTARTOVÁNÍ SÍTĚ (Teď už window.gameSocket existuje!)
+    initNetwork(); 
 
-        console.log(`🚀 Engine nastartován: ${canvas.width}×${canvas.height}`);
+    // 3. Eventy a smyčky
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    window.addEventListener('resize', () => resizeCanvas(canvas));
 
-        initInputs();
-        requestAnimationFrame(renderLoop);
+    console.log(`🚀 Engine nastartován: ${canvas.width}×${canvas.height}`);
 
-        setInterval(() => {
-            if (state.latestServerData && state.latestServerData.gameState === 'PLAYING') {
-                updateLocalGame();
-            }
-        }, 1000 / 60);
+    initInputs();
+    requestAnimationFrame(renderLoop);
 
-        engineStarted = true;
-    });
+    setInterval(() => {
+        if (state.latestServerData && state.latestServerData.gameState === 'PLAYING') {
+            updateLocalGame();
+        }
+    }, 1000 / 60);
 }

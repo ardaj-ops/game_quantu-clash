@@ -1,11 +1,17 @@
-// game/network.js
 import { state } from './state.js';
 
-export const socket = window.gameSocket;
+// Vytvoříme prázdnou proměnnou, kterou naplníme až při startu hry
+export let socket = null;
 
-if (!socket) {
-    console.error("❌ window.gameSocket chybí! App.jsx ho musí nastavit před initGameEngine().");
-} else {
+// Tuto funkci zavoláme z main.js až ve chvíli, kdy je socket připravený
+export function initNetwork() {
+    socket = window.gameSocket;
+
+    if (!socket) {
+        console.error("❌ window.gameSocket chybí! Zkontroluj, že v app.js je 'window.gameSocket = socket;' PŘED voláním initGameEngine().");
+        return;
+    }
+
     console.log('✅ HERNÍ ENGINE sdílený socket ID:', socket.id);
 
     const onGameUpdate = (d) => { state.latestServerData = d; };
