@@ -1,6 +1,6 @@
 // game/render.js
 import { state } from './state.js';
-import { CONFIG } from './gameConfig.js';
+import { CONFIG } from '../../gameConfig.js';
 import { socket } from './network.js';
 
 const TWO_PI = Math.PI * 2;
