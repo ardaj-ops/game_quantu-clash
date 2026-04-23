@@ -1,18 +1,7 @@
 process.on('uncaughtException', (err) => {
     console.error('\n🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:');
-    console.error('Typ chyby:', err.name);
     console.error('Zpráva:', err.message);
     console.error('Stack Trace:\n', err.stack);
-    console.error('----------------------------------------\n');
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:');
-    console.error('Důvod:', reason);
-    console.error('Promise:', promise);
-    if (reason && reason.stack) {
-        console.error('Stack Trace:\n', reason.stack);
-    }
     console.error('----------------------------------------\n');
 });
 
@@ -26,8 +15,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 
-// --- NASTAVENÍ STATICKÝCH SOUBORŮ (DŮLEŽITÉ) ---
-// Server bude hledat soubory (index.html, app.js atd.) ve složce 'public'
+// --- KLÍČOVÉ PRO VANILLA JS: Servírování složky public ---
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -39,34 +27,34 @@ const io = new Server(server, {
 let DomainManager;
 let gameHelper = {};
 try {
-    // Předpokládáme, že tyto soubory jsou ve stejné složce jako server.js
     DomainManager = require('./domainManager.js');
     gameHelper = require('./gameHelper.js') || {};
-    console.log('✅ Manažeři a helpery úspěšně načteny.');
+    console.log('✅ Logické moduly úspěšně načteny.');
 } catch (err) {
-    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ (zkontroluj soubory domainManager.js a gameHelper.js)!');
-    console.error(err.message);
+    console.error('🚨 CHYBA NAČÍTÁNÍ MODULŮ:', err.message);
 }
 
-const generateMap = gameHelper.generateMap || ((w, h) => ({ obstacles: [], breakables: [] }));
-
-// --- HERNÍ PROMĚNNÉ ---
+// --- HERNÍ KONSTANTY ---
+const TICK_RATE = 16; 
+const MAP_WIDTH = 1920;
+const MAP_HEIGHT = 1080;
 const rooms = {};
-const TICK_RATE = 16; // cca 60 FPS
-const PORT = process.env.PORT || 3000;
+
+// --- POMOCNÉ FUNKCE ---
+const generateMap = gameHelper.generateMap || ((w, h) => ({ obstacles: [], breakables: [] }));
 
 // --- SOCKET.IO LOGIKA ---
 io.on('connection', (socket) => {
-    console.log(`👤 Nové připojení: ${socket.id}`);
+    console.log(`👤 Připojen hráč: ${socket.id}`);
 
-    // Vytvoření místnosti
     socket.on('createRoom', (data) => {
         const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
-        const mapData = generateMap(1920, 1080);
+        const mapData = generateMap(MAP_WIDTH, MAP_HEIGHT);
         
         rooms[roomId] = {
             id: roomId,
             players: {},
+            projectiles: [],
             gameState: 'LOBBY',
             obstacles: mapData.obstacles,
             breakables: mapData.breakables,
@@ -74,129 +62,169 @@ io.on('connection', (socket) => {
             teamScores: { red: 0, blue: 0 }
         };
 
-        joinPlayerToRoom(socket, roomId, data);
+        handleJoin(socket, roomId, data);
         socket.emit('roomCreated', { roomId });
     });
 
-    // Připojení do místnosti
     socket.on('joinRoom', (data) => {
         const roomId = data.roomId?.toUpperCase();
         if (rooms[roomId]) {
-            joinPlayerToRoom(socket, roomId, data);
+            handleJoin(socket, roomId, data);
             socket.emit('roomJoined', { roomId });
         } else {
             socket.emit('error', 'Místnost neexistuje.');
         }
     });
 
-    // Hráč je připraven
-    socket.on('playerReady', () => {
-        const roomId = socket.roomId;
-        if (!rooms[roomId]) return;
+    // POHYB A AKCE
+    socket.on('playerInput', (input) => {
+        const room = rooms[socket.roomId];
+        if (!room || room.gameState !== 'PLAYING') return;
+        const player = room.players[socket.id];
+        if (!player || player.hp <= 0) return;
 
-        const player = rooms[roomId].players[socket.id];
-        if (player) {
-            player.isReady = !player.isReady;
-            io.to(roomId).emit('updatePlayerList', Object.values(rooms[roomId].players));
+        // Výpočet pohybu
+        const speed = player.moveSpeed || 4;
+        let dx = 0, dy = 0;
+        if (input.up) dy -= speed;
+        if (input.down) dy += speed;
+        if (input.left) dx -= speed;
+        if (input.right) dx += speed;
 
-            // Start hry pokud jsou všichni ready
-            const allReady = Object.values(rooms[roomId].players).every(p => p.isReady);
-            if (allReady && Object.keys(rooms[roomId].players).length >= 1) {
-                startGame(roomId);
+        // Aplikace pohybu s jednoduchou kolizí s okrajem mapy
+        player.x = Math.max(20, Math.min(MAP_WIDTH - 20, player.x + dx));
+        player.y = Math.max(20, Math.min(MAP_HEIGHT - 20, player.y + dy));
+        player.aimAngle = input.angle || 0;
+
+        // Střelba
+        if (input.shooting && player.ammo > 0 && !player.isReloading) {
+            const now = Date.now();
+            if (now - (player.lastShot || 0) > (1000 / (player.fireRate || 5))) {
+                fireProjectile(room, player);
+                player.lastShot = now;
             }
         }
     });
 
-    // Odpojení
-    socket.on('disconnect', () => {
-        const roomId = socket.roomId;
-        if (roomId && rooms[roomId]) {
-            delete rooms[roomId].players[socket.id];
-            io.to(roomId).emit('updatePlayerList', Object.values(rooms[roomId].players));
-            if (Object.keys(rooms[roomId].players).length === 0) {
-                delete rooms[roomId];
+    socket.on('playerReady', () => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
+        const p = room.players[socket.id];
+        if (p) {
+            p.isReady = !p.isReady;
+            io.to(room.id).emit('updatePlayerList', Object.values(room.players));
+            
+            const allReady = Object.values(room.players).every(player => player.isReady);
+            if (allReady && Object.keys(room.players).length >= 1) {
+                room.gameState = 'PLAYING';
+                io.to(room.id).emit('gameStateChanged', { 
+                    state: 'PLAYING', 
+                    obstacles: room.obstacles, 
+                    breakables: room.breakables 
+                });
             }
         }
-        console.log(`👋 Odpojeno: ${socket.id}`);
+    });
+
+    socket.on('disconnect', () => {
+        const roomId = socket.roomId;
+        if (rooms[roomId]) {
+            delete rooms[roomId].players[socket.id];
+            io.to(roomId).emit('updatePlayerList', Object.values(rooms[roomId].players));
+            if (Object.keys(rooms[roomId].players).length === 0) delete rooms[roomId];
+        }
     });
 });
 
-// Pomocná funkce pro přidání hráče
-function joinPlayerToRoom(socket, roomId, data) {
+function handleJoin(socket, roomId, data) {
     socket.join(roomId);
     socket.roomId = roomId;
-    
     rooms[roomId].players[socket.id] = {
         id: socket.id,
         name: data.name || 'Hráč',
         color: data.color || '#45f3ff',
-        x: 100 + Math.random() * 500,
-        y: 100 + Math.random() * 500,
-        hp: 100,
-        maxHp: 100,
-        ammo: 10,
-        maxAmmo: 10,
-        isReady: false,
-        score: 0
+        x: Math.random() * 800 + 100,
+        y: Math.random() * 600 + 100,
+        hp: 100, maxHp: 100,
+        ammo: 10, maxAmmo: 10,
+        moveSpeed: 5, fireRate: 6,
+        isReady: false, score: 0
     };
-
     io.to(roomId).emit('updatePlayerList', Object.values(rooms[roomId].players));
 }
 
-// Start hry
-function startGame(roomId) {
-    const room = rooms[roomId];
-    room.gameState = 'PLAYING';
-    io.to(roomId).emit('gameStateChanged', { 
-        state: 'PLAYING', 
-        obstacles: room.obstacles, 
-        breakables: room.breakables 
+function fireProjectile(room, player) {
+    player.ammo--;
+    const angle = player.aimAngle;
+    room.projectiles.push({
+        id: Math.random().toString(36).substr(2, 9),
+        ownerId: player.id,
+        x: player.x + Math.cos(angle) * 30,
+        y: player.y + Math.sin(angle) * 30,
+        vx: Math.cos(angle) * 12,
+        vy: Math.sin(angle) * 12,
+        damage: 15,
+        life: 100
     });
 }
 
-// --- HLAVNÍ HERNÍ SMYČKA ---
+// --- HLAVNÍ SMYČKA (Fyzika a kolize) ---
 setInterval(() => {
     Object.keys(rooms).forEach(roomId => {
         const room = rooms[roomId];
         if (room.gameState !== 'PLAYING') return;
 
-        // Tady probíhá fyzika, update domén atd.
+        // Update domén přes tvůj DomainManager
         if (DomainManager && DomainManager.updateDomains) {
-            const playersArray = Object.values(room.players);
-            DomainManager.updateDomains(room.players, playersArray, [], TICK_RATE);
+            DomainManager.updateDomains(room.players, Object.values(room.players), room.projectiles, TICK_RATE);
         }
 
-        // Příprava dat pro klienty (ořezání nepotřebných věcí pro snížení lagů)
+        // Update projektilů a kolize
+        for (let i = room.projectiles.length - 1; i >= 0; i--) {
+            const proj = room.projectiles[i];
+            proj.x += proj.vx;
+            proj.y += proj.vy;
+            proj.life--;
+
+            if (proj.life <= 0) {
+                room.projectiles.splice(i, 1);
+                continue;
+            }
+
+            // Kolize s hráči
+            for (const pId in room.players) {
+                const target = room.players[pId];
+                if (target.id === proj.ownerId || target.hp <= 0) continue;
+
+                const dist = Math.hypot(proj.x - target.x, proj.y - target.y);
+                if (dist < 25) { // Rádius hráče
+                    target.hp -= proj.damage;
+                    room.projectiles.splice(i, 1);
+                    if (target.hp <= 0) room.players[proj.ownerId].score++;
+                    break;
+                }
+            }
+        }
+
+        // Odeslání stavu klientům
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
             leanPlayers[id] = {
-                name: p.name, color: p.color,
-                x: Number((p.x || 0).toFixed(2)),
-                y: Number((p.y || 0).toFixed(2)),
-                hp: Math.round(p.hp),
-                maxHp: p.maxHp,
-                ammo: p.ammo, 
-                maxAmmo: p.maxAmmo,
-                score: p.score
+                id: p.id, x: p.x, y: p.y, hp: p.hp, name: p.name, 
+                color: p.color, ammo: p.ammo, score: p.score, angle: p.aimAngle
             };
         }
 
-        io.to(room.id).volatile.emit('gameUpdate', {
+        io.to(roomId).volatile.emit('gameUpdate', {
             players: leanPlayers,
+            projectiles: room.projectiles,
             gameState: room.gameState
         });
     });
 }, TICK_RATE);
 
-// Start serveru
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`
-🚀 SERVER ÚSPĚŠNĚ NASTARTOVÁN
-----------------------------------------
-Port:    ${PORT}
-Režim:   Vanilla JS (Static)
-Složka:  ${path.join(__dirname, 'public')}
-----------------------------------------
-    `);
+    console.log(`🚀 Server Quantum Clash běží na portu ${PORT}`);
 });
