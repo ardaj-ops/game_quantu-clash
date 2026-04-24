@@ -253,4 +253,4 @@ export function drawGame(serverData) {
         state.ctx.textAlign = 'center';
         state.ctx.fillText('KOLO SKONČILO', state.canvas.width / 2, state.canvas.height / 2);
     }
-}w
+}
