@@ -47,7 +47,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    pingInterval: 2000, // Zrychlený ping pro lepší stabilitu a méně lagů
+    pingTimeout: 5000
 });
 
 // --- FUNKCE PRO NAČÍTÁNÍ SDÍLENÉHO KÓDU (BEZPEČNÁ VERZE) ---
@@ -210,29 +212,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- KLÍČOVÉ OPRAVY PROPOJENÍ S PHYSICS.JS ---
+    // --- OPRAVA SYNCHRONIZACE ---
 
-    // 1. Synchronizace pohybu a dat z klienta (nahrazuje starý 'playerInput')
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         
-        p.x = data.x;
-        p.y = data.y;
-        p.aimAngle = data.aimAngle;
-        p.ammo = data.ammo; // Tímto se bude zbraň správně vyprazdňovat a přebíjet
-        p.isReloading = data.isReloading;
+        // Server agresivně přebírá přesná data z klienta
+        if (typeof data.x === 'number') p.x = data.x;
+        if (typeof data.y === 'number') p.y = data.y;
+        if (typeof data.aimAngle === 'number') p.aimAngle = data.aimAngle;
+        
+        // Zásadní oprava Ammo: Přebíráme ammo z klienta, pokud existuje
+        if (typeof data.ammo !== 'undefined') p.ammo = data.ammo;
+        if (typeof data.maxAmmo !== 'undefined') p.maxAmmo = data.maxAmmo;
+        if (typeof data.isReloading !== 'undefined') p.isReloading = data.isReloading;
     });
 
-    // 2. Přijetí kulky z klienta a rozeslání ostatním (vyřeší "neviditelné" střely)
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
-        // Pošle pole střel všem ostatním v místnosti, takže je vykreslí
+        // Přeposlání střel na ostatní klienty (aby je viděli)
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
-    // 3. Poškození (physics.js vyhodnotí kolizi a nahlásí ji sem)
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -272,8 +275,6 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (room.gameState !== 'PLAYING') return;
 
-        // Protože se pohyb a střelba počítá přes ClientSync, 
-        // smyčka má za úkol už jen balit a rozesílat čistá data o hráčích (leanPlayers).
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
@@ -281,12 +282,13 @@ setInterval(() => {
             leanPlayers[id] = {
                 id: p.id,
                 name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                x: Number((p.x || 0).toFixed(2)),
-                y: Number((p.y || 0).toFixed(2)),
+                // Odebráno toFixed(2), aby se zamezilo ztrátě přesnosti a "cukání"
+                x: p.x || 0,
+                y: p.y || 0,
                 hp: Math.round(p.hp),
                 maxHp: p.maxHp,
-                aimAngle: Number((p.aimAngle || 0).toFixed(2)),
-                ammo: p.ammo, maxAmmo: p.maxAmmo, // Tímto se opraví HUD ukazující správný počet nábojů
+                aimAngle: p.aimAngle || 0,
+                ammo: p.ammo, maxAmmo: p.maxAmmo, // Posíláme správně Ammo zpět!
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
                 domainActive: p.domainActive, score: p.score,
                 isReady: p.isReady,
