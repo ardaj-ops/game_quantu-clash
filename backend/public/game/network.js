@@ -1,9 +1,7 @@
 import { state } from './state.js';
 
-// Vytvoříme prázdnou proměnnou, kterou naplníme až při startu hry
 export let socket = null;
 
-// Tuto funkci zavoláme z main.js až ve chvíli, kdy je socket připravený
 export function initNetwork() {
     socket = window.gameSocket;
 
@@ -14,7 +12,36 @@ export function initNetwork() {
 
     console.log('✅ HERNÍ ENGINE sdílený socket ID:', socket.id);
 
-    const onGameUpdate = (d) => { state.latestServerData = d; };
+    const onGameUpdate = (d) => { 
+        // --- ANTI-GLITCH A ANTI-RUBBERBANDING SYSTÉM ---
+        if (state.latestServerData && state.latestServerData.players && d.players && socket) {
+            const myId = socket.id;
+            const localMe = state.latestServerData.players[myId];
+            const serverMe = d.players[myId];
+
+            if (localMe && serverMe) {
+                // 1. ZÁCHRANA POZICE (Hladký pohyb)
+                const dist = Math.hypot(localMe.x - serverMe.x, localMe.y - serverMe.y);
+                if (dist < 150) { // Věříme prohlížeči, pokud to není teleport (např. respawn)
+                    serverMe.x = localMe.x;
+                    serverMe.y = localMe.y;
+                    serverMe.aimAngle = localMe.aimAngle;
+                }
+
+                // 2. ZÁCHRANA NÁBOJŮ (Zabrání blikání a zasekávání zásobníků)
+                if (localMe.ammo < serverMe.ammo && !localMe.isReloading && !serverMe.isReloading) {
+                    serverMe.ammo = localMe.ammo;
+                }
+                
+                // Zachováme lokální zprávu o přebíjení
+                if (localMe.isReloading && localMe.ammo === 0) {
+                    serverMe.isReloading = true;
+                }
+            }
+        }
+        state.latestServerData = d; 
+    };
+
     socket.on('gameUpdate', onGameUpdate);
     socket.on('gameState', onGameUpdate);
     socket.on('update', onGameUpdate);
@@ -25,17 +52,14 @@ export function initNetwork() {
         console.log(`🗺️ mapUpdate: ${data.obstacles?.length||0} zdí, ${data.breakables?.length||0} bloků`);
     });
 
-    // OPRAVA PŘEKÁŽEK: Chytáme mapu ihned po startu kola, nečekáme jen na mapUpdate
     socket.on('gameStateChanged', (data) => {
         console.log(`🔄 ENGINE stav: [${data.state}]`);
-        
         if (data.obstacles && data.obstacles.length > 0) { 
             state.localObstacles = data.obstacles; 
         }
         if (data.breakables && data.breakables.length > 0) { 
             state.localBreakables = data.breakables; 
         }
-        
         if (data.state === 'LOBBY' || data.state === 'GAMEOVER') {
             state.latestServerData = null;
             state.localBullets = [];
@@ -50,15 +74,7 @@ export function initNetwork() {
         arr.forEach(b => { if (b) state.remoteBullets.push({ ...b, createdAt: Date.now() }); });
     });
 
-    socket.on('playerDamaged', (data) => {
-        // Volitelné: Hit markery
-    });
-    
-    socket.on('enemyDecoySpawned', (decoyData) => {
-        // Volitelné: Spawn decoyů
-    });
-    
-    socket.on('gravityChanged', (gravityName) => {
-        console.log(`🌌 Gravitace změněna na: ${gravityName}`);
-    });
+    socket.on('playerDamaged', (data) => {});
+    socket.on('enemyDecoySpawned', (decoyData) => {});
+    socket.on('gravityChanged', (gravityName) => {});
 }

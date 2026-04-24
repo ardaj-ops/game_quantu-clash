@@ -1,13 +1,11 @@
 // game/main.js
 import { state } from './state.js';
-// ZMĚNA: Importujeme funkci initNetwork, nespouštíme ji hned!
 import { initNetwork } from './network.js'; 
 import { updateLocalGame } from './physics.js';
 import { drawGame } from './render.js';
 import { initInputs } from './input.js';
-import { CONFIG } from '../gameConfig.js'; // Cesta ../ je správně, pokud je config v public/
+import { CONFIG } from '../gameConfig.js'; 
 
-// --- 1. INICIALIZACE ZAMĚŘOVAČE ---
 try {
     const savedCrosshair = localStorage.getItem('crosshairSettings');
     if (savedCrosshair) {
@@ -35,6 +33,19 @@ function renderLoop() {
     const canvas = state.canvas;
     if (canvas && state.ctx) {
         if (state.latestServerData) {
+            
+            // --- OKAMŽITÝ UPDATE HUDu BEZ ZPOŽDĚNÍ ---
+            const s = window.gameSocket;
+            if (s && state.latestServerData.players) {
+                const me = state.latestServerData.players[s.id];
+                if (me) {
+                    const hudAmmo = document.getElementById('hud-ammo');
+                    const hudHp = document.getElementById('hud-hp');
+                    if (hudAmmo) hudAmmo.innerText = `${me.ammo} / ${me.maxAmmo || 10}`;
+                    if (hudHp) hudHp.innerText = `${Math.round(me.hp)} / ${me.maxHp || 100}`;
+                }
+            }
+
             drawGame(state.latestServerData);
         } else {
             state.ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -50,24 +61,16 @@ export function initGameEngine() {
     engineStarted = true;
 
     const canvas = document.getElementById('game');
-    if (!canvas) {
-        console.error("❌ Canvas #game nebyl nalezen!");
-        return;
-    }
+    if (!canvas) return;
 
-    // 1. Nastavení plátna
     resizeCanvas(canvas);
     state.canvas = canvas;
     state.ctx = canvas.getContext('2d');
 
-    // 2. NASTARTOVÁNÍ SÍTĚ (Teď už window.gameSocket existuje!)
     initNetwork(); 
 
-    // 3. Eventy a smyčky
     document.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('resize', () => resizeCanvas(canvas));
-
-    console.log(`🚀 Engine nastartován: ${canvas.width}×${canvas.height}`);
 
     initInputs();
     requestAnimationFrame(renderLoop);
