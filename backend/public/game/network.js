@@ -22,18 +22,17 @@ export function initNetwork() {
             if (localMe && serverMe) {
                 // 1. ZÁCHRANA POZICE (Hladký pohyb)
                 const dist = Math.hypot(localMe.x - serverMe.x, localMe.y - serverMe.y);
-                if (dist < 150) { // Věříme prohlížeči, pokud to není teleport (např. respawn)
+                if (dist < 150) { 
                     serverMe.x = localMe.x;
                     serverMe.y = localMe.y;
                     serverMe.aimAngle = localMe.aimAngle;
                 }
 
-                // 2. ZÁCHRANA NÁBOJŮ (Zabrání blikání a zasekávání zásobníků)
+                // 2. ZÁCHRANA NÁBOJŮ (Zabrání blikání)
                 if (localMe.ammo < serverMe.ammo && !localMe.isReloading && !serverMe.isReloading) {
                     serverMe.ammo = localMe.ammo;
                 }
                 
-                // Zachováme lokální zprávu o přebíjení
                 if (localMe.isReloading && localMe.ammo === 0) {
                     serverMe.isReloading = true;
                 }
@@ -53,18 +52,55 @@ export function initNetwork() {
     });
 
     socket.on('gameStateChanged', (data) => {
-        console.log(`🔄 ENGINE stav: [${data.state}]`);
+        console.log(`🔄 ENGINE stav: [${data.state}] (Kolo: ${data.round || 1})`);
+        
         if (data.obstacles && data.obstacles.length > 0) { 
             state.localObstacles = data.obstacles; 
         }
         if (data.breakables && data.breakables.length > 0) { 
             state.localBreakables = data.breakables; 
         }
+
+        if (data.state === 'PLAYING') {
+            const cardScreen = document.getElementById('card-screen');
+            if (cardScreen) cardScreen.style.display = 'none';
+        }
+        
         if (data.state === 'LOBBY' || data.state === 'GAMEOVER') {
             state.latestServerData = null;
             state.localBullets = [];
             state.remoteBullets = [];
         }
+    });
+
+    // UKÁZÁNÍ VÝBĚRU KARET
+    socket.on('showCardSelection', (cards) => {
+        const screen = document.getElementById('card-screen');
+        const container = document.getElementById('card-container');
+        
+        if (!screen || !container) return;
+
+        container.innerHTML = ''; 
+
+        cards.forEach(card => {
+            const cardEl = document.createElement('div');
+            // Získá třídu podle rarity (common, rare atd.) pro obarvení v CSS
+            cardEl.className = `card ${card.rarity.toLowerCase()}`; 
+            cardEl.innerHTML = `
+                <div class="rarity-tag">${card.rarity.toUpperCase()}</div>
+                <h3>${card.name}</h3>
+                <p>${card.description}</p>
+            `;
+            
+            cardEl.onclick = () => {
+                socket.emit('selectCard', card.name);
+                screen.style.display = 'none'; // Schovat menu po kliknutí
+            };
+            
+            container.appendChild(cardEl);
+        });
+
+        screen.style.display = 'flex'; 
     });
 
     socket.on('enemyShot', (bulletsData) => {

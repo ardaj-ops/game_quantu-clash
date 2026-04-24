@@ -47,9 +47,11 @@
         <canvas id="game" style="background: #000; width: 100vw; height: 100vh; display: block;"></canvas>
     </div>
 
-    <div id="card-screen" class="overlay" style="display: none;">
-        <h1 style="color: #ff2a7a; font-size: 3rem; margin-bottom: 20px;">VÝBĚR KARET</h1>
-        <div id="card-container" style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; max-width: 1000px;"></div>
+    <div id="card-screen" class="overlay" style="display: none; background: rgba(5, 6, 8, 0.9); backdrop-filter: blur(8px);">
+        <div style="text-align: center; width: 100%;">
+            <h1 style="color: #ff2a7a; font-size: 3rem; margin-bottom: 40px; text-shadow: 0 0 20px rgba(255,42,122,0.5);">VÝBĚR KARET</h1>
+            <div id="card-container" style="display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; max-width: 1200px; margin: 0 auto; perspective: 1000px;"></div>
+        </div>
     </div>
 
     <div id="gameover-screen" class="overlay" style="display: none;">

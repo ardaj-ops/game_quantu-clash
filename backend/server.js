@@ -31,8 +31,6 @@ try {
     console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Ujisti se, že domainManager.js a gameHelper.js jsou v rootu)');
 }
 
-const generateMap = gameHelper.generateMap || (() => ({ obstacles: [], breakables: [] }));
-
 const app = express();
 app.use(cors());
 
@@ -42,11 +40,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
-    pingInterval: 1000, // Zrychlený ping pro hladší pohyb
+    pingInterval: 1000, 
     pingTimeout: 3000
 });
 
-// --- FUNKCE PRO NAČÍTÁNÍ CONFIGU ---
+// --- FUNKCE PRO NAČÍTÁNÍ CONFIGU A KARET ---
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
         path.join(__dirname, 'public', fileName),
@@ -85,6 +83,22 @@ const loadSharedFile = (fileName) => {
 const gameConfig = loadSharedFile('gameConfig.js') || {};
 const availableCards = loadSharedFile('cards.js') || [];
 
+// Funkce pro filtrování karet hráče
+function getValidCardsForPlayer(player) {
+    return availableCards.filter(card => {
+        if (card.rarity === 'transcended' && !card.requiresDomain) {
+            if (player.domainType) return false;
+        }
+        if (card.requiresDomain && !card.specificDomain) {
+            if (!player.domainType) return false;
+        }
+        if (card.specificDomain) {
+            if (player.domainType !== card.specificDomain) return false;
+        }
+        return true;
+    });
+}
+
 const CONFIG = {
     MAP_WIDTH: gameConfig.MAP_WIDTH || 1920,
     MAP_HEIGHT: gameConfig.MAP_HEIGHT || 1080,
@@ -106,7 +120,22 @@ const PORT = process.env.PORT || 3000;
 const TICK_RATE = 1000 / CONFIG.FPS;
 const rooms = {};
 
-// --- POMOCNÉ FUNKCE ---
+// --- POMOCNÉ FUNKCE PRO HRU ---
+function generateObstaclesForRound(round) {
+    if (round === 1) return []; // Kolo 1 je čisté
+    const obstacles = [];
+    const count = 1 + (round * 3); // Kolo 2 má 7 zdí, kolo 3 jich má 10 atd.
+    for (let i = 0; i < count; i++) {
+        obstacles.push({
+            x: Math.random() * (CONFIG.MAP_WIDTH - 400) + 200,
+            y: Math.random() * (CONFIG.MAP_HEIGHT - 300) + 150,
+            width: Math.random() * 150 + 50,
+            height: Math.random() * 150 + 50
+        });
+    }
+    return obstacles;
+}
+
 function resetPlayer(p, team, map) {
     p.hp = p.maxHp;
     p.ammo = p.maxAmmo;
@@ -115,13 +144,41 @@ function resetPlayer(p, team, map) {
     p.domainActive = false;
     if (p.domainManager) p.domainManager.active = false;
 
-    if (team === 'blue') {
-        p.x = 100 + Math.random() * 200;
-        p.y = CONFIG.MAP_HEIGHT / 2;
-    } else {
-        p.x = CONFIG.MAP_WIDTH - 300 + Math.random() * 200;
-        p.y = CONFIG.MAP_HEIGHT / 2;
-    }
+    p.x = Math.random() * (CONFIG.MAP_WIDTH - 200) + 100;
+    p.y = Math.random() * (CONFIG.MAP_HEIGHT - 200) + 100;
+}
+
+function initiateCardSelection(room) {
+    room.gameState = 'CARD_SELECTION';
+    if (!room.readyPlayersForNextRound) room.readyPlayersForNextRound = new Set();
+    room.readyPlayersForNextRound.clear();
+    
+    Object.values(room.players).forEach(player => {
+        const validCards = getValidCardsForPlayer(player);
+        const shuffled = [...validCards].sort(() => 0.5 - Math.random());
+        const selection = shuffled.slice(0, 3);
+        io.to(player.id).emit('showCardSelection', selection);
+    });
+    
+    io.to(room.id).emit('gameStateChanged', { state: 'CARD_SELECTION' });
+}
+
+function startNewRound(room) {
+    room.round = (room.round || 1) + 1;
+    room.gameState = 'PLAYING';
+    
+    room.map.obstacles = generateObstaclesForRound(room.round);
+
+    Object.values(room.players).forEach(p => {
+        resetPlayer(p, p.team, room.map);
+    });
+
+    io.to(room.id).emit('mapUpdate', room.map);
+    io.to(room.id).emit('gameStateChanged', { 
+        state: 'PLAYING', 
+        round: room.round,
+        obstacles: room.map.obstacles 
+    });
 }
 
 // --- SOCKET LOGIKA ---
@@ -132,7 +189,8 @@ io.on('connection', (socket) => {
             id: roomId,
             players: {},
             gameState: 'LOBBY',
-            map: generateMap(),
+            round: 1,
+            map: { obstacles: generateObstaclesForRound(1), breakables: [] },
             teamScores: { blue: 0, red: 0 },
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
@@ -169,7 +227,7 @@ io.on('connection', (socket) => {
             damage: CONFIG.BASE_DAMAGE,
             fireRate: CONFIG.BASE_FIRE_RATE,
             bulletSpeed: CONFIG.BASE_BULLET_SPEED,
-            reloadTime: CONFIG.BASE_RELOAD_TIME, // Důležité pro přebíjení
+            reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
             score: 0, isReady: false,
             domainManager: new DomainManager()
@@ -194,7 +252,27 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- OPRAVA: POHYB A MANUÁLNÍ PŘEBÍJENÍ ---
+    // VÝBĚR KARTY
+    socket.on('selectCard', (cardName) => {
+        const room = rooms[socket.roomId];
+        if (!room || room.gameState !== 'CARD_SELECTION') return;
+
+        const player = room.players[socket.id];
+        const card = availableCards.find(c => c.name === cardName);
+
+        if (player && card && card.apply) {
+            card.apply(player); // Aplikujeme kartu
+            console.log(`Hráč ${player.name} vybral kartu: ${cardName}`);
+        }
+
+        if (!room.readyPlayersForNextRound) room.readyPlayersForNextRound = new Set();
+        room.readyPlayersForNextRound.add(socket.id);
+
+        if (room.readyPlayersForNextRound.size >= Object.keys(room.players).length) {
+            startNewRound(room);
+        }
+    });
+
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
@@ -204,7 +282,6 @@ io.on('connection', (socket) => {
         p.y = data.y;
         p.aimAngle = data.aimAngle;
 
-        // Pokud hráč stiskne tlačítko pro manuální přebití (a ty ho do data.isReloading na klientovi pošleš)
         if (data.isReloading && !p.isReloading && p.ammo < p.maxAmmo) {
             p.isReloading = true;
             setTimeout(() => {
@@ -216,19 +293,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- OPRAVA: STŘELBA A AUTOMATICKÉ PŘEBÍJENÍ (Konečně funkční HUD!) ---
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
         const room = rooms[socket.roomId];
-        
         if (room && room.players[socket.id]) {
             const p = room.players[socket.id];
-            
-            // Server fyzicky odečte náboj
             if (p.ammo > 0 && !p.isReloading) {
                 p.ammo--;
-                
-                // Pokud dojdou, server začne odpočet
                 if (p.ammo <= 0) {
                     p.isReloading = true;
                     setTimeout(() => {
@@ -240,12 +311,9 @@ io.on('connection', (socket) => {
                 }
             }
         }
-        
-        // Poslat střely ostatním
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
-    // --- POŠKOZENÍ ---
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -260,10 +328,15 @@ io.on('connection', (socket) => {
                 shooter.hp = Math.min(shooter.maxHp, shooter.hp + (data.damage * data.lifesteal));
             }
             
+            // HRÁČ ZEMŘEL
             if (target.hp <= 0) {
                 if (shooter) shooter.score++;
-                room.teamScores[shooter.team]++;
-                setTimeout(() => resetPlayer(target, target.team, room.map), CONFIG.RESPAWN_TIME);
+                
+                // Zkontrolujeme, jestli zbývá jen jeden hráč (nebo nula)
+                const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
+                if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
+                    initiateCardSelection(room); // Konec kola -> Všichni si jdou vybrat kartu
+                }
             }
         }
     });
@@ -289,10 +362,10 @@ setInterval(() => {
             
             leanPlayers[id] = {
                 id: p.id, name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                x: p.x, y: p.y, // Bez toFixed() aby se předešlo zaokrouhlovacímu cukání!
+                x: p.x, y: p.y,
                 hp: Math.round(p.hp), maxHp: p.maxHp,
                 aimAngle: p.aimAngle,
-                ammo: p.ammo, maxAmmo: p.maxAmmo, // Posílá aktuální náboje zpět klientům
+                ammo: p.ammo, maxAmmo: p.maxAmmo,
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
                 domainActive: p.domainActive, score: p.score,
                 isReady: p.isReady, moveSpeed: p.moveSpeed,
