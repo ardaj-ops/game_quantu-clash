@@ -230,7 +230,7 @@ io.on('connection', (socket) => {
             reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
             score: 0, isReady: false,
-            domainManager: new DomainManager()
+            domainManager: DomainManager ? new DomainManager() : null
         };
 
         resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map);
@@ -273,10 +273,14 @@ io.on('connection', (socket) => {
         }
     });
 
+    // POHYB A ZAMĚŘOVÁNÍ
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
+        
+        // --- ZOMBIE FIX: Mrtvý hráč se nesmí hýbat ---
+        if (p.hp <= 0) return;
         
         p.x = data.x;
         p.y = data.y;
@@ -293,11 +297,28 @@ io.on('connection', (socket) => {
         }
     });
 
+    // DASH (Doplněno, aby klient nevyhazoval chybu do prázdna)
+    socket.on('Dash', () => {
+        const room = rooms[socket.roomId];
+        if (room && room.players[socket.id]) {
+            const p = room.players[socket.id];
+            // --- ZOMBIE FIX: Mrtvý hráč nemůže dashovat ---
+            if (p.hp > 0) {
+                socket.to(socket.roomId).emit('enemyDash', socket.id);
+            }
+        }
+    });
+
+    // STŘELBA
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
         const room = rooms[socket.roomId];
         if (room && room.players[socket.id]) {
             const p = room.players[socket.id];
+            
+            // --- ZOMBIE FIX: Mrtvý hráč nemůže střílet ---
+            if (p.hp <= 0) return;
+
             if (p.ammo > 0 && !p.isReloading) {
                 p.ammo--;
                 if (p.ammo <= 0) {
@@ -314,6 +335,7 @@ io.on('connection', (socket) => {
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
+    // ZÁSAH KLIENTA
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -330,7 +352,12 @@ io.on('connection', (socket) => {
             
             // HRÁČ ZEMŘEL
             if (target.hp <= 0) {
+                target.hp = 0; // Pojistka
                 if (shooter) shooter.score++;
+                
+                // --- ZOMBIE FIX: Odklidíme tělo mimo mapu ---
+                target.x = -5000;
+                target.y = -5000;
                 
                 // Zkontrolujeme, jestli zbývá jen jeden hráč (nebo nula)
                 const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
