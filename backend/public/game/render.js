@@ -79,6 +79,7 @@ function drawAvatar(player, id) {
 function drawPlayers(playersData) {
     for (const id in playersData) {
         const p = playersData[id];
+        
         if (!p || p.hp <= 0) continue;
 
         drawAvatar(p, id);
@@ -129,12 +130,12 @@ function drawBullets() {
 function drawCrosshair() {
     const mx = state.currentMouseX;
     const my = state.currentMouseY;
-    if (!mx && !my) return;
+    if (mx == null || my == null) return;
 
     const shape = state.crosshairConfig?.shape || 'cross';
 
     state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0); // screen-space
+    state.ctx.setTransform(1, 0, 0, 1, 0, 0); 
     state.ctx.strokeStyle = '#45f3ff';
     state.ctx.lineWidth = 2;
 
