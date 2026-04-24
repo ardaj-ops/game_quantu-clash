@@ -11,10 +11,6 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:');
     console.error('Důvod:', reason);
     console.error('Promise:', promise);
-    if (reason && reason.stack) {
-        console.error('Stack Trace:\n', reason.stack);
-    }
-    console.error('----------------------------------------\n');
 });
 
 const express = require('express');
@@ -33,8 +29,6 @@ try {
     console.log('✅ Manažeři a helpery úspěšně načteny.');
 } catch (err) {
     console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Ujisti se, že domainManager.js a gameHelper.js jsou v rootu)');
-    console.error(err.stack);
-    process.exit(1);
 }
 
 const generateMap = gameHelper.generateMap || (() => ({ obstacles: [], breakables: [] }));
@@ -48,11 +42,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
-    pingInterval: 2000, // Zrychlený ping pro lepší stabilitu a méně lagů
-    pingTimeout: 5000
+    pingInterval: 1000, // Zrychlený ping pro hladší pohyb
+    pingTimeout: 3000
 });
 
-// --- FUNKCE PRO NAČÍTÁNÍ SDÍLENÉHO KÓDU (BEZPEČNÁ VERZE) ---
+// --- FUNKCE PRO NAČÍTÁNÍ CONFIGU ---
 const loadSharedFile = (fileName) => {
     const pathsToTry = [
         path.join(__dirname, 'public', fileName),
@@ -64,7 +58,6 @@ const loadSharedFile = (fileName) => {
         if (fs.existsSync(p)) {
             try {
                 let raw = fs.readFileSync(p, 'utf-8');
-                
                 const sanitized = raw
                     .replace(/^\s*export\s+const\s+/gm, 'var ')
                     .replace(/^\s*export\s+let\s+/gm, 'var ')
@@ -82,18 +75,10 @@ const loadSharedFile = (fileName) => {
                     if (typeof CARDS !== 'undefined') return CARDS;
                     return {};
                 `);
-                
-                const data = extractData();
-                console.log(`✅ Soubor ${fileName} načten z: ${p}`);
-                return data;
-
-            } catch (err) { 
-                console.error(`❌ Chyba při parsování ${fileName}:`, err.message); 
-                return null; 
-            }
+                return extractData();
+            } catch (err) { return null; }
         }
     }
-    console.warn(`⚠️ Soubor ${fileName} nebyl nalezen!`);
     return null;
 };
 
@@ -141,16 +126,13 @@ function resetPlayer(p, team, map) {
 
 // --- SOCKET LOGIKA ---
 io.on('connection', (socket) => {
-    console.log(`🔌 Hráč připojen: ${socket.id}`);
-
     socket.on('createRoom', (data) => {
         const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
-        const map = generateMap();
         rooms[roomId] = {
             id: roomId,
             players: {},
             gameState: 'LOBBY',
-            map: map,
+            map: generateMap(),
             teamScores: { blue: 0, red: 0 },
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
@@ -187,13 +169,13 @@ io.on('connection', (socket) => {
             damage: CONFIG.BASE_DAMAGE,
             fireRate: CONFIG.BASE_FIRE_RATE,
             bulletSpeed: CONFIG.BASE_BULLET_SPEED,
+            reloadTime: CONFIG.BASE_RELOAD_TIME, // Důležité pro přebíjení
             lifesteal: 0, bounces: 0, pierce: 0,
             score: 0, isReady: false,
             domainManager: new DomainManager()
         };
 
         resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map);
-        
         io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
@@ -212,30 +194,58 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- OPRAVA SYNCHRONIZACE ---
-
+    // --- OPRAVA: POHYB A MANUÁLNÍ PŘEBÍJENÍ ---
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         
-        // Server agresivně přebírá přesná data z klienta
-        if (typeof data.x === 'number') p.x = data.x;
-        if (typeof data.y === 'number') p.y = data.y;
-        if (typeof data.aimAngle === 'number') p.aimAngle = data.aimAngle;
-        
-        // Zásadní oprava Ammo: Přebíráme ammo z klienta, pokud existuje
-        if (typeof data.ammo !== 'undefined') p.ammo = data.ammo;
-        if (typeof data.maxAmmo !== 'undefined') p.maxAmmo = data.maxAmmo;
-        if (typeof data.isReloading !== 'undefined') p.isReloading = data.isReloading;
+        p.x = data.x;
+        p.y = data.y;
+        p.aimAngle = data.aimAngle;
+
+        // Pokud hráč stiskne tlačítko pro manuální přebití (a ty ho do data.isReloading na klientovi pošleš)
+        if (data.isReloading && !p.isReloading && p.ammo < p.maxAmmo) {
+            p.isReloading = true;
+            setTimeout(() => {
+                if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
+                    rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
+                    rooms[socket.roomId].players[socket.id].isReloading = false;
+                }
+            }, p.reloadTime || 1500);
+        }
     });
 
+    // --- OPRAVA: STŘELBA A AUTOMATICKÉ PŘEBÍJENÍ (Konečně funkční HUD!) ---
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
-        // Přeposlání střel na ostatní klienty (aby je viděli)
+        const room = rooms[socket.roomId];
+        
+        if (room && room.players[socket.id]) {
+            const p = room.players[socket.id];
+            
+            // Server fyzicky odečte náboj
+            if (p.ammo > 0 && !p.isReloading) {
+                p.ammo--;
+                
+                // Pokud dojdou, server začne odpočet
+                if (p.ammo <= 0) {
+                    p.isReloading = true;
+                    setTimeout(() => {
+                        if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
+                            rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
+                            rooms[socket.roomId].players[socket.id].isReloading = false;
+                        }
+                    }, p.reloadTime || 1500);
+                }
+            }
+        }
+        
+        // Poslat střely ostatním
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
+    // --- POŠKOZENÍ ---
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -246,12 +256,10 @@ io.on('connection', (socket) => {
         if (target && target.hp > 0) {
             target.hp -= data.damage;
             
-            // Lifesteal
             if (shooter && data.lifesteal > 0) {
                 shooter.hp = Math.min(shooter.maxHp, shooter.hp + (data.damage * data.lifesteal));
             }
             
-            // Smrt hráče
             if (target.hp <= 0) {
                 if (shooter) shooter.score++;
                 room.teamScores[shooter.team]++;
@@ -280,25 +288,17 @@ setInterval(() => {
             const p = room.players[id];
             
             leanPlayers[id] = {
-                id: p.id,
-                name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
-                // Odebráno toFixed(2), aby se zamezilo ztrátě přesnosti a "cukání"
-                x: p.x || 0,
-                y: p.y || 0,
-                hp: Math.round(p.hp),
-                maxHp: p.maxHp,
-                aimAngle: p.aimAngle || 0,
-                ammo: p.ammo, maxAmmo: p.maxAmmo, // Posíláme správně Ammo zpět!
+                id: p.id, name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
+                x: p.x, y: p.y, // Bez toFixed() aby se předešlo zaokrouhlovacímu cukání!
+                hp: Math.round(p.hp), maxHp: p.maxHp,
+                aimAngle: p.aimAngle,
+                ammo: p.ammo, maxAmmo: p.maxAmmo, // Posílá aktuální náboje zpět klientům
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
                 domainActive: p.domainActive, score: p.score,
-                isReady: p.isReady,
-                moveSpeed: p.moveSpeed,
-                damage: p.damage,
-                fireRate: p.fireRate,
-                bulletSpeed: p.bulletSpeed,
-                bounces: p.bounces,
-                pierce: p.pierce,
-                lifesteal: p.lifesteal
+                isReady: p.isReady, moveSpeed: p.moveSpeed,
+                damage: p.damage, fireRate: p.fireRate,
+                bulletSpeed: p.bulletSpeed, bounces: p.bounces,
+                pierce: p.pierce, lifesteal: p.lifesteal
             };
         }
 
