@@ -45,33 +45,20 @@ const io = new Server(server, {
 });
 
 // --- FUNKCE PRO NAČÍTÁNÍ CONFIGU A KARET ---
-const loadSharedFile = (fileName) => {
-    const pathsToTry = [
-        path.join(__dirname, 'public', fileName),
-        path.join(__dirname, 'public', 'game', fileName),
-        path.join(__dirname, fileName)
-    ];
-
+const loadSharedFile = (fileName, expectedVar) => {
+    const pathsToTry = [ path.join(__dirname, 'public', fileName), path.join(__dirname, 'public', 'game', fileName), path.join(__dirname, fileName) ];
     for (const p of pathsToTry) {
         if (fs.existsSync(p)) {
             try {
                 let raw = fs.readFileSync(p, 'utf-8');
-                const sanitized = raw
-                    .replace(/^\s*export\s+const\s+/gm, 'var ')
-                    .replace(/^\s*export\s+let\s+/gm, 'var ')
-                    .replace(/^\s*export\s+var\s+/gm, 'var ')
-                    .replace(/^\s*export\s+function\s+/gm, 'function ')
-                    .replace(/^\s*export\s+class\s+/gm, 'class ')
-                    .replace(/^\s*export\s+default\s+/gm, '')
-                    .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
-                    .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
-
+                const sanitized = raw.replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+                                     .replace(/^\s*export\s+default\s+/gm, '')
+                                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
+                                     .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
                 const extractData = new Function(`
                     ${sanitized}
-                    if (typeof CONFIG !== 'undefined') return CONFIG;
-                    if (typeof availableCards !== 'undefined') return availableCards;
-                    if (typeof CARDS !== 'undefined') return CARDS;
-                    return {};
+                    if (typeof ${expectedVar} !== 'undefined') return ${expectedVar};
+                    return null;
                 `);
                 return extractData();
             } catch (err) { return null; }
@@ -80,8 +67,9 @@ const loadSharedFile = (fileName) => {
     return null;
 };
 
-const gameConfig = loadSharedFile('gameConfig.js') || {};
-const availableCards = loadSharedFile('cards.js') || [];
+// OPRAVA DUPLICITNÍHO CONFIGU
+const loadedConfig = loadSharedFile('gameConfig.js', 'CONFIG') || {};
+const availableCards = loadSharedFile('cards.js', 'availableCards') || [];
 
 // Funkce pro filtrování karet hráče
 function getValidCardsForPlayer(player) {
@@ -100,19 +88,19 @@ function getValidCardsForPlayer(player) {
 }
 
 const CONFIG = {
-    MAP_WIDTH: gameConfig.MAP_WIDTH || 1920,
-    MAP_HEIGHT: gameConfig.MAP_HEIGHT || 1080,
-    FPS: gameConfig.FPS || 60,
-    MAX_SCORE: gameConfig.MAX_SCORE || 25,
-    RESPAWN_TIME: gameConfig.RESPAWN_TIME || 3000,
-    BASE_HP: gameConfig.BASE_HP || 100,
-    BASE_MOVE_SPEED: gameConfig.BASE_MOVE_SPEED || 0.8,
-    BASE_DAMAGE: gameConfig.BASE_DAMAGE || 20,
-    BASE_FIRE_RATE: gameConfig.BASE_FIRE_RATE || 400,
-    BASE_BULLET_SPEED: gameConfig.BASE_BULLET_SPEED || 15,
-    BASE_AMMO: gameConfig.BASE_AMMO || 10,
-    BASE_RELOAD_TIME: gameConfig.BASE_RELOAD_TIME || 1500,
-    PLAYER_RADIUS: gameConfig.PLAYER_RADIUS || 20,
+    MAP_WIDTH: loadedConfig.MAP_WIDTH || 1920,
+    MAP_HEIGHT: loadedConfig.MAP_HEIGHT || 1080,
+    FPS: loadedConfig.FPS || 60,
+    MAX_SCORE: loadedConfig.MAX_SCORE || 25,
+    RESPAWN_TIME: loadedConfig.RESPAWN_TIME || 3000,
+    BASE_HP: loadedConfig.BASE_HP || 100,
+    BASE_MOVE_SPEED: loadedConfig.BASE_MOVE_SPEED || 0.8,
+    BASE_DAMAGE: loadedConfig.BASE_DAMAGE || 20,
+    BASE_FIRE_RATE: loadedConfig.BASE_FIRE_RATE || 400,
+    BASE_BULLET_SPEED: loadedConfig.BASE_BULLET_SPEED || 15,
+    BASE_AMMO: loadedConfig.BASE_AMMO || 10,
+    BASE_RELOAD_TIME: loadedConfig.BASE_RELOAD_TIME || 1500,
+    PLAYER_RADIUS: loadedConfig.PLAYER_RADIUS || 20,
     BULLET_RADIUS: 5
 };
 
@@ -136,16 +124,20 @@ function generateObstaclesForRound(round) {
     return obstacles;
 }
 
-function resetPlayer(p, team, map) {
+function resetPlayer(p, team, map, room) {
     p.hp = p.maxHp;
-    p.ammo = p.maxAmmo;
+    p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
     p.isReloading = false;
     p.isInvisible = false;
     p.domainActive = false;
-    if (p.domainManager) p.domainManager.active = false;
 
-    p.x = Math.random() * (CONFIG.MAP_WIDTH - 200) + 100;
-    p.y = Math.random() * (CONFIG.MAP_HEIGHT - 200) + 100;
+    const mapW = CONFIG.MAP_WIDTH || 1920;
+    const mapH = CONFIG.MAP_HEIGHT || 1080;
+    const spawn = gameHelper.getValidSpawnPoint 
+        ? gameHelper.getValidSpawnPoint(Object.keys(room.players).indexOf(p.id), mapW, mapH, room.map?.obstacles || [], room.map?.breakables || [], 20)
+        : { x: mapW/2, y: mapH/2 };
+    p.x = spawn.x;
+    p.y = spawn.y;
 }
 
 function initiateCardSelection(room) {
@@ -154,9 +146,7 @@ function initiateCardSelection(room) {
     room.readyPlayersForNextRound.clear();
     
     Object.values(room.players).forEach(player => {
-        const validCards = getValidCardsForPlayer(player);
-        const shuffled = [...validCards].sort(() => 0.5 - Math.random());
-        const selection = shuffled.slice(0, 3);
+        const selection = gameHelper.generateCardsForPlayer ? gameHelper.generateCardsForPlayer(player, availableCards) : [];
         io.to(player.id).emit('showCardSelection', selection);
     });
     
@@ -167,17 +157,22 @@ function startNewRound(room) {
     room.round = (room.round || 1) + 1;
     room.gameState = 'PLAYING';
     
-    room.map.obstacles = generateObstaclesForRound(room.round);
+    if (gameHelper.generateMap) {
+        room.map = gameHelper.generateMap(CONFIG.MAP_WIDTH || 1920, CONFIG.MAP_HEIGHT || 1080);
+    } else {
+        room.map.obstacles = generateObstaclesForRound(room.round);
+    }
 
     Object.values(room.players).forEach(p => {
-        resetPlayer(p, p.team, room.map);
+        resetPlayer(p, p.team, room.map, room);
     });
 
     io.to(room.id).emit('mapUpdate', room.map);
     io.to(room.id).emit('gameStateChanged', { 
         state: 'PLAYING', 
         round: room.round,
-        obstacles: room.map.obstacles 
+        obstacles: room.map.obstacles,
+        breakables: room.map.breakables
     });
 }
 
@@ -190,7 +185,7 @@ io.on('connection', (socket) => {
             players: {},
             gameState: 'LOBBY',
             round: 1,
-            map: { obstacles: generateObstaclesForRound(1), breakables: [] },
+            map: gameHelper.generateMap ? gameHelper.generateMap(CONFIG.MAP_WIDTH || 1920, CONFIG.MAP_HEIGHT || 1080) : { obstacles: generateObstaclesForRound(1), breakables: [] },
             teamScores: { blue: 0, red: 0 },
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
@@ -230,10 +225,10 @@ io.on('connection', (socket) => {
             reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
             score: 0, isReady: false,
-            domainManager: DomainManager ? new DomainManager() : null
+            hpRegen: 0, isRussianRoulette: false
         };
 
-        resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map);
+        resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map, room);
         io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
@@ -252,7 +247,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // VÝBĚR KARTY
     socket.on('selectCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'CARD_SELECTION') return;
@@ -261,7 +255,7 @@ io.on('connection', (socket) => {
         const card = availableCards.find(c => c.name === cardName);
 
         if (player && card && card.apply) {
-            card.apply(player); // Aplikujeme kartu
+            card.apply(player);
             console.log(`Hráč ${player.name} vybral kartu: ${cardName}`);
         }
 
@@ -273,81 +267,85 @@ io.on('connection', (socket) => {
         }
     });
 
-    // POHYB A ZAMĚŘOVÁNÍ
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         
-        // --- ZOMBIE FIX: Mrtvý hráč se nesmí hýbat ---
         if (p.hp <= 0) return;
         
         p.x = data.x;
         p.y = data.y;
         p.aimAngle = data.aimAngle;
 
+        if (data.ritual && DomainManager && typeof DomainManager.activateDomain === 'function') {
+            DomainManager.activateDomain(p, room);
+        }
+
         if (data.isReloading && !p.isReloading && p.ammo < p.maxAmmo) {
             p.isReloading = true;
             setTimeout(() => {
                 if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                    rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
-                    rooms[socket.roomId].players[socket.id].isReloading = false;
+                    const rp = rooms[socket.roomId].players[socket.id];
+                    rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
+                    rp.isReloading = false;
                 }
             }, p.reloadTime || 1500);
         }
     });
 
-    // DASH
     socket.on('Dash', () => {
         const room = rooms[socket.roomId];
         if (room && room.players[socket.id]) {
             const p = room.players[socket.id];
-            // --- ZOMBIE FIX: Mrtvý hráč nemůže dashovat ---
             if (p.hp > 0) {
                 socket.to(socket.roomId).emit('enemyDash', socket.id);
             }
         }
     });
 
-    // MANUÁLNÍ PŘEBÍJENÍ
     socket.on('reload', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         
         const p = room.players[socket.id];
         
-        // --- ZOMBIE FIX: Mrtvý hráč nemůže přebíjet ---
         if (p.hp <= 0) return;
 
         if (!p.isReloading && p.ammo < p.maxAmmo) {
             p.isReloading = true;
             setTimeout(() => {
                 if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                    rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
-                    rooms[socket.roomId].players[socket.id].isReloading = false;
+                    const rp = rooms[socket.roomId].players[socket.id];
+                    rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
+                    rp.isReloading = false;
                 }
             }, p.reloadTime || 1500);
         }
     });
 
-    // STŘELBA
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
         const room = rooms[socket.roomId];
         if (room && room.players[socket.id]) {
             const p = room.players[socket.id];
             
-            // --- ZOMBIE FIX: Mrtvý hráč nemůže střílet ---
             if (p.hp <= 0) return;
 
             if (p.ammo > 0 && !p.isReloading) {
                 p.ammo--;
+
+                if (p.isRussianRoulette) {
+                    bullets.forEach(b => { if(Math.random() < 0.166) b.damage *= 5; });
+                }
+                
                 if (p.ammo <= 0) {
                     p.isReloading = true;
                     setTimeout(() => {
                         if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                            rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
-                            rooms[socket.roomId].players[socket.id].isReloading = false;
+                            const rp = rooms[socket.roomId].players[socket.id];
+                            rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
+                            rp.isReloading = false;
                         }
                     }, p.reloadTime || 1500);
                 }
@@ -356,7 +354,6 @@ io.on('connection', (socket) => {
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
-    // ZÁSAH KLIENTA
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
@@ -365,7 +362,6 @@ io.on('connection', (socket) => {
         const shooter = room.players[socket.id];
 
         if (target && target.hp > 0) {
-            // FIX CHYBY HP: Bezpečné načtení hodnoty poškození (zabrání vzniku NaN a neporazitelnosti)
             const damageAmount = Number(data.damage) || 20; 
             target.hp -= damageAmount;
             
@@ -373,19 +369,16 @@ io.on('connection', (socket) => {
                 shooter.hp = Math.min(shooter.maxHp, shooter.hp + (damageAmount * data.lifesteal));
             }
             
-            // HRÁČ ZEMŘEL
             if (target.hp <= 0) {
-                target.hp = 0; // Pojistka
+                target.hp = 0;
                 if (shooter) shooter.score++;
                 
-                // --- ZOMBIE FIX: Odklidíme tělo mimo mapu ---
                 target.x = -5000;
                 target.y = -5000;
                 
-                // Zkontrolujeme, jestli zbývá jen jeden hráč (nebo nula)
                 const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
                 if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
-                    initiateCardSelection(room); // Konec kola -> Všichni si jdou vybrat kartu
+                    initiateCardSelection(room);
                 }
             }
         }
@@ -406,9 +399,17 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (room.gameState !== 'PLAYING') return;
 
+        if (DomainManager && typeof DomainManager.updateDomains === 'function') {
+            DomainManager.updateDomains(Object.values(room.players), room);
+        }
+
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
+            
+            if (p.hp > 0 && p.hpRegen > 0) {
+                p.hp = Math.min(p.maxHp, p.hp + (p.hpRegen / (CONFIG.FPS || 60)));
+            }
             
             leanPlayers[id] = {
                 id: p.id, name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
