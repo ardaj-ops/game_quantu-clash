@@ -42,7 +42,7 @@ const generateMap = gameHelper.generateMap || (() => ({ obstacles: [], breakable
 const app = express();
 app.use(cors());
 
-// --- OPRAVA: Nastavení statických souborů ---
+// Nastavení statických souborů
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -63,8 +63,6 @@ const loadSharedFile = (fileName) => {
             try {
                 let raw = fs.readFileSync(p, 'utf-8');
                 
-                // Místo 'const' převádíme exporty na 'var', 
-                // aby to nedělalo problémy se scope v izolované funkci
                 const sanitized = raw
                     .replace(/^\s*export\s+const\s+/gm, 'var ')
                     .replace(/^\s*export\s+let\s+/gm, 'var ')
@@ -75,14 +73,13 @@ const loadSharedFile = (fileName) => {
                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
                     .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
 
-                // Vytvoříme izolovanou funkci, která je imunní vůči zbytku serveru
                 const extractData = new Function(`
-    ${sanitized}
-    if (typeof CONFIG !== 'undefined') return CONFIG;
-    if (typeof availableCards !== 'undefined') return availableCards;
-    if (typeof CARDS !== 'undefined') return CARDS;
-    return {};
-`);
+                    ${sanitized}
+                    if (typeof CONFIG !== 'undefined') return CONFIG;
+                    if (typeof availableCards !== 'undefined') return availableCards;
+                    if (typeof CARDS !== 'undefined') return CARDS;
+                    return {};
+                `);
                 
                 const data = extractData();
                 console.log(`✅ Soubor ${fileName} načten z: ${p}`);
@@ -122,7 +119,7 @@ const PORT = process.env.PORT || 3000;
 const TICK_RATE = 1000 / CONFIG.FPS;
 const rooms = {};
 
-// --- POMOCNÉ FUNKCE (Kolize, Reset) ---
+// --- POMOCNÉ FUNKCE ---
 function resetPlayer(p, team, map) {
     p.hp = p.maxHp;
     p.ammo = p.maxAmmo;
@@ -131,7 +128,6 @@ function resetPlayer(p, team, map) {
     p.domainActive = false;
     if (p.domainManager) p.domainManager.active = false;
 
-    // Spawn body podle týmu
     if (team === 'blue') {
         p.x = 100 + Math.random() * 200;
         p.y = CONFIG.MAP_HEIGHT / 2;
@@ -139,12 +135,6 @@ function resetPlayer(p, team, map) {
         p.x = CONFIG.MAP_WIDTH - 300 + Math.random() * 200;
         p.y = CONFIG.MAP_HEIGHT / 2;
     }
-}
-
-function checkCollision(obj1, r1, obj2, r2) {
-    const dx = obj1.x - obj2.x;
-    const dy = obj1.y - obj2.y;
-    return Math.sqrt(dx*dx + dy*dy) < (r1 + r2);
 }
 
 // --- SOCKET LOGIKA ---
@@ -157,14 +147,12 @@ io.on('connection', (socket) => {
         rooms[roomId] = {
             id: roomId,
             players: {},
-            bullets: [],
             gameState: 'LOBBY',
             map: map,
             teamScores: { blue: 0, red: 0 },
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
         };
-        // 1. ZDE OPRAVA: Aktivace UI u tvůrce
         socket.emit('roomCreated', { roomId }); 
         joinRoom(socket, roomId, data);
     });
@@ -172,11 +160,11 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', (data) => {
         const roomId = (data.roomId || "").toUpperCase();
         if (rooms[roomId]) {
-            // 2. ZDE OPRAVA: Aktivace UI u hosta
             socket.emit('roomJoined', { roomId }); 
             joinRoom(socket, roomId, data);
+        } else {
+            socket.emit('errorMsg', 'Místnost neexistuje.');
         }
-        else socket.emit('errorMsg', 'Místnost neexistuje.'); // Lepší handling chyby
     });
 
     function joinRoom(socket, roomId, data) {
@@ -204,7 +192,6 @@ io.on('connection', (socket) => {
 
         resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map);
         
-        // 3. ZDE OPRAVA: Odesíláme všem kompletní listinu, aby se jména ukázala v lobby
         io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
@@ -213,28 +200,67 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         
-        // Přepínání stavu připravenosti (aby hráč mohl vzít Ready zpět)
         room.players[socket.id].isReady = !room.players[socket.id].isReady; 
         io.to(room.id).emit('updatePlayerList', Object.values(room.players));
 
         const allReady = Object.values(room.players).every(p => p.isReady);
-        if (allReady && Object.keys(room.players).length >= 1) { // Upraveno pro testování s 1 hráčem
+        if (allReady && Object.keys(room.players).length >= 1) { 
             room.gameState = 'PLAYING';
             io.to(room.id).emit('gameStateChanged', { state: 'PLAYING', obstacles: room.map.obstacles, breakables: room.map.breakables });
         }
     });
 
-    socket.on('playerInput', (input) => {
+    // --- KLÍČOVÉ OPRAVY PROPOJENÍ S PHYSICS.JS ---
+
+    // 1. Synchronizace pohybu a dat z klienta (nahrazuje starý 'playerInput')
+    socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
-        room.players[socket.id].lastInput = input;
+        const p = room.players[socket.id];
+        
+        p.x = data.x;
+        p.y = data.y;
+        p.aimAngle = data.aimAngle;
+        p.ammo = data.ammo; // Tímto se bude zbraň správně vyprazdňovat a přebíjet
+        p.isReloading = data.isReloading;
+    });
+
+    // 2. Přijetí kulky z klienta a rozeslání ostatním (vyřeší "neviditelné" střely)
+    socket.on('playerShot', (bullets) => {
+        if (!socket.roomId) return;
+        // Pošle pole střel všem ostatním v místnosti, takže je vykreslí
+        socket.to(socket.roomId).emit('enemyShot', bullets);
+    });
+
+    // 3. Poškození (physics.js vyhodnotí kolizi a nahlásí ji sem)
+    socket.on('bulletHitPlayer', (data) => {
+        const room = rooms[socket.roomId];
+        if (!room) return;
+        
+        const target = room.players[data.targetId];
+        const shooter = room.players[socket.id];
+
+        if (target && target.hp > 0) {
+            target.hp -= data.damage;
+            
+            // Lifesteal
+            if (shooter && data.lifesteal > 0) {
+                shooter.hp = Math.min(shooter.maxHp, shooter.hp + (data.damage * data.lifesteal));
+            }
+            
+            // Smrt hráče
+            if (target.hp <= 0) {
+                if (shooter) shooter.score++;
+                room.teamScores[shooter.team]++;
+                setTimeout(() => resetPlayer(target, target.team, room.map), CONFIG.RESPAWN_TIME);
+            }
+        }
     });
 
     socket.on('disconnect', () => {
         const room = rooms[socket.roomId];
         if (room) {
             delete room.players[socket.id];
-            // Odeslání nového listu hráčů, když někdo odejde
             io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
             if (Object.keys(room.players).length === 0) delete rooms[socket.roomId];
         }
@@ -246,91 +272,40 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (room.gameState !== 'PLAYING') return;
 
-        const now = Date.now();
-        const deltaTime = now - room.lastTick;
-        room.lastTick = now;
-
-        // 1. POHYB HRÁČŮ A STŘELBA
-        Object.values(room.players).forEach(p => {
-            if (p.hp <= 0 || !p.lastInput) return;
-
-            const input = p.lastInput;
-            let speed = p.moveSpeed * deltaTime;
-            if (input.up) p.y -= speed;
-            if (input.down) p.y += speed;
-            if (input.left) p.x -= speed;
-            if (input.right) p.x += speed;
-
-            // Střelba
-            if (input.click && p.ammo > 0 && !p.isReloading) {
-                const lastShot = p.lastShotTime || 0;
-                if (now - lastShot > p.fireRate) {
-                    p.ammo--;
-                    p.lastShotTime = now;
-                    const bX = p.x + Math.cos(input.aimAngle) * 30;
-                    const bY = p.y + Math.sin(input.aimAngle) * 30;
-                    
-                    room.bullets.push({
-                        ownerId: p.id, team: p.team,
-                        x: bX, y: bY,
-                        vx: Math.cos(input.aimAngle) * p.bulletSpeed,
-                        vy: Math.sin(input.aimAngle) * p.bulletSpeed,
-                        damage: p.damage, bounces: p.bounces, pierce: p.pierce
-                    });
-                }
-            }
-        });
-
-        // 2. UPDATE STŘEL
-        for (let i = room.bullets.length - 1; i >= 0; i--) {
-            const b = room.bullets[i];
-            b.x += b.vx;
-            b.y += b.vy;
-
-            // Hranice mapy
-            if (b.x < 0 || b.x > CONFIG.MAP_WIDTH || b.y < 0 || b.y > CONFIG.MAP_HEIGHT) {
-                room.bullets.splice(i, 1);
-                continue;
-            }
-
-            // Kolize s hráči
-            let hitPlayer = false;
-            Object.values(room.players).forEach(target => {
-                if (target.hp > 0 && target.team !== b.team && checkCollision(b, 5, target, CONFIG.PLAYER_RADIUS)) {
-                    target.hp -= b.damage;
-                    const owner = room.players[b.ownerId];
-                    if (owner && owner.lifesteal > 0) owner.hp = Math.min(owner.maxHp, owner.hp + (b.damage * owner.lifesteal));
-                    
-                    if (target.hp <= 0) {
-                        if (owner) owner.score++;
-                        room.teamScores[b.team]++;
-                        setTimeout(() => resetPlayer(target, target.team, room.map), CONFIG.RESPAWN_TIME);
-                    }
-                    hitPlayer = true;
-                }
-            });
-
-            if (hitPlayer) {
-                room.bullets.splice(i, 1);
-                continue;
-            }
-        }
-
-        // 3. ODESLÁNÍ DAT
+        // Protože se pohyb a střelba počítá přes ClientSync, 
+        // smyčka má za úkol už jen balit a rozesílat čistá data o hráčích (leanPlayers).
         const leanPlayers = {};
-        Object.values(room.players).forEach(p => {
-            leanPlayers[p.id] = {
-                id: p.id, name: p.name, x: p.x, y: p.y, hp: p.hp, maxHp: p.maxHp,
-                ammo: p.ammo, maxAmmo: p.maxAmmo, color: p.color, team: p.team,
-                score: p.score, aimAngle: p.lastInput?.aimAngle || 0
+        for (const id in room.players) {
+            const p = room.players[id];
+            
+            leanPlayers[id] = {
+                id: p.id,
+                name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
+                x: Number((p.x || 0).toFixed(2)),
+                y: Number((p.y || 0).toFixed(2)),
+                hp: Math.round(p.hp),
+                maxHp: p.maxHp,
+                aimAngle: Number((p.aimAngle || 0).toFixed(2)),
+                ammo: p.ammo, maxAmmo: p.maxAmmo, // Tímto se opraví HUD ukazující správný počet nábojů
+                isReloading: p.isReloading, isInvisible: p.isInvisible,
+                domainActive: p.domainActive, score: p.score,
+                isReady: p.isReady,
+                moveSpeed: p.moveSpeed,
+                damage: p.damage,
+                fireRate: p.fireRate,
+                bulletSpeed: p.bulletSpeed,
+                bounces: p.bounces,
+                pierce: p.pierce,
+                lifesteal: p.lifesteal
             };
-        });
+        }
 
         io.to(room.id).volatile.emit('gameUpdate', {
             players: leanPlayers,
-            bullets: room.bullets,
+            maxScore: room.settings.maxRounds,
             teamScores: room.teamScores,
-            gameState: room.gameState
+            gameState: room.gameState,
+            gameMode: room.settings.gameMode
         });
     });
 }, TICK_RATE);
