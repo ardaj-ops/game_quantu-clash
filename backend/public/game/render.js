@@ -39,7 +39,6 @@ function drawMapObjects(obstacles = [], breakables = []) {
         state.ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
     });
 
-    // OPRAVA: brk.destroyed check — zničené zdi se nesmí kreslit
     breakables.forEach(brk => {
         if (brk.destroyed) return;
         state.ctx.fillStyle = '#a0522d';
@@ -57,8 +56,6 @@ function drawAvatar(player, id) {
     state.ctx.fillStyle = player.color || '#ff2a7a';
     state.ctx.fill();
 
-    // OPRAVA: Porovnáváme id (klíč z playersData) se socket.id
-    // Původně player.id === socket.id — player objekty nemají .id field!
     if (socket && id === socket.id) {
         state.ctx.lineWidth = 3;
         state.ctx.strokeStyle = '#ffffff';
@@ -82,7 +79,6 @@ function drawAvatar(player, id) {
 function drawPlayers(playersData) {
     for (const id in playersData) {
         const p = playersData[id];
-        // OPRAVA: p.isDead neexistuje — server posílá hp <= 0
         if (!p || p.hp <= 0) continue;
 
         drawAvatar(p, id);
@@ -104,7 +100,6 @@ function drawPlayers(playersData) {
 }
 
 function drawBullets() {
-    // Vlastní střely (lokální predikce)
     if (state.localBullets) {
         state.localBullets.forEach(b => {
             state.ctx.beginPath();
@@ -115,8 +110,6 @@ function drawBullets() {
         });
     }
 
-    // OPRAVA: Cizí střely z state.remoteBullets (přes enemyShot socket event)
-    // Původní kód kreslil serverData.bullets — server toto pole vůbec neposílá!
     if (state.remoteBullets) {
         const now = Date.now();
         state.remoteBullets = state.remoteBullets.filter(b => now - b.createdAt < 3000);
@@ -134,7 +127,6 @@ function drawBullets() {
 }
 
 function drawCrosshair() {
-    // OPRAVA: state.currentMouseX/Y (playerInputs.mouseX/Y nikdy neexistovaly)
     const mx = state.currentMouseX;
     const my = state.currentMouseY;
     if (!mx && !my) return;
@@ -142,7 +134,7 @@ function drawCrosshair() {
     const shape = state.crosshairConfig?.shape || 'cross';
 
     state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0); // screen-space, ignoruje scale/translate mapy
+    state.ctx.setTransform(1, 0, 0, 1, 0, 0); // screen-space
     state.ctx.strokeStyle = '#45f3ff';
     state.ctx.lineWidth = 2;
 
@@ -214,7 +206,6 @@ export function drawGame(serverData) {
     const playersData = serverData.leanPlayers || serverData.players || {};
     state.canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
 
-    // OPRAVA: offsetWidth/Height (window.innerWidth ignoruje CSS scaling)
     const cw = state.canvas.offsetWidth || window.innerWidth;
     const ch = state.canvas.offsetHeight || window.innerHeight;
     if (state.canvas.width !== cw || state.canvas.height !== ch) {
@@ -225,7 +216,6 @@ export function drawGame(serverData) {
     state.ctx.fillStyle = '#000';
     state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
 
-    // OPRAVA: MAP_WIDTH/HEIGHT (MAP_W/MAP_H nikdy neexistovaly v CONFIG)
     const mapW = CONFIG.MAP_WIDTH || 1920;
     const mapH = CONFIG.MAP_HEIGHT || 1080;
 
@@ -263,4 +253,4 @@ export function drawGame(serverData) {
         state.ctx.textAlign = 'center';
         state.ctx.fillText('KOLO SKONČILO', state.canvas.width / 2, state.canvas.height / 2);
     }
-}
+}w
