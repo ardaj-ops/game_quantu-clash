@@ -297,7 +297,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // DASH (Doplněno, aby klient nevyhazoval chybu do prázdna)
+    // DASH
     socket.on('Dash', () => {
         const room = rooms[socket.roomId];
         if (room && room.players[socket.id]) {
@@ -306,6 +306,27 @@ io.on('connection', (socket) => {
             if (p.hp > 0) {
                 socket.to(socket.roomId).emit('enemyDash', socket.id);
             }
+        }
+    });
+
+    // MANUÁLNÍ PŘEBÍJENÍ
+    socket.on('reload', () => {
+        const room = rooms[socket.roomId];
+        if (!room || !room.players[socket.id]) return;
+        
+        const p = room.players[socket.id];
+        
+        // --- ZOMBIE FIX: Mrtvý hráč nemůže přebíjet ---
+        if (p.hp <= 0) return;
+
+        if (!p.isReloading && p.ammo < p.maxAmmo) {
+            p.isReloading = true;
+            setTimeout(() => {
+                if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
+                    rooms[socket.roomId].players[socket.id].ammo = p.maxAmmo;
+                    rooms[socket.roomId].players[socket.id].isReloading = false;
+                }
+            }, p.reloadTime || 1500);
         }
     });
 
@@ -344,10 +365,12 @@ io.on('connection', (socket) => {
         const shooter = room.players[socket.id];
 
         if (target && target.hp > 0) {
-            target.hp -= data.damage;
+            // FIX CHYBY HP: Bezpečné načtení hodnoty poškození (zabrání vzniku NaN a neporazitelnosti)
+            const damageAmount = Number(data.damage) || 20; 
+            target.hp -= damageAmount;
             
             if (shooter && data.lifesteal > 0) {
-                shooter.hp = Math.min(shooter.maxHp, shooter.hp + (data.damage * data.lifesteal));
+                shooter.hp = Math.min(shooter.maxHp, shooter.hp + (damageAmount * data.lifesteal));
             }
             
             // HRÁČ ZEMŘEL

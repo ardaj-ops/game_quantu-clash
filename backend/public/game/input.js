@@ -21,7 +21,14 @@ export function initInputs() {
         if (key === 'a' || key === 'arrowleft') state.playerInputs.left = true;
         if (key === 'd' || key === 'arrowright') state.playerInputs.right = true;
         
-        if (key === 'r') state.playerInputs.reload = true;
+        // OPRAVA PŘEBÍJENÍ: Jakmile hráč zmáčkne R, okamžitě pošleme na server příkaz
+        if (key === 'r') {
+            state.playerInputs.reload = true;
+            if (window.gameSocket) {
+                window.gameSocket.emit('reload');
+            }
+        }
+        
         if (key === 'f') state.playerInputs.ritual = true; 
         
         if (e.key === 'Tab') {
