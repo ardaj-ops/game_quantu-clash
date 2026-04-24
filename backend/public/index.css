@@ -184,7 +184,22 @@ body, html {
 .card.epic:hover { box-shadow: 0 10px 40px rgba(163, 53, 238, 0.7); }
 .card.epic .rarity-tag { color: #d185ff; border: 1px solid #a335ee; text-shadow: 0 0 8px #a335ee; }
 .card.epic h3 { color: #d185ff; }
+/* 🟢 UNCOMMON */
+.card.uncommon { border-color: #2ed573; }
+.card.uncommon:hover { box-shadow: 0 10px 30px rgba(46, 213, 115, 0.4); }
+.card.uncommon .rarity-tag { color: #2ed573; border: 1px solid #2ed573; }
 
+/* 🔴 MYTHIC */
+.card.mythic { border-color: #ff4757; }
+.card.mythic:hover { box-shadow: 0 10px 40px rgba(255, 71, 87, 0.6); transform: translateY(-15px) scale(1.05); }
+.card.mythic .rarity-tag { color: #ff4757; border: 1px solid #ff4757; text-shadow: 0 0 10px #ff4757; }
+.card.mythic h3 { color: #ff6b81; }
+
+/* 🟡 EXOTIC */
+.card.exotic { border-color: #eccc68; background: linear-gradient(145deg, #2f270b, #111217); }
+.card.exotic:hover { box-shadow: 0 10px 45px rgba(236, 204, 104, 0.8); }
+.card.exotic .rarity-tag { color: #eccc68; border: 1px solid #eccc68; text-shadow: 0 0 10px #eccc68; }
+.card.exotic h3 { color: #f1f2f6; text-shadow: 0 0 8px #eccc68; }
 /* 🟠 LEGENDARY */
 .card.legendary { 
     border-color: #ffaa00; 

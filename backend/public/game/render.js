@@ -136,7 +136,8 @@ function drawCrosshair() {
 
     state.ctx.save();
     state.ctx.setTransform(1, 0, 0, 1, 0, 0); 
-    state.ctx.strokeStyle = '#45f3ff';
+    // OPRAVA: Nyní si vezme barvu nastavenou uživatelem z configu
+    state.ctx.strokeStyle = state.crosshairConfig?.color || '#45f3ff';
     state.ctx.lineWidth = 2;
 
     if (shape === 'dot') {
