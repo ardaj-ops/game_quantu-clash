@@ -1,116 +1,129 @@
-import { state } from './state.js';
+// app.js
+import { initGameEngine } from './game/main.js';
 
-export let socket = null;
+// BUG FIX: app.js byl uploadnutý bez jakýchkoliv mezer (constsocket=io() apod.)
+// — soubor by se vůbec nenačetl jako validní JavaScript. Opraveno formátování.
 
-export function initNetwork() {
-    socket = window.gameSocket;
+const socket = io();
+window.gameSocket = socket;
 
-    if (!socket) {
-        console.error("❌ window.gameSocket chybí! Zkontroluj, že v app.js je 'window.gameSocket = socket;' PŘED voláním initGameEngine().");
-        return;
+const screens = {
+    menu: document.getElementById('menu-screen'),
+    lobby: document.getElementById('lobby-screen'),
+    game: document.getElementById('game-screen'),
+    cards: document.getElementById('card-screen'),
+    gameover: document.getElementById('gameover-screen')
+};
+
+// --- LOCAL STORAGE (Ukládání nastavení) ---
+const nameInput = document.getElementById('player-name');
+const colorInput = document.getElementById('player-color');
+
+window.addEventListener('load', () => {
+    const savedName = localStorage.getItem('qc_player_name');
+    const savedColor = localStorage.getItem('qc_player_color');
+    if (savedName && nameInput) nameInput.value = savedName;
+    if (savedColor && colorInput) colorInput.value = savedColor;
+});
+
+nameInput?.addEventListener('input', () => localStorage.setItem('qc_player_name', nameInput.value));
+colorInput?.addEventListener('input', () => localStorage.setItem('qc_player_color', colorInput.value));
+
+function showScreen(screenName) {
+    Object.values(screens).forEach(s => { if (s) s.style.display = 'none'; });
+    if (screens[screenName]) {
+        screens[screenName].style.display = (screenName === 'game') ? 'block' : 'flex';
     }
+}
 
-    console.log('✅ HERNÍ ENGINE sdílený socket ID:', socket.id);
-
-    const onGameUpdate = (d) => { 
-        // --- ANTI-GLITCH A ANTI-RUBBERBANDING SYSTÉM ---
-        if (state.latestServerData && state.latestServerData.players && d.players && socket) {
-            const myId = socket.id;
-            const localMe = state.latestServerData.players[myId];
-            const serverMe = d.players[myId];
-
-            if (localMe && serverMe) {
-                // 1. ZÁCHRANA POZICE (Hladký pohyb)
-                const dist = Math.hypot(localMe.x - serverMe.x, localMe.y - serverMe.y);
-                if (dist < 150) { 
-                    serverMe.x = localMe.x;
-                    serverMe.y = localMe.y;
-                    serverMe.aimAngle = localMe.aimAngle;
-                }
-
-                // 2. ZÁCHRANA NÁBOJŮ (Zabrání blikání)
-                if (localMe.ammo < serverMe.ammo && !localMe.isReloading && !serverMe.isReloading) {
-                    serverMe.ammo = localMe.ammo;
-                }
-                
-                if (localMe.isReloading && localMe.ammo === 0) {
-                    serverMe.isReloading = true;
-                }
-            }
-        }
-        state.latestServerData = d; 
-    };
-
-    socket.on('gameUpdate', onGameUpdate);
-    socket.on('gameState', onGameUpdate);
-    socket.on('update', onGameUpdate);
-
-    socket.on('mapUpdate', (data) => {
-        if (data.obstacles) state.localObstacles = data.obstacles;
-        if (data.breakables) state.localBreakables = data.breakables;
-        console.log(`🗺️ mapUpdate: ${data.obstacles?.length||0} zdí, ${data.breakables?.length||0} bloků`);
+// --- AKCE V MENU ---
+document.getElementById('btn-create-room')?.addEventListener('click', () => {
+    socket.emit('createRoom', {
+        name: nameInput.value || 'Hráč',
+        color: colorInput.value,
+        cosmetics: 'none'
     });
+});
 
-    socket.on('gameStateChanged', (data) => {
-        console.log(`🔄 ENGINE stav: [${data.state}] (Kolo: ${data.round || 1})`);
-        
-        if (data.obstacles && data.obstacles.length > 0) { 
-            state.localObstacles = data.obstacles; 
-        }
-        if (data.breakables && data.breakables.length > 0) { 
-            state.localBreakables = data.breakables; 
-        }
-
-        if (data.state === 'PLAYING') {
-            const cardScreen = document.getElementById('card-screen');
-            if (cardScreen) cardScreen.style.display = 'none';
-        }
-        
-        if (data.state === 'LOBBY' || data.state === 'GAMEOVER') {
-            state.latestServerData = null;
-            state.localBullets = [];
-            state.remoteBullets = [];
-        }
-    });
-
-    // UKÁZÁNÍ VÝBĚRU KARET
-    socket.on('showCardSelection', (cards) => {
-        const screen = document.getElementById('card-screen');
-        const container = document.getElementById('card-container');
-        
-        if (!screen || !container) return;
-
-        container.innerHTML = ''; 
-
-        cards.forEach(card => {
-            const cardEl = document.createElement('div');
-            // Získá třídu podle rarity (common, rare atd.) pro obarvení v CSS
-            cardEl.className = `card ${card.rarity.toLowerCase()}`; 
-            cardEl.innerHTML = `
-                <div class="rarity-tag">${card.rarity.toUpperCase()}</div>
-                <h3>${card.name}</h3>
-                <p>${card.description}</p>
-            `;
-            
-            cardEl.onclick = () => {
-                socket.emit('selectCard', card.name);
-                screen.style.display = 'none'; // Schovat menu po kliknutí
-            };
-            
-            container.appendChild(cardEl);
+document.getElementById('btn-join-room')?.addEventListener('click', () => {
+    const code = document.getElementById('room-code').value.toUpperCase();
+    if (code) {
+        socket.emit('joinRoom', {
+            roomId: code,
+            name: nameInput.value || 'Hráč',
+            color: colorInput.value
         });
+    } else {
+        alert('Zadej kód místnosti!');
+    }
+});
 
-        screen.style.display = 'flex'; 
+document.getElementById('btn-ready')?.addEventListener('click', () => {
+    socket.emit('playerReady');
+});
+
+// --- LOBBY EVENTY ---
+socket.on('roomCreated', (data) => {
+    const roomId = data.roomId || data.id;
+    document.getElementById('lobby-title').innerText = `MÍSTNOST: ${roomId}`;
+    showScreen('lobby');
+});
+
+socket.on('roomJoined', (data) => {
+    const roomId = data.roomId || data.id;
+    document.getElementById('lobby-title').innerText = `MÍSTNOST: ${roomId}`;
+    showScreen('lobby');
+});
+
+socket.on('updatePlayerList', (players) => {
+    const listContainer = document.getElementById('player-list');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = players.map(p => `
+        <div style="background: rgba(255,255,255,0.1); padding: 10px 15px; border-left: 5px solid ${p.color}; display: flex; justify-content: space-between; border-radius: 5px;">
+            <span style="color: white; font-weight: bold;">${p.name} ${p.id === socket.id ? '(TY)' : ''}</span>
+            <span style="color: ${p.isReady ? '#2ecc71' : '#ff4757'};">${p.isReady ? '✔ READY' : '⏳ ČEKÁ'}</span>
+        </div>
+    `).join('');
+});
+
+// --- OSTATNÍ EVENTY ---
+socket.on('errorMsg', (msg) => alert(msg));
+
+socket.on('gameStateChanged', (data) => {
+    if (data.state === 'PLAYING') {
+        showScreen('game');
+        initGameEngine();
+    }
+});
+
+// BUG FIX: Odstraněn duplicitní socket.on('gameUpdate') listener pro HUD.
+// HUD je aktualizován v main.js renderLoop přímo ze state.latestServerData
+// (který je nastaven network.js). Trojitý update způsoboval závodní podmínky.
+
+// --- KOPÍROVÁNÍ KÓDU MÍSTNOSTI ---
+const lobbyTitle = document.getElementById('lobby-title');
+
+if (lobbyTitle) {
+    lobbyTitle.style.cursor = 'pointer';
+    lobbyTitle.title = 'Kliknutím zkopíruješ kód místnosti';
+
+    lobbyTitle.addEventListener('click', () => {
+        const text = lobbyTitle.innerText;
+        const code = text.replace('MÍSTNOST: ', '').trim();
+
+        if (code && code !== '----' && !text.includes('Zkopírováno')) {
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = lobbyTitle.innerText;
+                lobbyTitle.innerText = 'Zkopírováno! ✅';
+                lobbyTitle.style.color = '#2ed573';
+                setTimeout(() => {
+                    lobbyTitle.innerText = originalText;
+                    lobbyTitle.style.color = '#45f3ff';
+                }, 1500);
+            }).catch(err => {
+                console.error('Nepodařilo se zkopírovat kód:', err);
+            });
+        }
     });
-
-    socket.on('enemyShot', (bulletsData) => {
-        if (!bulletsData) return;
-        if (!state.remoteBullets) state.remoteBullets = [];
-        const arr = Array.isArray(bulletsData) ? bulletsData : [bulletsData];
-        arr.forEach(b => { if (b) state.remoteBullets.push({ ...b, createdAt: Date.now() }); });
-    });
-
-    socket.on('playerDamaged', (data) => {});
-    socket.on('enemyDecoySpawned', (decoyData) => {});
-    socket.on('gravityChanged', (gravityName) => {});
 }

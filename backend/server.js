@@ -20,7 +20,6 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 
-// --- Bezpečné načtení externích modulů ---
 let DomainManager;
 let gameHelper = {};
 try {
@@ -28,64 +27,55 @@ try {
     gameHelper = require('./gameHelper.js') || {};
     console.log('✅ Manažeři a helpery úspěšně načteny.');
 } catch (err) {
-    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ! (Ujisti se, že domainManager.js a gameHelper.js jsou v rootu)');
+    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ!', err.message);
 }
 
 const app = express();
 app.use(cors());
-
-// Nastavení statických souborů
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] },
-    pingInterval: 1000, 
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+    pingInterval: 1000,
     pingTimeout: 3000
 });
 
-// --- FUNKCE PRO NAČÍTÁNÍ CONFIGU A KARET ---
+// --- NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ ---
+// BUG FIX: Přidán parametr expectedVar, takže každý soubor vrátí přesně tu proměnnou
+// kterou chceme — cards.js vrátí 'availableCards', gameConfig.js vrátí 'CONFIG'.
 const loadSharedFile = (fileName, expectedVar) => {
-    const pathsToTry = [ path.join(__dirname, 'public', fileName), path.join(__dirname, 'public', 'game', fileName), path.join(__dirname, fileName) ];
+    const pathsToTry = [
+        path.join(__dirname, 'public', fileName),
+        path.join(__dirname, 'public', 'game', fileName),
+        path.join(__dirname, fileName)
+    ];
     for (const p of pathsToTry) {
         if (fs.existsSync(p)) {
             try {
                 let raw = fs.readFileSync(p, 'utf-8');
-                const sanitized = raw.replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
-                                     .replace(/^\s*export\s+default\s+/gm, '')
-                                     .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
-                                     .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
+                const sanitized = raw
+                    .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+                    .replace(/^\s*export\s+default\s+/gm, '')
+                    .replace(/^\s*export\s*\{([^}]*)\}\s*;?\s*$/gm, '')
+                    .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
                 const extractData = new Function(`
                     ${sanitized}
                     if (typeof ${expectedVar} !== 'undefined') return ${expectedVar};
                     return null;
                 `);
                 return extractData();
-            } catch (err) { return null; }
+            } catch (e) {
+                return null;
+            }
         }
     }
     return null;
 };
 
-// OPRAVA DUPLICITNÍHO CONFIGU
 const loadedConfig = loadSharedFile('gameConfig.js', 'CONFIG') || {};
 const availableCards = loadSharedFile('cards.js', 'availableCards') || [];
-
-// Funkce pro filtrování karet hráče
-function getValidCardsForPlayer(player) {
-    return availableCards.filter(card => {
-        if (card.rarity === 'transcended' && !card.requiresDomain) {
-            if (player.domainType) return false;
-        }
-        if (card.requiresDomain && !card.specificDomain) {
-            if (!player.domainType) return false;
-        }
-        if (card.specificDomain) {
-            if (player.domainType !== card.specificDomain) return false;
-        }
-        return true;
-    });
-}
+console.log(`✅ Načteno ${availableCards.length} karet.`);
 
 const CONFIG = {
     MAP_WIDTH: loadedConfig.MAP_WIDTH || 1920,
@@ -108,34 +98,27 @@ const PORT = process.env.PORT || 3000;
 const TICK_RATE = 1000 / CONFIG.FPS;
 const rooms = {};
 
-// --- POMOCNÉ FUNKCE PRO HRU ---
-function generateObstaclesForRound(round) {
-    if (round === 1) return []; // Kolo 1 je čisté
-    const obstacles = [];
-    const count = 1 + (round * 3); // Kolo 2 má 7 zdí, kolo 3 jich má 10 atd.
-    for (let i = 0; i < count; i++) {
-        obstacles.push({
-            x: Math.random() * (CONFIG.MAP_WIDTH - 400) + 200,
-            y: Math.random() * (CONFIG.MAP_HEIGHT - 300) + 150,
-            width: Math.random() * 150 + 50,
-            height: Math.random() * 150 + 50
-        });
-    }
-    return obstacles;
-}
+// --- POMOCNÉ FUNKCE ---
 
-function resetPlayer(p, team, map, room) {
+function resetPlayer(p, room) {
     p.hp = p.maxHp;
+    // BUG FIX: Russian Roulette dostane 6 nábojů, ne maxAmmo (které je 0)
     p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
     p.isReloading = false;
     p.isInvisible = false;
     p.domainActive = false;
 
-    const mapW = CONFIG.MAP_WIDTH || 1920;
-    const mapH = CONFIG.MAP_HEIGHT || 1080;
-    const spawn = gameHelper.getValidSpawnPoint 
-        ? gameHelper.getValidSpawnPoint(Object.keys(room.players).indexOf(p.id), mapW, mapH, room.map?.obstacles || [], room.map?.breakables || [], 20)
-        : { x: mapW/2, y: mapH/2 };
+    // BUG FIX: Spawn používá getValidSpawnPoint aby hráči nevznikali ve zdech
+    const playerIndex = Object.keys(room.players).indexOf(p.id);
+    const spawn = (gameHelper.getValidSpawnPoint)
+        ? gameHelper.getValidSpawnPoint(
+            playerIndex,
+            CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
+            room.map?.obstacles || [],
+            room.map?.breakables || [],
+            CONFIG.PLAYER_RADIUS
+          )
+        : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
     p.x = spawn.x;
     p.y = spawn.y;
 }
@@ -144,32 +127,34 @@ function initiateCardSelection(room) {
     room.gameState = 'CARD_SELECTION';
     if (!room.readyPlayersForNextRound) room.readyPlayersForNextRound = new Set();
     room.readyPlayersForNextRound.clear();
-    
+
     Object.values(room.players).forEach(player => {
-        const selection = gameHelper.generateCardsForPlayer ? gameHelper.generateCardsForPlayer(player, availableCards) : [];
+        // BUG FIX: Používáme generateCardsForPlayer z gameHelper pro správné vážení rarity
+        const selection = (gameHelper.generateCardsForPlayer)
+            ? gameHelper.generateCardsForPlayer(player, availableCards)
+            : availableCards.slice(0, 3);
         io.to(player.id).emit('showCardSelection', selection);
     });
-    
+
     io.to(room.id).emit('gameStateChanged', { state: 'CARD_SELECTION' });
 }
 
 function startNewRound(room) {
     room.round = (room.round || 1) + 1;
     room.gameState = 'PLAYING';
-    
+
+    // BUG FIX: Regenerujeme OBOJÍ — pevné překážky I zničitelné stěny
     if (gameHelper.generateMap) {
-        room.map = gameHelper.generateMap(CONFIG.MAP_WIDTH || 1920, CONFIG.MAP_HEIGHT || 1080);
+        room.map = gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT);
     } else {
-        room.map.obstacles = generateObstaclesForRound(room.round);
+        room.map = { obstacles: [], breakables: [] };
     }
 
-    Object.values(room.players).forEach(p => {
-        resetPlayer(p, p.team, room.map, room);
-    });
+    Object.values(room.players).forEach(p => resetPlayer(p, room));
 
     io.to(room.id).emit('mapUpdate', room.map);
-    io.to(room.id).emit('gameStateChanged', { 
-        state: 'PLAYING', 
+    io.to(room.id).emit('gameStateChanged', {
+        state: 'PLAYING',
         round: room.round,
         obstacles: room.map.obstacles,
         breakables: room.map.breakables
@@ -178,26 +163,31 @@ function startNewRound(room) {
 
 // --- SOCKET LOGIKA ---
 io.on('connection', (socket) => {
+
     socket.on('createRoom', (data) => {
         const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const initialMap = gameHelper.generateMap
+            ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
+            : { obstacles: [], breakables: [] };
+
         rooms[roomId] = {
             id: roomId,
             players: {},
             gameState: 'LOBBY',
             round: 1,
-            map: gameHelper.generateMap ? gameHelper.generateMap(CONFIG.MAP_WIDTH || 1920, CONFIG.MAP_HEIGHT || 1080) : { obstacles: generateObstaclesForRound(1), breakables: [] },
+            map: initialMap,
             teamScores: { blue: 0, red: 0 },
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
             lastTick: Date.now()
         };
-        socket.emit('roomCreated', { roomId }); 
+        socket.emit('roomCreated', { roomId });
         joinRoom(socket, roomId, data);
     });
 
     socket.on('joinRoom', (data) => {
-        const roomId = (data.roomId || "").toUpperCase();
+        const roomId = (data.roomId || '').toUpperCase();
         if (rooms[roomId]) {
-            socket.emit('roomJoined', { roomId }); 
+            socket.emit('roomJoined', { roomId });
             joinRoom(socket, roomId, data);
         } else {
             socket.emit('errorMsg', 'Místnost neexistuje.');
@@ -225,10 +215,20 @@ io.on('connection', (socket) => {
             reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
             score: 0, isReady: false,
-            hpRegen: 0, isRussianRoulette: false
+            // Pole pro herní funkce (domény, karty)
+            hpRegen: 0,
+            isRussianRoulette: false,
+            domainType: null,
+            domainActive: false,
+            domainCooldown: 0,
+            domainTimer: 0,
+            isJackpotActive: false,
+            jackpotTimer: 0,
+            jackpotPity: 0
+            // BUG FIX: Odstraněno 'new DomainManager()' — DomainManager má pouze statické metody
         };
 
-        resetPlayer(room.players[socket.id], room.players[socket.id].team, room.map, room);
+        resetPlayer(room.players[socket.id], room);
         io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
@@ -236,14 +236,18 @@ io.on('connection', (socket) => {
     socket.on('playerReady', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
-        
-        room.players[socket.id].isReady = !room.players[socket.id].isReady; 
+
+        room.players[socket.id].isReady = !room.players[socket.id].isReady;
         io.to(room.id).emit('updatePlayerList', Object.values(room.players));
 
         const allReady = Object.values(room.players).every(p => p.isReady);
-        if (allReady && Object.keys(room.players).length >= 1) { 
+        if (allReady && Object.keys(room.players).length >= 1) {
             room.gameState = 'PLAYING';
-            io.to(room.id).emit('gameStateChanged', { state: 'PLAYING', obstacles: room.map.obstacles, breakables: room.map.breakables });
+            io.to(room.id).emit('gameStateChanged', {
+                state: 'PLAYING',
+                obstacles: room.map.obstacles,
+                breakables: room.map.breakables
+            });
         }
     });
 
@@ -271,55 +275,47 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
-        
+
         if (p.hp <= 0) return;
-        
+
         p.x = data.x;
         p.y = data.y;
         p.aimAngle = data.aimAngle;
 
-        if (data.ritual && DomainManager && typeof DomainManager.activateDomain === 'function') {
+        // BUG FIX: Bylo 'data.ritual', client posílá 'ritualRequested'
+        if (data.ritualRequested && DomainManager && typeof DomainManager.activateDomain === 'function') {
             DomainManager.activateDomain(p, room);
         }
 
-        if (data.isReloading && !p.isReloading && p.ammo < p.maxAmmo) {
+        if (data.isReloading && !p.isReloading && p.ammo < (p.isRussianRoulette ? 6 : p.maxAmmo)) {
             p.isReloading = true;
+            const reloadTarget = p.isRussianRoulette ? 6 : p.maxAmmo;
             setTimeout(() => {
-                if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                    const rp = rooms[socket.roomId].players[socket.id];
-                    rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
-                    rp.isReloading = false;
-                }
+                const rp = rooms[socket.roomId]?.players[socket.id];
+                if (rp) { rp.ammo = reloadTarget; rp.isReloading = false; }
             }, p.reloadTime || 1500);
         }
     });
 
     socket.on('Dash', () => {
         const room = rooms[socket.roomId];
-        if (room && room.players[socket.id]) {
-            const p = room.players[socket.id];
-            if (p.hp > 0) {
-                socket.to(socket.roomId).emit('enemyDash', socket.id);
-            }
+        if (room && room.players[socket.id] && room.players[socket.id].hp > 0) {
+            socket.to(socket.roomId).emit('enemyDash', socket.id);
         }
     });
 
     socket.on('reload', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
-        
         const p = room.players[socket.id];
-        
         if (p.hp <= 0) return;
 
-        if (!p.isReloading && p.ammo < p.maxAmmo) {
+        const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
+        if (!p.isReloading && p.ammo < fullAmmo) {
             p.isReloading = true;
             setTimeout(() => {
-                if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                    const rp = rooms[socket.roomId].players[socket.id];
-                    rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
-                    rp.isReloading = false;
-                }
+                const rp = rooms[socket.roomId]?.players[socket.id];
+                if (rp) { rp.ammo = fullAmmo; rp.isReloading = false; }
             }, p.reloadTime || 1500);
         }
     });
@@ -327,59 +323,62 @@ io.on('connection', (socket) => {
     socket.on('playerShot', (bullets) => {
         if (!socket.roomId) return;
         const room = rooms[socket.roomId];
-        if (room && room.players[socket.id]) {
-            const p = room.players[socket.id];
-            
-            if (p.hp <= 0) return;
+        if (!room || !room.players[socket.id]) return;
+        const p = room.players[socket.id];
 
-            if (p.ammo > 0 && !p.isReloading) {
-                p.ammo--;
+        if (p.hp <= 0) return;
 
-                if (p.isRussianRoulette) {
-                    bullets.forEach(b => { if(Math.random() < 0.166) b.damage *= 5; });
-                }
-                
-                if (p.ammo <= 0) {
-                    p.isReloading = true;
-                    setTimeout(() => {
-                        if (rooms[socket.roomId] && rooms[socket.roomId].players[socket.id]) {
-                            const rp = rooms[socket.roomId].players[socket.id];
-                            rp.ammo = rp.isRussianRoulette ? 6 : rp.maxAmmo;
-                            rp.isReloading = false;
-                        }
-                    }, p.reloadTime || 1500);
-                }
+        const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
+        if (p.ammo > 0 && !p.isReloading) {
+            p.ammo--;
+            if (p.ammo <= 0) {
+                p.isReloading = true;
+                setTimeout(() => {
+                    const rp = rooms[socket.roomId]?.players[socket.id];
+                    if (rp) { rp.ammo = fullAmmo; rp.isReloading = false; }
+                }, p.reloadTime || 1500);
             }
         }
+
         socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
-        
+
         const target = room.players[data.targetId];
         const shooter = room.players[socket.id];
 
-        if (target && target.hp > 0) {
-            const damageAmount = Number(data.damage) || 20; 
-            target.hp -= damageAmount;
-            
-            if (shooter && data.lifesteal > 0) {
-                shooter.hp = Math.min(shooter.maxHp, shooter.hp + (damageAmount * data.lifesteal));
-            }
-            
-            if (target.hp <= 0) {
-                target.hp = 0;
-                if (shooter) shooter.score++;
-                
-                target.x = -5000;
-                target.y = -5000;
-                
-                const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
-                if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
-                    initiateCardSelection(room);
-                }
+        if (!target || target.hp <= 0) return;
+
+        // BUG FIX: Jackpot poskytuje nesmrtelnost — nepřátelské kulky nedělají nic
+        if (target.isJackpotActive) return;
+
+        // BUG FIX: Russian Roulette — náhodné poškození server-side (ne client-side)
+        let damageAmount;
+        if (shooter && shooter.isRussianRoulette) {
+            // 1 z 6 šancí na masivní výstřel
+            damageAmount = Math.random() < (1 / 6) ? 150 : 1;
+        } else {
+            damageAmount = Number(data.damage) || 20;
+        }
+
+        target.hp -= damageAmount;
+
+        if (shooter && data.lifesteal > 0) {
+            shooter.hp = Math.min(shooter.maxHp, shooter.hp + damageAmount * data.lifesteal);
+        }
+
+        if (target.hp <= 0) {
+            target.hp = 0;
+            if (shooter) shooter.score++;
+            target.x = -5000;
+            target.y = -5000;
+
+            const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
+            if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
+                initiateCardSelection(room);
             }
         }
     });
@@ -399,30 +398,44 @@ setInterval(() => {
     Object.values(rooms).forEach(room => {
         if (room.gameState !== 'PLAYING') return;
 
+        const allPlayers = Object.values(room.players);
+
+        // BUG FIX: Správná signatura updateDomains(playersObj, enemiesArr, projectilesArr, deltaTime)
+        // Předchozí verze volala (Object.values(room.players), room) — room není pole hráčů
         if (DomainManager && typeof DomainManager.updateDomains === 'function') {
-            DomainManager.updateDomains(Object.values(room.players), room);
+            DomainManager.updateDomains(room.players, allPlayers, [], TICK_RATE);
         }
 
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
-            
-            if (p.hp > 0 && p.hpRegen > 0) {
-                p.hp = Math.min(p.maxHp, p.hp + (p.hpRegen / (CONFIG.FPS || 60)));
+
+            // BUG FIX: HP regen — karta "Ještěří krev" nyní funguje
+            if (p.hpRegen > 0 && p.hp > 0 && p.hp < p.maxHp) {
+                p.hp = Math.min(p.maxHp, p.hp + p.hpRegen * (TICK_RATE / 1000));
             }
-            
+
+            // Jackpot: nekonečná munice po dobu trvání
+            if (p.isJackpotActive) {
+                p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
+            }
+
             leanPlayers[id] = {
-                id: p.id, name: p.name, color: p.color, cosmetic: p.cosmetic, team: p.team,
+                id: p.id, name: p.name, color: p.color,
+                cosmetic: p.cosmetic, team: p.team,
                 x: p.x, y: p.y,
                 hp: Math.round(p.hp), maxHp: p.maxHp,
                 aimAngle: p.aimAngle,
                 ammo: p.ammo, maxAmmo: p.maxAmmo,
                 isReloading: p.isReloading, isInvisible: p.isInvisible,
-                domainActive: p.domainActive, score: p.score,
-                isReady: p.isReady, moveSpeed: p.moveSpeed,
-                damage: p.damage, fireRate: p.fireRate,
-                bulletSpeed: p.bulletSpeed, bounces: p.bounces,
-                pierce: p.pierce, lifesteal: p.lifesteal
+                domainActive: p.domainActive, domainType: p.domainType,
+                score: p.score, isReady: p.isReady,
+                moveSpeed: p.moveSpeed, damage: p.damage,
+                fireRate: p.fireRate, bulletSpeed: p.bulletSpeed,
+                bounces: p.bounces, pierce: p.pierce, lifesteal: p.lifesteal,
+                playerRadius: p.playerRadius, bulletSize: p.bulletSize,
+                multishot: p.multishot, spread: p.spread,
+                isJackpotActive: p.isJackpotActive
             };
         }
 

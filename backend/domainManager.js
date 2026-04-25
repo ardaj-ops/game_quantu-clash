@@ -1,18 +1,16 @@
 // domainManager.js
-// OPRAVA: Odstraněn require gameConfig (obsahuje ES6 export, crashoval by server).
-// Konstanty jsou předávány jako parametry nebo používají bezpečné fallbacky.
 
 class DomainManager {
 
-    // OPRAVA: Přidán parametr 'room' pro přístup k projektilům (MIRROR_SINGULARITY)
-    static activateDomain(player, room) {
-        // OPRAVA: isDomainActive -> domainActive (konzistentní se server.js)
+    // BUG FIX: Odstraněn nepoužívaný parametr 'room' (byl dead code — nikde uvnitř nepoužit)
+    static activateDomain(player) {
         if (!player.domainType || player.domainActive || player.domainCooldown > 0) return;
 
         player.domainActive = true;
-        player.domainTimer = player.domainDuration || 5000;
+        // BUG FIX: Karta "Prodloužený Rituál" přidává domainDurationBonus — předtím ignorováno
+        player.domainTimer = (player.domainDuration || 5000) + (player.domainDurationBonus || 0);
 
-        console.log(`Hráč aktivoval doménu: ${player.domainType}`);
+        console.log(`Hráč aktivoval doménu: ${player.domainType} (trvání: ${player.domainTimer}ms)`);
 
         switch (player.domainType) {
             case 'GAMBLER':
@@ -27,8 +25,7 @@ class DomainManager {
         }
     }
 
-    // OPRAVA: Správná signatura - (players, enemies, projectiles, deltaTime)
-    // Server volá: DomainManager.updateDomains(room.players, enemies, projectiles, TICK_RATE)
+    // Signatura: (playersObj, enemiesArr, projectilesArr, deltaTime)
     static updateDomains(players, enemies, projectiles, deltaTime) {
         for (let id in players) {
             let p = players[id];
@@ -54,6 +51,15 @@ class DomainManager {
                 p.jackpotTimer -= deltaTime;
                 if (p.jackpotTimer <= 0) {
                     p.isJackpotActive = false;
+                    // BUG FIX: Obnovení dočasných bonusů z karty "Horečka Jackpotu"
+                    if (p._preJackpotSpeed !== undefined) {
+                        p.moveSpeed = p._preJackpotSpeed;
+                        delete p._preJackpotSpeed;
+                    }
+                    if (p._preJackpotDamage !== undefined) {
+                        p.damage = p._preJackpotDamage;
+                        delete p._preJackpotDamage;
+                    }
                     console.log(`Hráči skončil Jackpot.`);
                 }
             }
@@ -65,37 +71,36 @@ class DomainManager {
         const radiusSq = radius * radius;
         const dtSec = deltaTime / 1000;
 
-        // Bezpečná konstanta (OPRAVA: CFG neexistoval, použijeme fixní fallback)
-        const MIN_SPEED = 0.1;
-
         switch (player.domainType) {
             case 'QUANTUM_PRISON':
                 enemies.forEach(enemy => {
-                    if (enemy === player) return;
+                    if (enemy.id === player.id) return;
                     let dx = player.x - enemy.x;
                     let dy = player.y - enemy.y;
                     if (dx * dx + dy * dy <= radiusSq) {
                         enemy.isQuantumFrozen = true;
-                        enemy.currentSpeed = MIN_SPEED;
+                        // BUG FIX: Karta "Kvantové Zmrznutí" nastavuje prisonSlowdown — předtím ignorováno
+                        enemy.currentSpeed = player.prisonSlowdown !== undefined ? player.prisonSlowdown : 0.1;
+                        enemy.moveSpeed = enemy.currentSpeed;
                     } else if (enemy.isQuantumFrozen) {
                         enemy.isQuantumFrozen = false;
-                        enemy.currentSpeed = enemy.baseSpeed || enemy.moveSpeed || 0.8;
+                        enemy.moveSpeed = enemy.baseSpeed || 0.8;
                     }
                 });
                 break;
 
             case 'MADNESS_VEIL':
                 enemies.forEach(enemy => {
-                    if (enemy === player) return;
+                    if (enemy.id === player.id) return;
                     let dx = player.x - enemy.x;
                     let dy = player.y - enemy.y;
                     if (dx * dx + dy * dy <= radiusSq) {
                         enemy.hp -= (player.domainDamage || 5) * dtSec;
                         enemy.isParalyzed = true;
-                        enemy.currentSpeed = 0;
+                        enemy.moveSpeed = 0;
                     } else if (enemy.isParalyzed) {
                         enemy.isParalyzed = false;
-                        enemy.currentSpeed = enemy.baseSpeed || enemy.moveSpeed || 0.8;
+                        enemy.moveSpeed = enemy.baseSpeed || 0.8;
                     }
                 });
                 break;
@@ -103,7 +108,7 @@ class DomainManager {
             case 'BLOOD_ALTAR':
                 let totalHeal = 0;
                 enemies.forEach(enemy => {
-                    if (enemy === player) return;
+                    if (enemy.id === player.id) return;
                     let dx = player.x - enemy.x;
                     let dy = player.y - enemy.y;
                     if (dx * dx + dy * dy <= radiusSq) {
@@ -120,7 +125,7 @@ class DomainManager {
 
             case 'GRAVITY_COLLAPSE':
                 enemies.forEach(enemy => {
-                    if (enemy === player) return;
+                    if (enemy.id === player.id) return;
                     let dx = player.x - enemy.x;
                     let dy = player.y - enemy.y;
                     let distSq = dx * dx + dy * dy;
@@ -160,7 +165,7 @@ class DomainManager {
                 if (player.arsenalTimer <= 0) {
                     player.arsenalTimer = player.arsenalFireRate || 50;
                     enemies.forEach(enemy => {
-                        if (enemy === player) return;
+                        if (enemy.id === player.id) return;
                         let dx = player.x - enemy.x;
                         let dy = player.y - enemy.y;
                         if (dx * dx + dy * dy <= radiusSq) {
@@ -173,18 +178,18 @@ class DomainManager {
     }
 
     static deactivateDomain(player, enemies) {
-        // OPRAVA: isDomainActive -> domainActive
         player.domainActive = false;
-        player.domainCooldown = 15000;
-        console.log(`Hráči skončila doména ${player.domainType}.`);
+        // BUG FIX: Karta "Mistr Rituálů" nastavuje domainCooldownModifier — předtím ignorováno,
+        // cooldown byl vždy natvrdo 15000ms
+        player.domainCooldown = 15000 * (player.domainCooldownModifier || 1);
+        console.log(`Hráči skončila doména ${player.domainType}. Cooldown: ${player.domainCooldown}ms`);
 
-        // Vyčištění statusů na nepřátelích
         if (enemies && enemies.length > 0) {
             enemies.forEach(enemy => {
                 if (enemy.isQuantumFrozen || enemy.isParalyzed) {
                     enemy.isQuantumFrozen = false;
                     enemy.isParalyzed = false;
-                    enemy.currentSpeed = enemy.baseSpeed || enemy.moveSpeed || 0.8;
+                    enemy.moveSpeed = enemy.baseSpeed || 0.8;
                 }
             });
         }
@@ -195,13 +200,26 @@ class DomainManager {
         let chance = (player.jackpotChance || 0.15) + (player.jackpotPity || 0);
 
         if (roll <= chance) {
-            console.log(`JACKPOT! Nesmrtelnost a nekonečno munice na 4.11s!`);
+            console.log(`JACKPOT! Nesmrtelnost a nekonečno munice na ${player.jackpotDuration || 4110}ms!`);
             player.isJackpotActive = true;
             player.jackpotTimer = player.jackpotDuration || 4110;
             player.jackpotPity = 0;
+
+            // BUG FIX: Karta "Horečka Jackpotu" přidává jackpotSpeedBonus a jackpotDamageBonus
+            // — předtím se tyto bonusy nikdy neaplikovaly
+            if (player.jackpotSpeedBonus) {
+                player._preJackpotSpeed = player.moveSpeed;
+                player.moveSpeed = Math.min(3.5, player.moveSpeed + player.jackpotSpeedBonus);
+            }
+            if (player.jackpotDamageBonus) {
+                player._preJackpotDamage = player.damage;
+                player.damage = Math.min(999, player.damage + player.jackpotDamageBonus);
+            }
         } else {
-            console.log(`Gambler miss. Zvyšuji pity o 5%.`);
-            player.jackpotPity = (player.jackpotPity || 0) + 0.05;
+            // BUG FIX: Karta "Zmanipulovaná Ruleta" nastavuje jackpotPityStep — předtím ignorováno
+            const pityIncrease = player.jackpotPityStep || 0.05;
+            player.jackpotPity = (player.jackpotPity || 0) + pityIncrease;
+            console.log(`Gambler miss. Pity: ${(player.jackpotPity * 100).toFixed(0)}%`);
         }
     }
 }
