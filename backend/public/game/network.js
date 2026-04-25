@@ -4,7 +4,7 @@ import { initGameEngine } from './main.js';
 // BUG FIX: app.js byl uploadnutý bez jakýchkoliv mezer (constsocket=io() apod.)
 // — soubor by se vůbec nenačetl jako validní JavaScript. Opraveno formátování.
 
-const socket = null;
+export let socket = null;
 window.gameSocket = socket;
 
 const screens = {
