@@ -41,7 +41,12 @@ function drawMapObjects(obstacles = [], breakables = []) {
 
     breakables.forEach(brk => {
         if (brk.destroyed) return;
-        state.ctx.fillStyle = '#a0522d';
+        const hpRatio = brk.hp !== undefined ? Math.max(0, brk.hp / (brk.maxHp || brk.hp)) : 1;
+        // BUG FIX: Barva zničitelné stěny zbledne jak dostává poškození
+        const r = Math.floor(160 + (1 - hpRatio) * 80);
+        const g = Math.floor(82 * hpRatio);
+        const b = Math.floor(45 * hpRatio);
+        state.ctx.fillStyle = `rgb(${r},${g},${b})`;
         state.ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
         state.ctx.strokeStyle = '#c87941';
         state.ctx.lineWidth = 1;
@@ -74,12 +79,32 @@ function drawAvatar(player, id) {
         state.ctx.stroke();
         state.ctx.closePath();
     }
+
+    // Jackpot aura
+    if (player.isJackpotActive) {
+        state.ctx.beginPath();
+        state.ctx.arc(player.x, player.y, radius + 8, 0, TWO_PI);
+        state.ctx.strokeStyle = 'rgba(241, 196, 15, 0.8)';
+        state.ctx.lineWidth = 3;
+        state.ctx.stroke();
+        state.ctx.closePath();
+    }
+
+    // Doménový indikátor
+    if (player.domainActive) {
+        state.ctx.beginPath();
+        state.ctx.arc(player.x, player.y, (player.domainRadius || 200), 0, TWO_PI);
+        state.ctx.strokeStyle = 'rgba(255, 42, 122, 0.25)';
+        state.ctx.lineWidth = 2;
+        state.ctx.stroke();
+        state.ctx.closePath();
+    }
 }
 
 function drawPlayers(playersData) {
     for (const id in playersData) {
         const p = playersData[id];
-        
+
         if (!p || p.hp <= 0) continue;
 
         drawAvatar(p, id);
@@ -133,27 +158,30 @@ function drawCrosshair() {
     if (mx == null || my == null) return;
 
     const shape = state.crosshairConfig?.shape || 'cross';
+    // BUG FIX: Barva vždy čte z configu. Dříve 'dot' tvar ignoroval barvu a
+    // vždy kreslil '#45f3ff' hardcoded jako fillStyle.
+    const color = state.crosshairConfig?.color || '#45f3ff';
 
     state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0); 
-    // OPRAVA: Nyní si vezme barvu nastavenou uživatelem z configu
-    state.ctx.strokeStyle = state.crosshairConfig?.color || '#45f3ff';
+    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    state.ctx.strokeStyle = color;
+    state.ctx.fillStyle = color;
     state.ctx.lineWidth = 2;
 
     if (shape === 'dot') {
         state.ctx.beginPath();
         state.ctx.arc(mx, my, 4, 0, TWO_PI);
-        state.ctx.fillStyle = '#45f3ff';
         state.ctx.fill();
     } else if (shape === 'circle') {
         state.ctx.beginPath();
         state.ctx.arc(mx, my, 12, 0, TWO_PI);
         state.ctx.stroke();
     } else {
+        // cross (výchozí)
         state.ctx.beginPath();
         state.ctx.arc(mx, my, 6, 0, TWO_PI);
-        state.ctx.moveTo(mx - 15, my); state.ctx.lineTo(mx - 8,  my);
-        state.ctx.moveTo(mx + 8,  my); state.ctx.lineTo(mx + 15, my);
+        state.ctx.moveTo(mx - 15, my); state.ctx.lineTo(mx - 8, my);
+        state.ctx.moveTo(mx + 8, my);  state.ctx.lineTo(mx + 15, my);
         state.ctx.moveTo(mx, my - 15); state.ctx.lineTo(mx, my - 8);
         state.ctx.moveTo(mx, my + 8);  state.ctx.lineTo(mx, my + 15);
         state.ctx.stroke();
@@ -195,6 +223,39 @@ function drawTabMenu(playersData) {
         state.ctx.fillText(`${p.score || 0} bodů`, x + w - 25, rowY);
         rowY += 38;
     }
+    state.ctx.restore();
+}
+
+// BUG FIX: Přidán HUD pro doménu — hráč teď vidí cooldown a stav domény
+function drawDomainHUD(serverData) {
+    const me = serverData.players && window.gameSocket ? serverData.players[window.gameSocket.id] : null;
+    if (!me || !me.domainType) return;
+
+    state.ctx.save();
+    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const x = 20;
+    const y = state.canvas.height - 80;
+
+    state.ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    state.ctx.fillRect(x, y, 200, 60);
+
+    state.ctx.fillStyle = me.domainActive ? '#ff2a7a' : (me.domainCooldown > 0 ? '#888' : '#45f3ff');
+    state.ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    state.ctx.textAlign = 'left';
+    state.ctx.fillText(`⚡ ${me.domainType.replace('_', ' ')}`, x + 10, y + 20);
+
+    if (me.domainActive) {
+        state.ctx.fillStyle = '#ff2a7a';
+        state.ctx.fillText('AKTIVNÍ', x + 10, y + 42);
+    } else if (me.domainCooldown > 0) {
+        state.ctx.fillStyle = '#aaa';
+        state.ctx.fillText(`Cooldown: ${(me.domainCooldown / 1000).toFixed(1)}s`, x + 10, y + 42);
+    } else {
+        state.ctx.fillStyle = '#45f3ff';
+        state.ctx.fillText('Připraveno [F]', x + 10, y + 42);
+    }
+
     state.ctx.restore();
 }
 
@@ -244,6 +305,7 @@ export function drawGame(serverData) {
             drawTabMenu(playersData);
         } else {
             drawCrosshair();
+            drawDomainHUD(serverData);
         }
     }
 
