@@ -4,13 +4,10 @@ process.on('uncaughtException', (err) => {
     console.error('Typ chyby:', err.name);
     console.error('Zpráva:', err.message);
     console.error('Stack Trace:\n', err.stack);
-    console.error('----------------------------------------\n');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:');
-    console.error('Důvod:', reason);
-    console.error('Promise:', promise);
+process.on('unhandledRejection', (reason) => {
+    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:', reason);
 });
 
 const express = require('express');
@@ -25,9 +22,9 @@ let gameHelper = {};
 try {
     DomainManager = require('./domainManager.js');
     gameHelper = require('./gameHelper.js') || {};
-    console.log('✅ Manažeři a helpery úspěšně načteny.');
+    console.log('✅ DomainManager a gameHelper načteny.');
 } catch (err) {
-    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ!', err.message);
+    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ:', err.message);
 }
 
 const app = express();
@@ -37,13 +34,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
-    pingInterval: 1000,
-    pingTimeout: 3000
+    pingInterval: 2000,
+    pingTimeout: 5000
 });
 
 // --- NAČÍTÁNÍ SDÍLENÝCH SOUBORŮ ---
-// BUG FIX: Přidán parametr expectedVar, takže každý soubor vrátí přesně tu proměnnou
-// kterou chceme — cards.js vrátí 'availableCards', gameConfig.js vrátí 'CONFIG'.
 const loadSharedFile = (fileName, expectedVar) => {
     const pathsToTry = [
         path.join(__dirname, 'public', fileName),
@@ -66,71 +61,98 @@ const loadSharedFile = (fileName, expectedVar) => {
                 `);
                 return extractData();
             } catch (e) {
+                console.error(`❌ loadSharedFile chyba v ${p}:`, e.message);
                 return null;
             }
         }
     }
+    console.warn(`⚠️ loadSharedFile: soubor '${fileName}' nenalezen.`);
     return null;
 };
 
 const loadedConfig = loadSharedFile('gameConfig.js', 'CONFIG') || {};
-const availableCards = loadSharedFile('cards.js', 'availableCards') || [];
+const availableCards = (() => {
+    const result = loadSharedFile('cards.js', 'availableCards');
+    if (!Array.isArray(result)) {
+        console.error('🚨 availableCards není pole! Zkontroluj cards.js. Vráceno:', typeof result);
+        return [];
+    }
+    return result;
+})();
 console.log(`✅ Načteno ${availableCards.length} karet.`);
 
 const CONFIG = {
-    MAP_WIDTH: loadedConfig.MAP_WIDTH || 1920,
-    MAP_HEIGHT: loadedConfig.MAP_HEIGHT || 1080,
-    FPS: loadedConfig.FPS || 60,
-    MAX_SCORE: loadedConfig.MAX_SCORE || 25,
-    RESPAWN_TIME: loadedConfig.RESPAWN_TIME || 3000,
-    BASE_HP: loadedConfig.BASE_HP || 100,
+    MAP_WIDTH:       loadedConfig.MAP_WIDTH       || 1920,
+    MAP_HEIGHT:      loadedConfig.MAP_HEIGHT      || 1080,
+    FPS:             loadedConfig.FPS             || 60,
+    MAX_SCORE:       loadedConfig.MAX_SCORE       || 25,
+    RESPAWN_TIME:    loadedConfig.RESPAWN_TIME    || 3000,
+    BASE_HP:         loadedConfig.BASE_HP         || 100,
     BASE_MOVE_SPEED: loadedConfig.BASE_MOVE_SPEED || 0.8,
-    BASE_DAMAGE: loadedConfig.BASE_DAMAGE || 20,
-    BASE_FIRE_RATE: loadedConfig.BASE_FIRE_RATE || 400,
+    BASE_DAMAGE:     loadedConfig.BASE_DAMAGE     || 20,
+    BASE_FIRE_RATE:  loadedConfig.BASE_FIRE_RATE  || 400,
     BASE_BULLET_SPEED: loadedConfig.BASE_BULLET_SPEED || 15,
-    BASE_AMMO: loadedConfig.BASE_AMMO || 10,
-    BASE_RELOAD_TIME: loadedConfig.BASE_RELOAD_TIME || 1500,
-    PLAYER_RADIUS: loadedConfig.PLAYER_RADIUS || 20,
-    BULLET_RADIUS: 5
+    BASE_AMMO:       loadedConfig.BASE_AMMO       || 10,
+    BASE_RELOAD_TIME:loadedConfig.BASE_RELOAD_TIME|| 1500,
+    PLAYER_RADIUS:   loadedConfig.PLAYER_RADIUS   || 20,
+    BULLET_RADIUS:   5
 };
 
 const PORT = process.env.PORT || 3000;
 const TICK_RATE = 1000 / CONFIG.FPS;
 const rooms = {};
 
-// --- POMOCNÉ FUNKCE ---
+// --- HELPERS ---
+
+function isValidNumber(v) {
+    return typeof v === 'number' && isFinite(v) && !isNaN(v);
+}
+
+// BUG FIX: Clamp server-side position to map bounds (prevents NaN / OOB teleports).
+// The client is trusted for normal movement but this catches edge cases.
+function clampPosition(x, y, radius) {
+    const r = radius || CONFIG.PLAYER_RADIUS;
+    return {
+        x: Math.max(r, Math.min(CONFIG.MAP_WIDTH  - r, x)),
+        y: Math.max(r, Math.min(CONFIG.MAP_HEIGHT - r, y))
+    };
+}
 
 function resetPlayer(p, room) {
     p.hp = p.maxHp;
-    // BUG FIX: Russian Roulette dostane 6 nábojů, ne maxAmmo (které je 0)
+    // Russian Roulette resets to 6 not maxAmmo (which is 0 for that card)
     p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
     p.isReloading = false;
     p.isInvisible = false;
     p.domainActive = false;
+    p.domainTimer = 0;
+    // Don't reset domainCooldown on respawn — that would let players exploit death to skip cooldown
 
-    // BUG FIX: Spawn používá getValidSpawnPoint aby hráči nevznikali ve zdech
     const playerIndex = Object.keys(room.players).indexOf(p.id);
-    const spawn = (gameHelper.getValidSpawnPoint)
+    const spawn = gameHelper.getValidSpawnPoint
         ? gameHelper.getValidSpawnPoint(
             playerIndex,
             CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
             room.map?.obstacles || [],
             room.map?.breakables || [],
-            CONFIG.PLAYER_RADIUS
+            p.playerRadius || CONFIG.PLAYER_RADIUS
           )
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
+
     p.x = spawn.x;
     p.y = spawn.y;
 }
 
 function initiateCardSelection(room) {
+    if (room.gameState === 'CARD_SELECTION') return; // Guard against double-trigger
     room.gameState = 'CARD_SELECTION';
     if (!room.readyPlayersForNextRound) room.readyPlayersForNextRound = new Set();
     room.readyPlayersForNextRound.clear();
+    // BUG FIX: Track which players have already picked a card this round
+    room.cardPickedThisRound = new Set();
 
     Object.values(room.players).forEach(player => {
-        // BUG FIX: Používáme generateCardsForPlayer z gameHelper pro správné vážení rarity
-        const selection = (gameHelper.generateCardsForPlayer)
+        const selection = gameHelper.generateCardsForPlayer
             ? gameHelper.generateCardsForPlayer(player, availableCards)
             : availableCards.slice(0, 3);
         io.to(player.id).emit('showCardSelection', selection);
@@ -142,13 +164,12 @@ function initiateCardSelection(room) {
 function startNewRound(room) {
     room.round = (room.round || 1) + 1;
     room.gameState = 'PLAYING';
+    room.cardPickedThisRound = new Set();
 
-    // BUG FIX: Regenerujeme OBOJÍ — pevné překážky I zničitelné stěny
-    if (gameHelper.generateMap) {
-        room.map = gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT);
-    } else {
-        room.map = { obstacles: [], breakables: [] };
-    }
+    // Regenerate full map (obstacles + breakables)
+    room.map = gameHelper.generateMap
+        ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
+        : { obstacles: [], breakables: [] };
 
     Object.values(room.players).forEach(p => resetPlayer(p, room));
 
@@ -177,7 +198,8 @@ io.on('connection', (socket) => {
             round: 1,
             map: initialMap,
             teamScores: { blue: 0, red: 0 },
-            settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'TDM' },
+            settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'FFA' },
+            cardPickedThisRound: new Set(),
             lastTick: Date.now()
         };
         socket.emit('roomCreated', { roomId });
@@ -185,7 +207,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (data) => {
-        const roomId = (data.roomId || '').toUpperCase();
+        const roomId = (data.roomId || '').toUpperCase().trim();
         if (rooms[roomId]) {
             socket.emit('roomJoined', { roomId });
             joinRoom(socket, roomId, data);
@@ -199,11 +221,15 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.roomId = roomId;
 
+        // Sanitize name — strip HTML, limit length
+        const safeName = String(data.name || 'Hráč').replace(/</g, '').substring(0, 24);
+        const safeColor = /^#[0-9A-Fa-f]{6}$/.test(data.color) ? data.color : '#45f3ff';
+
         room.players[socket.id] = {
             id: socket.id,
-            name: data.name || 'Hráč',
-            color: data.color || '#45f3ff',
-            cosmetic: data.cosmetic || 'none',
+            name: safeName,
+            color: safeColor,
+            cosmetic: 'none',
             team: Object.keys(room.players).length % 2 === 0 ? 'blue' : 'red',
             x: 0, y: 0,
             hp: CONFIG.BASE_HP, maxHp: CONFIG.BASE_HP,
@@ -214,18 +240,24 @@ io.on('connection', (socket) => {
             bulletSpeed: CONFIG.BASE_BULLET_SPEED,
             reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
+            // BUG FIX: Initialize playerRadius and bulletSize explicitly so card apply()
+            // functions using (p.playerRadius || 20) always get the right base value
+            playerRadius: CONFIG.PLAYER_RADIUS,
+            bulletSize: CONFIG.BULLET_RADIUS,
+            multishot: 1, spread: 0,
             score: 0, isReady: false,
-            // Pole pro herní funkce (domény, karty)
             hpRegen: 0,
             isRussianRoulette: false,
             domainType: null,
             domainActive: false,
             domainCooldown: 0,
             domainTimer: 0,
+            domainRadius: 200,
             isJackpotActive: false,
             jackpotTimer: 0,
-            jackpotPity: 0
-            // BUG FIX: Odstraněno 'new DomainManager()' — DomainManager má pouze statické metody
+            jackpotPity: 0,
+            baseSpeed: CONFIG.BASE_MOVE_SPEED,
+            _lastSyncTime: 0
         };
 
         resetPlayer(room.players[socket.id], room);
@@ -236,6 +268,7 @@ io.on('connection', (socket) => {
     socket.on('playerReady', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
+        if (room.gameState !== 'LOBBY') return;
 
         room.players[socket.id].isReady = !room.players[socket.id].isReady;
         io.to(room.id).emit('updatePlayerList', Object.values(room.players));
@@ -255,12 +288,17 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'CARD_SELECTION') return;
 
+        // BUG FIX: Prevent double-picking — a player can only pick one card per round
+        if (!room.cardPickedThisRound) room.cardPickedThisRound = new Set();
+        if (room.cardPickedThisRound.has(socket.id)) return;
+        room.cardPickedThisRound.add(socket.id);
+
         const player = room.players[socket.id];
         const card = availableCards.find(c => c.name === cardName);
 
-        if (player && card && card.apply) {
+        if (player && card && typeof card.apply === 'function') {
             card.apply(player);
-            console.log(`Hráč ${player.name} vybral kartu: ${cardName}`);
+            console.log(`✅ ${player.name} zvolil kartu: ${cardName}`);
         }
 
         if (!room.readyPlayersForNextRound) room.readyPlayersForNextRound = new Set();
@@ -275,25 +313,43 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
-
         if (p.hp <= 0) return;
 
-        p.x = data.x;
-        p.y = data.y;
-        p.aimAngle = data.aimAngle;
+        const now = Date.now();
 
-        // BUG FIX: Bylo 'data.ritual', client posílá 'ritualRequested'
-        if (data.ritualRequested && DomainManager && typeof DomainManager.activateDomain === 'function') {
-            DomainManager.activateDomain(p, room);
+        // BUG FIX: Rate-limit clientSync to prevent packet flooding (max 120 syncs/sec)
+        if (now - (p._lastSyncTime || 0) < 8) return;
+        p._lastSyncTime = now;
+
+        // BUG FIX: Validate all incoming numbers before trusting them
+        if (isValidNumber(data.x) && isValidNumber(data.y)) {
+            // BUG FIX: Clamp position to map bounds server-side — a buggy or malicious
+            // client cannot place themselves outside the map
+            const clamped = clampPosition(data.x, data.y, p.playerRadius);
+            p.x = clamped.x;
+            p.y = clamped.y;
         }
 
-        if (data.isReloading && !p.isReloading && p.ammo < (p.isRussianRoulette ? 6 : p.maxAmmo)) {
-            p.isReloading = true;
-            const reloadTarget = p.isRussianRoulette ? 6 : p.maxAmmo;
-            setTimeout(() => {
-                const rp = rooms[socket.roomId]?.players[socket.id];
-                if (rp) { rp.ammo = reloadTarget; rp.isReloading = false; }
-            }, p.reloadTime || 1500);
+        if (isValidNumber(data.aimAngle)) {
+            p.aimAngle = data.aimAngle;
+        }
+
+        // Ritual activation — only trigger once per press (client debounces via keydown)
+        if (data.ritualRequested && DomainManager && typeof DomainManager.activateDomain === 'function') {
+            DomainManager.activateDomain(p);
+        }
+
+        // Reload — only start if not already reloading
+        if (data.isReloading && !p.isReloading) {
+            const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
+            if (p.ammo < fullAmmo) {
+                p.isReloading = true;
+                const rt = p.reloadTime || 1500;
+                setTimeout(() => {
+                    const rp = rooms[socket.roomId]?.players[socket.id];
+                    if (rp) { rp.ammo = p.isRussianRoulette ? 6 : rp.maxAmmo; rp.isReloading = false; }
+                }, rt);
+            }
         }
     });
 
@@ -308,10 +364,10 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
-        if (p.hp <= 0) return;
+        if (p.hp <= 0 || p.isReloading) return;
 
         const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
-        if (!p.isReloading && p.ammo < fullAmmo) {
+        if (p.ammo < fullAmmo) {
             p.isReloading = true;
             setTimeout(() => {
                 const rp = rooms[socket.roomId]?.players[socket.id];
@@ -321,11 +377,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playerShot', (bullets) => {
-        if (!socket.roomId) return;
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
-
         if (p.hp <= 0) return;
 
         const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
@@ -340,68 +394,69 @@ io.on('connection', (socket) => {
             }
         }
 
-        socket.to(socket.roomId).emit('enemyShot', bullets);
+        if (bullets) socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
 
-        const target = room.players[data.targetId];
+        const target  = room.players[data.targetId];
         const shooter = room.players[socket.id];
 
         if (!target || target.hp <= 0) return;
+        if (target.isJackpotActive) return; // Jackpot = invincible
 
-        // BUG FIX: Jackpot poskytuje nesmrtelnost — nepřátelské kulky nedělají nic
-        if (target.isJackpotActive) return;
-
-        // BUG FIX: Russian Roulette — náhodné poškození server-side (ne client-side)
         let damageAmount;
         if (shooter && shooter.isRussianRoulette) {
-            // 1 z 6 šancí na masivní výstřel
+            // 1-in-6 chance of massive shot; resolved server-side
             damageAmount = Math.random() < (1 / 6) ? 150 : 1;
         } else {
             damageAmount = Number(data.damage) || 20;
+            // BUG FIX: Cap damage to a sane maximum to prevent exploit packets
+            damageAmount = Math.min(damageAmount, 9999);
         }
 
-        target.hp -= damageAmount;
+        target.hp = Math.max(0, target.hp - damageAmount);
 
-        if (shooter && data.lifesteal > 0) {
-            shooter.hp = Math.min(shooter.maxHp, shooter.hp + damageAmount * data.lifesteal);
+        if (shooter && isValidNumber(data.lifesteal) && data.lifesteal > 0) {
+            shooter.hp = Math.min(shooter.maxHp, shooter.hp + damageAmount * Math.min(data.lifesteal, 1));
         }
 
         if (target.hp <= 0) {
-            target.hp = 0;
             if (shooter) shooter.score++;
-            target.x = -5000;
-            target.y = -5000;
+            // Move dead player off-screen until card selection / new round
+            target.x = -9999;
+            target.y = -9999;
 
             const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
             if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
-                initiateCardSelection(room);
+                // Small delay so the killing blow renders client-side before screen change
+                setTimeout(() => initiateCardSelection(room), 800);
             }
         }
     });
 
     socket.on('disconnect', () => {
         const room = rooms[socket.roomId];
-        if (room) {
-            delete room.players[socket.id];
-            io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
-            if (Object.keys(room.players).length === 0) delete rooms[socket.roomId];
+        if (!room) return;
+        delete room.players[socket.id];
+        io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
+        if (Object.keys(room.players).length === 0) {
+            delete rooms[socket.roomId];
+            console.log(`🗑️ Místnost ${socket.roomId} smazána (prázdná).`);
         }
     });
 });
 
 // --- HLAVNÍ HERNÍ SMYČKA ---
 setInterval(() => {
-    Object.values(rooms).forEach(room => {
-        if (room.gameState !== 'PLAYING') return;
+    for (const roomId in rooms) {
+        const room = rooms[roomId];
+        if (room.gameState !== 'PLAYING') continue;
 
         const allPlayers = Object.values(room.players);
 
-        // BUG FIX: Správná signatura updateDomains(playersObj, enemiesArr, projectilesArr, deltaTime)
-        // Předchozí verze volala (Object.values(room.players), room) — room není pole hráčů
         if (DomainManager && typeof DomainManager.updateDomains === 'function') {
             DomainManager.updateDomains(room.players, allPlayers, [], TICK_RATE);
         }
@@ -410,43 +465,61 @@ setInterval(() => {
         for (const id in room.players) {
             const p = room.players[id];
 
-            // BUG FIX: HP regen — karta "Ještěří krev" nyní funguje
+            // HP regen (Ještěří krev card)
             if (p.hpRegen > 0 && p.hp > 0 && p.hp < p.maxHp) {
                 p.hp = Math.min(p.maxHp, p.hp + p.hpRegen * (TICK_RATE / 1000));
             }
 
-            // Jackpot: nekonečná munice po dobu trvání
+            // Jackpot: infinite ammo during buff
             if (p.isJackpotActive) {
                 p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
             }
 
+            // BUG FIX: Include domainCooldown and domainRadius in leanPlayers.
+            // Previously both were missing, so:
+            //   - drawDomainHUD always showed "Cooldown: NaN" instead of real time
+            //   - drawAvatar always drew domain circle with radius 200 instead of player's actual value
             leanPlayers[id] = {
-                id: p.id, name: p.name, color: p.color,
-                cosmetic: p.cosmetic, team: p.team,
-                x: p.x, y: p.y,
-                hp: Math.round(p.hp), maxHp: p.maxHp,
-                aimAngle: p.aimAngle,
-                ammo: p.ammo, maxAmmo: p.maxAmmo,
-                isReloading: p.isReloading, isInvisible: p.isInvisible,
-                domainActive: p.domainActive, domainType: p.domainType,
-                score: p.score, isReady: p.isReady,
-                moveSpeed: p.moveSpeed, damage: p.damage,
-                fireRate: p.fireRate, bulletSpeed: p.bulletSpeed,
-                bounces: p.bounces, pierce: p.pierce, lifesteal: p.lifesteal,
-                playerRadius: p.playerRadius, bulletSize: p.bulletSize,
-                multishot: p.multishot, spread: p.spread,
+                id:          p.id,
+                name:        p.name,
+                color:       p.color,
+                team:        p.team,
+                x:           p.x,
+                y:           p.y,
+                hp:          Math.round(p.hp),
+                maxHp:       p.maxHp,
+                aimAngle:    p.aimAngle,
+                ammo:        p.ammo,
+                maxAmmo:     p.maxAmmo,
+                isReloading: p.isReloading,
+                domainActive:   p.domainActive,
+                domainType:     p.domainType,
+                domainCooldown: p.domainCooldown,   // ← was missing
+                domainRadius:   p.domainRadius,     // ← was missing
+                score:       p.score,
+                moveSpeed:   p.moveSpeed,
+                damage:      p.damage,
+                fireRate:    p.fireRate,
+                bulletSpeed: p.bulletSpeed,
+                bounces:     p.bounces,
+                pierce:      p.pierce,
+                lifesteal:   p.lifesteal,
+                playerRadius:p.playerRadius,
+                bulletSize:  p.bulletSize,
+                multishot:   p.multishot,
+                spread:      p.spread,
                 isJackpotActive: p.isJackpotActive
             };
         }
 
         io.to(room.id).volatile.emit('gameUpdate', {
-            players: leanPlayers,
-            maxScore: room.settings.maxRounds,
+            players:    leanPlayers,
+            maxScore:   room.settings.maxRounds,
             teamScores: room.teamScores,
-            gameState: room.gameState,
-            gameMode: room.settings.gameMode
+            gameState:  room.gameState,
+            gameMode:   room.settings.gameMode
         });
-    });
+    }
 }, TICK_RATE);
 
 server.listen(PORT, () => {
