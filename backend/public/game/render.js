@@ -6,134 +6,267 @@ import { getDashState } from './physics.js';
 
 const TWO_PI = Math.PI * 2;
 
+// ─── BACKGROUND ─────────────────────────────────────────────────────────────
+
 function drawGrid() {
-    const W = CONFIG.MAP_WIDTH || 1920;
+    const W = CONFIG.MAP_WIDTH  || 1920;
     const H = CONFIG.MAP_HEIGHT || 1080;
-    state.ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    state.ctx.lineWidth = 1;
-    const gridSize = 50;
-    for (let x = 0; x <= W; x += gridSize) {
-        state.ctx.beginPath(); state.ctx.moveTo(x, 0); state.ctx.lineTo(x, H); state.ctx.stroke();
+    const ctx = state.ctx;
+    ctx.strokeStyle = 'rgba(69,243,255,0.04)';
+    ctx.lineWidth = 1;
+    const gs = 60;
+    for (let x = 0; x <= W; x += gs) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     }
-    for (let y = 0; y <= H; y += gridSize) {
-        state.ctx.beginPath(); state.ctx.moveTo(0, y); state.ctx.lineTo(W, y); state.ctx.stroke();
+    for (let y = 0; y <= H; y += gs) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
 }
 
 function drawBackground() {
-    const W = CONFIG.MAP_WIDTH || 1920;
+    const W = CONFIG.MAP_WIDTH  || 1920;
     const H = CONFIG.MAP_HEIGHT || 1080;
-    state.ctx.fillStyle = '#111';
-    state.ctx.fillRect(0, 0, W, H);
+    const ctx = state.ctx;
+
+    // Dark floor with subtle vignette
+    ctx.fillStyle = '#0d0f16';
+    ctx.fillRect(0, 0, W, H);
     drawGrid();
-    state.ctx.strokeStyle = '#45f3ff';
-    state.ctx.lineWidth = 4;
-    state.ctx.strokeRect(0, 0, W, H);
+
+    // Arena border glow
+    ctx.strokeStyle = 'rgba(69,243,255,0.6)';
+    ctx.lineWidth = 3;
+    ctx.shadowColor  = '#45f3ff';
+    ctx.shadowBlur   = 18;
+    ctx.strokeRect(1, 1, W - 2, H - 2);
+    ctx.shadowBlur   = 0;
 }
+
+// ─── MAP OBJECTS ─────────────────────────────────────────────────────────────
 
 function drawMapObjects(obstacles = [], breakables = []) {
+    const ctx = state.ctx;
+
+    // Indestructible walls — cool dark grey with subtle edge highlight
     obstacles.forEach(obs => {
-        state.ctx.fillStyle = '#333333';
-        state.ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-        state.ctx.strokeStyle = '#555555';
-        state.ctx.lineWidth = 1;
-        state.ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+        if (obs.x < 0 || obs.y < 0) return; // skip border walls (outside canvas)
+        ctx.fillStyle = '#1e2130';
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        ctx.strokeStyle = 'rgba(100,120,160,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(obs.x + 0.5, obs.y + 0.5, obs.width - 1, obs.height - 1);
+        // Top-left highlight edge
+        ctx.strokeStyle = 'rgba(200,220,255,0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(obs.x, obs.y + obs.height);
+        ctx.lineTo(obs.x, obs.y);
+        ctx.lineTo(obs.x + obs.width, obs.y);
+        ctx.stroke();
     });
 
+    // Breakable walls — orange/brown tinted, darken as HP drops
     breakables.forEach(brk => {
         if (brk.destroyed) return;
-        const hpRatio = brk.hp !== undefined ? Math.max(0, brk.hp / (brk.maxHp || brk.hp)) : 1;
-        // BUG FIX: Barva zničitelné stěny zbledne jak dostává poškození
-        const r = Math.floor(160 + (1 - hpRatio) * 80);
-        const g = Math.floor(82 * hpRatio);
-        const b = Math.floor(45 * hpRatio);
-        state.ctx.fillStyle = `rgb(${r},${g},${b})`;
-        state.ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
-        state.ctx.strokeStyle = '#c87941';
-        state.ctx.lineWidth = 1;
-        state.ctx.strokeRect(brk.x, brk.y, brk.width, brk.height);
+        const hp    = brk.hp    !== undefined ? brk.hp    : 3;
+        const maxHp = brk.maxHp !== undefined ? brk.maxHp : 3;
+        const ratio = Math.max(0, hp / maxHp); // 1 = full, 0 = almost dead
+
+        // Fill: blend from bright amber → dark red as HP falls
+        const r = Math.floor(200 + (1 - ratio) * 55);
+        const g = Math.floor(120 * ratio);
+        const b = Math.floor(20  * ratio);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(brk.x, brk.y, brk.width, brk.height);
+
+        // Crack overlay — become more visible as HP drops
+        if (ratio < 0.99) {
+            ctx.fillStyle = `rgba(0,0,0,${(1 - ratio) * 0.5})`;
+            // Draw diagonal crack lines
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(brk.x, brk.y, brk.width, brk.height);
+            ctx.clip();
+            ctx.strokeStyle = `rgba(0,0,0,${(1 - ratio) * 0.7})`;
+            ctx.lineWidth = 1.5;
+            const cx = brk.x + brk.width / 2;
+            const cy = brk.y + brk.height / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 10, cy - 15); ctx.lineTo(cx + 5,  cy + 8);
+            ctx.moveTo(cx + 5,  cy + 8);  ctx.lineTo(cx + 15, cy + 20);
+            ctx.moveTo(cx - 5,  cy - 5);  ctx.lineTo(cx - 18, cy + 10);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Border
+        ctx.strokeStyle = ratio > 0.5 ? 'rgba(255,180,60,0.7)' : 'rgba(220,80,40,0.8)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(brk.x + 0.5, brk.y + 0.5, brk.width - 1, brk.height - 1);
+
+        // HP pip dots above the wall
+        if (maxHp <= 6) {
+            const pipW = 8, pipGap = 4;
+            const totalW = maxHp * pipW + (maxHp - 1) * pipGap;
+            const startX = brk.x + (brk.width - totalW) / 2;
+            for (let i = 0; i < maxHp; i++) {
+                const px = startX + i * (pipW + pipGap);
+                ctx.fillStyle = i < hp ? 'rgba(255,180,60,0.9)' : 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.arc(px + pipW / 2, brk.y - 6, pipW / 2, 0, TWO_PI);
+                ctx.fill();
+            }
+        }
     });
 }
 
-function drawAvatar(player, id) {
-    const radius = player.playerRadius || player.radius || CONFIG.PLAYER_RADIUS || 20;
-    state.ctx.beginPath();
-    state.ctx.arc(player.x, player.y, radius, 0, TWO_PI);
-    state.ctx.fillStyle = player.color || '#ff2a7a';
-    state.ctx.fill();
+// ─── PLAYERS ─────────────────────────────────────────────────────────────────
 
-    if (socket && id === socket.id) {
-        state.ctx.lineWidth = 3;
-        state.ctx.strokeStyle = '#ffffff';
-        state.ctx.stroke();
+function drawAvatar(player, id, ip) {
+    // ip = interpolatedPlayers entry — use for x/y/aimAngle if available
+    const rx     = ip ? ip.x        : player.x;
+    const ry     = ip ? ip.y        : player.y;
+    const rAngle = ip ? ip.aimAngle : (player.aimAngle || 0);
+    const radius = player.playerRadius || CONFIG.PLAYER_RADIUS || 20;
+    const color  = player.color || '#45f3ff';
+    const ctx    = state.ctx;
+    const isMe   = socket && id === socket.id;
+
+    // Glow aura (own player gets stronger glow)
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = isMe ? 22 : 12;
+
+    // Body circle
+    ctx.beginPath();
+    ctx.arc(rx, ry, radius, 0, TWO_PI);
+    const grad = ctx.createRadialGradient(rx - radius * 0.3, ry - radius * 0.3, 0, rx, ry, radius);
+    grad.addColorStop(0, lightenColor(color, 40));
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Own-player ring
+    if (isMe) {
+        ctx.lineWidth   = 3;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
     }
-    state.ctx.closePath();
+    ctx.closePath();
+    ctx.shadowBlur = 0;
 
-    if (player.aimAngle !== undefined) {
-        const tipX = player.x + Math.cos(player.aimAngle) * (radius + 8);
-        const tipY = player.y + Math.sin(player.aimAngle) * (radius + 8);
-        state.ctx.beginPath();
-        state.ctx.moveTo(player.x, player.y);
-        state.ctx.lineTo(tipX, tipY);
-        state.ctx.strokeStyle = player.color || '#ff2a7a';
-        state.ctx.lineWidth = 3;
-        state.ctx.stroke();
-        state.ctx.closePath();
-    }
+    // Aim pointer (line + small dot at tip)
+    const tipX = rx + Math.cos(rAngle) * (radius + 10);
+    const tipY = ry + Math.sin(rAngle) * (radius + 10);
+    ctx.beginPath();
+    ctx.moveTo(rx + Math.cos(rAngle) * radius, ry + Math.sin(rAngle) * radius);
+    ctx.lineTo(tipX, tipY);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 8;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
 
-    // Jackpot aura
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 3, 0, TWO_PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Jackpot aura — pulsing gold ring
     if (player.isJackpotActive) {
-        state.ctx.beginPath();
-        state.ctx.arc(player.x, player.y, radius + 8, 0, TWO_PI);
-        state.ctx.strokeStyle = 'rgba(241, 196, 15, 0.8)';
-        state.ctx.lineWidth = 3;
-        state.ctx.stroke();
-        state.ctx.closePath();
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 200);
+        ctx.beginPath();
+        ctx.arc(rx, ry, radius + 10, 0, TWO_PI);
+        ctx.strokeStyle = `rgba(241,196,15,${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#f1c40f';
+        ctx.shadowBlur  = 20;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.closePath();
     }
 
-    // Doménový indikátor
+    // Domain radius ring
     if (player.domainActive) {
-        state.ctx.beginPath();
-        state.ctx.arc(player.x, player.y, (player.domainRadius || 200), 0, TWO_PI);
-        state.ctx.strokeStyle = 'rgba(255, 42, 122, 0.25)';
-        state.ctx.lineWidth = 2;
-        state.ctx.stroke();
-        state.ctx.closePath();
+        ctx.beginPath();
+        ctx.arc(rx, ry, player.domainRadius || 200, 0, TWO_PI);
+        ctx.strokeStyle = 'rgba(255,42,122,0.3)';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = '#ff2a7a';
+        ctx.shadowBlur  = 10;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.closePath();
     }
+
+    ctx.restore();
+}
+
+function lightenColor(hex, amount) {
+    const num = parseInt(hex.replace('#',''), 16);
+    const r = Math.min(255, (num >> 16) + amount);
+    const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+    const b = Math.min(255, (num & 0xff) + amount);
+    return `rgb(${r},${g},${b})`;
 }
 
 function drawPlayers(playersData) {
+    const ctx = state.ctx;
     for (const id in playersData) {
-        const p = playersData[id];
-
+        const p  = playersData[id];
         if (!p || p.hp <= 0) continue;
 
-        drawAvatar(p, id);
+        const ip = state.interpolatedPlayers?.[id] || null;
+        drawAvatar(p, id, ip);
 
-        state.ctx.fillStyle = 'white';
-        state.ctx.font = '13px "Segoe UI", sans-serif';
-        state.ctx.textAlign = 'center';
-        state.ctx.fillText(p.name || 'Hráč', p.x, p.y - 28);
+        const rx = ip ? ip.x : p.x;
+        const ry = ip ? ip.y : p.y;
 
+        // Name tag
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px "Inter",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur  = 4;
+        ctx.fillText(p.name || 'Hráč', rx, ry - 30);
+        ctx.shadowBlur = 0;
+
+        // HP bar
         if (p.hp !== undefined && p.maxHp !== undefined) {
-            const barWidth = 40;
+            const bw     = 44;
             const hpRatio = Math.max(0, p.hp / p.maxHp);
-            state.ctx.fillStyle = '#550000';
-            state.ctx.fillRect(p.x - barWidth / 2, p.y - 42, barWidth, 5);
-            state.ctx.fillStyle = '#2ed573';
-            state.ctx.fillRect(p.x - barWidth / 2, p.y - 42, barWidth * hpRatio, 5);
+            const barX   = rx - bw / 2;
+            const barY   = ry - 44;
+
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(barX - 1, barY - 1, bw + 2, 7);
+
+            const hpColor = hpRatio > 0.5 ? '#2ed573' : hpRatio > 0.25 ? '#f1c40f' : '#ff4757';
+            ctx.fillStyle = hpColor;
+            ctx.shadowColor = hpColor;
+            ctx.shadowBlur  = 4;
+            ctx.fillRect(barX, barY, bw * hpRatio, 5);
+            ctx.shadowBlur = 0;
         }
     }
 }
 
+// ─── BULLETS ─────────────────────────────────────────────────────────────────
+
 function drawBullets() {
+    const ctx = state.ctx;
+
     if (state.localBullets) {
         state.localBullets.forEach(b => {
-            state.ctx.beginPath();
-            state.ctx.arc(b.x, b.y, b.radius || 5, 0, TWO_PI);
-            state.ctx.fillStyle = b.color || '#f1c40f';
-            state.ctx.fill();
-            state.ctx.closePath();
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius || 5, 0, TWO_PI);
+            ctx.fillStyle = b.color || '#f1c40f';
+            ctx.shadowColor = b.color || '#f1c40f';
+            ctx.shadowBlur  = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
         });
     }
 
@@ -142,193 +275,214 @@ function drawBullets() {
         state.remoteBullets = state.remoteBullets.filter(b => now - b.createdAt < 3000);
         state.remoteBullets.forEach(b => {
             const age = (now - b.createdAt) / 1000;
-            const rx = b.x + (b.vx || 0) * age * 60;
-            const ry = b.y + (b.vy || 0) * age * 60;
-            state.ctx.beginPath();
-            state.ctx.arc(rx, ry, b.radius || 5, 0, TWO_PI);
-            state.ctx.fillStyle = b.color || '#ff4757';
-            state.ctx.fill();
-            state.ctx.closePath();
+            const rx  = b.x + (b.vx || 0) * age * 60;
+            const ry  = b.y + (b.vy || 0) * age * 60;
+            ctx.beginPath();
+            ctx.arc(rx, ry, b.radius || 5, 0, TWO_PI);
+            ctx.fillStyle  = b.color || '#ff4757';
+            ctx.shadowColor = b.color || '#ff4757';
+            ctx.shadowBlur  = 8;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
         });
     }
 }
 
+// ─── CROSSHAIR ───────────────────────────────────────────────────────────────
+
 function drawCrosshair() {
-    const mx = state.currentMouseX;
-    const my = state.currentMouseY;
+    const mx    = state.currentMouseX;
+    const my    = state.currentMouseY;
     if (mx == null || my == null) return;
 
     const shape = state.crosshairConfig?.shape || 'cross';
-    // BUG FIX: Barva vždy čte z configu. Dříve 'dot' tvar ignoroval barvu a
-    // vždy kreslil '#45f3ff' hardcoded jako fillStyle.
     const color = state.crosshairConfig?.color || '#45f3ff';
+    const ctx   = state.ctx;
 
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    state.ctx.strokeStyle = color;
-    state.ctx.fillStyle = color;
-    state.ctx.lineWidth = 2;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = color;
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 6;
 
     if (shape === 'dot') {
-        state.ctx.beginPath();
-        state.ctx.arc(mx, my, 4, 0, TWO_PI);
-        state.ctx.fill();
+        ctx.beginPath(); ctx.arc(mx, my, 3, 0, TWO_PI); ctx.fill();
     } else if (shape === 'circle') {
-        state.ctx.beginPath();
-        state.ctx.arc(mx, my, 12, 0, TWO_PI);
-        state.ctx.stroke();
+        ctx.beginPath(); ctx.arc(mx, my, 12, 0, TWO_PI); ctx.stroke();
     } else {
-        // cross (výchozí)
-        state.ctx.beginPath();
-        state.ctx.arc(mx, my, 6, 0, TWO_PI);
-        state.ctx.moveTo(mx - 15, my); state.ctx.lineTo(mx - 8, my);
-        state.ctx.moveTo(mx + 8, my);  state.ctx.lineTo(mx + 15, my);
-        state.ctx.moveTo(mx, my - 15); state.ctx.lineTo(mx, my - 8);
-        state.ctx.moveTo(mx, my + 8);  state.ctx.lineTo(mx, my + 15);
-        state.ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mx - 14, my); ctx.lineTo(mx - 6,  my);
+        ctx.moveTo(mx +  6, my); ctx.lineTo(mx + 14, my);
+        ctx.moveTo(mx, my - 14); ctx.lineTo(mx, my -  6);
+        ctx.moveTo(mx, my +  6); ctx.lineTo(mx, my + 14);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(mx, my, 2, 0, TWO_PI); ctx.fill();
     }
-    state.ctx.restore();
+    ctx.shadowBlur = 0;
+    ctx.restore();
 }
 
+// ─── HUDs ────────────────────────────────────────────────────────────────────
+
 function drawTabMenu(playersData) {
-    const playerCount = Object.keys(playersData).length;
-    const w = 500;
-    const h = 80 + playerCount * 40;
+    const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
+    const w = 520, rowH = 44, headerH = 60;
+    const h = headerH + sorted.length * rowH + 16;
+    const ctx = state.ctx;
 
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-    const x = (state.canvas.width - w) / 2;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const x = (state.canvas.width  - w) / 2;
     const y = (state.canvas.height - h) / 2;
 
-    state.ctx.fillStyle = 'rgba(11, 12, 16, 0.92)';
-    state.ctx.fillRect(x, y, w, h);
-    state.ctx.strokeStyle = '#45f3ff';
-    state.ctx.lineWidth = 2;
-    state.ctx.strokeRect(x, y, w, h);
+    // Panel
+    ctx.fillStyle = 'rgba(9,10,15,0.94)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(69,243,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.shadowBlur = 0;
 
-    state.ctx.fillStyle = 'white';
-    state.ctx.font = 'bold 22px "Segoe UI", sans-serif';
-    state.ctx.textAlign = 'center';
-    state.ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, y + 35);
+    // Header
+    ctx.fillStyle = '#45f3ff';
+    ctx.font = 'bold 14px "Orbitron",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.letterSpacing = '3px';
+    ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, y + 36);
 
-    let rowY = y + 70;
-    for (const id in playersData) {
-        const p = playersData[id];
-        state.ctx.fillStyle = p.color || 'white';
-        state.ctx.font = '17px "Segoe UI", sans-serif';
-        state.ctx.textAlign = 'left';
-        state.ctx.fillText(`${p.name || 'Hráč'} ${p.hp > 0 ? '❤️' : '💀'}`, x + 25, rowY);
-        state.ctx.textAlign = 'right';
-        state.ctx.fillStyle = '#f1c40f';
-        state.ctx.fillText(`${p.score || 0} bodů`, x + w - 25, rowY);
-        rowY += 38;
-    }
-    state.ctx.restore();
+    let ry = y + headerH;
+    sorted.forEach((p, i) => {
+        if (i % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillRect(x + 1, ry, w - 2, rowH);
+        }
+        // Colour dot
+        ctx.beginPath();
+        ctx.arc(x + 28, ry + rowH / 2, 8, 0, TWO_PI);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.fill();
+
+        ctx.fillStyle = p.hp > 0 ? '#e8eaf0' : '#555';
+        ctx.font      = '14px "Inter",sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${p.hp > 0 ? '' : '💀 '}${p.name || 'Hráč'}${p.id===socket?.id?' (TY)':''}`, x + 48, ry + rowH / 2 + 5);
+
+        ctx.fillStyle = '#f1c40f';
+        ctx.font      = 'bold 15px "Orbitron",sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${p.score || 0}`, x + w - 20, ry + rowH / 2 + 5);
+        ry += rowH;
+    });
+    ctx.restore();
 }
 
 function drawDomainHUD(serverData) {
     const me = serverData.players && socket ? serverData.players[socket.id] : null;
-    if (!me || !me.domainType) return;
+    if (!me?.domainType) return;
+    const ctx = state.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const x = 20, y = state.canvas.height - 96, w = 230, h = 76;
+    ctx.fillStyle = 'rgba(9,10,15,0.82)';
+    ctx.fillRect(x, y, w, h);
+    const bc = me.domainActive ? '#ff2a7a' : (me.domainCooldown > 0 ? '#333' : '#45f3ff');
+    ctx.strokeStyle = bc;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-    const x = 20;
-    const y = state.canvas.height - 90;
-
-    state.ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    state.ctx.fillRect(x, y, 220, 70);
-    state.ctx.strokeStyle = me.domainActive ? '#ff2a7a' : (me.domainCooldown > 0 ? '#555' : '#45f3ff');
-    state.ctx.lineWidth = 1.5;
-    state.ctx.strokeRect(x, y, 220, 70);
-
-    state.ctx.fillStyle = me.domainActive ? '#ff2a7a' : (me.domainCooldown > 0 ? '#888' : '#45f3ff');
-    state.ctx.font = 'bold 13px "Segoe UI", sans-serif';
-    state.ctx.textAlign = 'left';
-    state.ctx.fillText(`⚡ ${me.domainType.replace(/_/g, ' ')}`, x + 10, y + 22);
+    ctx.fillStyle = bc;
+    ctx.font = 'bold 11px "Orbitron",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`⚡ ${me.domainType.replace(/_/g,' ')}`, x + 10, y + 22);
 
     if (me.domainActive) {
-        state.ctx.fillStyle = '#ff2a7a';
-        state.ctx.fillText('AKTIVNÍ', x + 10, y + 48);
+        ctx.fillStyle = '#ff2a7a';
+        ctx.font = '13px "Inter",sans-serif';
+        ctx.fillText('AKTIVNÍ', x + 10, y + 48);
     } else if (me.domainCooldown > 0) {
-        state.ctx.fillStyle = '#aaa';
-        state.ctx.fillText(`Cooldown: ${(me.domainCooldown / 1000).toFixed(1)}s`, x + 10, y + 48);
+        ctx.fillStyle = '#888';
+        ctx.font = '12px "Inter",sans-serif';
+        ctx.fillText(`Cooldown: ${(me.domainCooldown/1000).toFixed(1)}s`, x + 10, y + 48);
         const ratio = 1 - Math.min(1, me.domainCooldown / 15000);
-        state.ctx.fillStyle = 'rgba(69,243,255,0.15)';
-        state.ctx.fillRect(x + 1, y + 57, 218 * ratio, 11);
+        ctx.fillStyle = 'rgba(69,243,255,0.18)';
+        ctx.fillRect(x + 1, y + 58, (w - 2) * ratio, 16);
     } else {
-        state.ctx.fillStyle = '#45f3ff';
-        state.ctx.fillText('Připraveno  [F]', x + 10, y + 48);
-        state.ctx.fillStyle = 'rgba(69,243,255,0.12)';
-        state.ctx.fillRect(x + 1, y + 57, 218, 11);
+        ctx.fillStyle = '#45f3ff';
+        ctx.font = '12px "Inter",sans-serif';
+        ctx.fillText('Připraveno  [F]', x + 10, y + 48);
+        ctx.fillStyle = 'rgba(69,243,255,0.12)';
+        ctx.fillRect(x + 1, y + 58, w - 2, 16);
     }
-
-    state.ctx.restore();
+    ctx.restore();
 }
 
-// Dash cooldown bar — bottom-right corner, always visible during gameplay
 function drawDashHUD() {
     const dash = getDashState();
+    const ctx  = state.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-    const w  = 160;
-    const x  = state.canvas.width  - w - 20;
-    const y  = state.canvas.height - 50;
-
-    state.ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    state.ctx.fillRect(x, y, w, 30);
+    const w = 170, x = state.canvas.width - w - 20, y = state.canvas.height - 52, h = 32;
+    ctx.fillStyle = 'rgba(9,10,15,0.82)';
+    ctx.fillRect(x, y, w, h);
 
     if (dash.active) {
-        // Dashing — solid cyan fill
-        state.ctx.fillStyle = '#45f3ff';
-        state.ctx.fillRect(x + 1, y + 1, w - 2, 28);
-        state.ctx.fillStyle = '#000';
-        state.ctx.font = 'bold 13px "Segoe UI", sans-serif';
-        state.ctx.textAlign = 'center';
-        state.ctx.fillText('DASH!', x + w / 2, y + 20);
+        ctx.fillStyle = '#45f3ff';
+        ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
+        ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 12px "Orbitron",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚡ DASH', x + w / 2, y + h / 2 + 5);
     } else if (dash.cooldown > 0) {
-        // Cooling down — progress bar
         const ratio = 1 - dash.cooldown / dash.maxCooldown;
-        state.ctx.fillStyle = 'rgba(69,243,255,0.25)';
-        state.ctx.fillRect(x + 1, y + 1, (w - 2) * ratio, 28);
-        state.ctx.fillStyle = '#aaa';
-        state.ctx.font = 'bold 13px "Segoe UI", sans-serif';
-        state.ctx.textAlign = 'center';
-        state.ctx.fillText(`Dash ${(dash.cooldown / 1000).toFixed(1)}s`, x + w / 2, y + 20);
+        ctx.fillStyle = 'rgba(69,243,255,0.2)';
+        ctx.fillRect(x + 1, y + 1, (w - 2) * ratio, h - 2);
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        ctx.fillStyle = '#888';
+        ctx.font = '12px "Orbitron",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Dash  ${(dash.cooldown/1000).toFixed(1)}s`, x + w / 2, y + h / 2 + 4);
     } else {
-        // Ready
-        state.ctx.strokeStyle = '#45f3ff';
-        state.ctx.lineWidth = 1.5;
-        state.ctx.strokeRect(x, y, w, 30);
-        state.ctx.fillStyle = '#45f3ff';
-        state.ctx.font = 'bold 13px "Segoe UI", sans-serif';
-        state.ctx.textAlign = 'center';
-        state.ctx.fillText('DASH  [RMB] ✓', x + w / 2, y + 20);
+        ctx.strokeStyle = '#45f3ff'; ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 6;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#45f3ff';
+        ctx.font = 'bold 12px "Orbitron",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('DASH  [RMB] ✓', x + w / 2, y + h / 2 + 4);
     }
-
-    state.ctx.restore();
+    ctx.restore();
 }
 
-// Shown to the winner while losers are picking cards
 function drawWinnerWaitScreen() {
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    state.ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
-
-    state.ctx.textAlign = 'center';
-    state.ctx.fillStyle = '#f1c40f';
-    state.ctx.font = 'bold 56px "Segoe UI", sans-serif';
-    state.ctx.fillText('🏆 VÍTĚZ KOLA!', state.canvas.width / 2, state.canvas.height / 2 - 30);
-
-    state.ctx.fillStyle = '#aaa';
-    state.ctx.font = '24px "Segoe UI", sans-serif';
-    state.ctx.fillText('Ostatní hráči vybírají kartu…', state.canvas.width / 2, state.canvas.height / 2 + 30);
-    state.ctx.restore();
+    const ctx = state.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 52px "Orbitron",sans-serif';
+    ctx.shadowColor = '#f1c40f'; ctx.shadowBlur = 28;
+    ctx.fillText('🏆 VÍTĚZ KOLA!', state.canvas.width / 2, state.canvas.height / 2 - 20);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '20px "Inter",sans-serif';
+    ctx.fillText('Ostatní hráči vybírají vylepšení…', state.canvas.width / 2, state.canvas.height / 2 + 30);
+    ctx.restore();
 }
+
+// ─── MAIN DRAW FUNCTION ──────────────────────────────────────────────────────
 
 export function drawGame(serverData) {
     if (!state.canvas) {
@@ -337,25 +491,26 @@ export function drawGame(serverData) {
     }
     if (!serverData || !state.ctx || !state.canvas) return;
 
-    const playersData = serverData.leanPlayers || serverData.players || {};
-    state.canvas.style.cursor = (serverData.gameState === 'PLAYING') ? 'none' : 'default';
+    const playersData = serverData.players || {};
+    state.canvas.style.cursor = serverData.gameState === 'PLAYING' ? 'none' : 'default';
 
-    const cw = state.canvas.offsetWidth || window.innerWidth;
+    // Sync canvas resolution to CSS size
+    const cw = state.canvas.offsetWidth  || window.innerWidth;
     const ch = state.canvas.offsetHeight || window.innerHeight;
     if (state.canvas.width !== cw || state.canvas.height !== ch) {
-        state.canvas.width = cw;
-        state.canvas.height = ch;
+        state.canvas.width = cw; state.canvas.height = ch;
     }
 
+    // Clear
     state.ctx.fillStyle = '#000';
-    state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
+    state.ctx.fillRect(0, 0, cw, ch);
 
-    const mapW = CONFIG.MAP_WIDTH || 1920;
+    const mapW = CONFIG.MAP_WIDTH  || 1920;
     const mapH = CONFIG.MAP_HEIGHT || 1080;
 
-    state.gameScale = Math.min(state.canvas.width / mapW, state.canvas.height / mapH);
-    state.gameOffsetX = (state.canvas.width - mapW * state.gameScale) / 2;
-    state.gameOffsetY = (state.canvas.height - mapH * state.gameScale) / 2;
+    state.gameScale   = Math.min(cw / mapW, ch / mapH);
+    state.gameOffsetX = (cw - mapW * state.gameScale) / 2;
+    state.gameOffsetY = (ch - mapH * state.gameScale) / 2;
 
     state.ctx.save();
     state.ctx.translate(state.gameOffsetX, state.gameOffsetY);
@@ -371,6 +526,7 @@ export function drawGame(serverData) {
 
     state.ctx.restore();
 
+    // HUDs (always in screen space)
     if (serverData.gameState === 'PLAYING') {
         if (state.playerInputs?.tab) {
             drawTabMenu(playersData);
@@ -381,22 +537,18 @@ export function drawGame(serverData) {
         }
     }
 
-    // Winner waiting screen — shown to the survivor while others pick cards
     if (serverData.gameState === 'CARD_SELECTION') {
         const me = socket && playersData[socket.id];
-        const iAmWinner = me && me.hp > 0;
-        if (iAmWinner) {
-            drawWinnerWaitScreen();
-        }
-        // Losers see the card selection overlay (handled in network.js / HTML)
+        if (me && me.hp > 0) drawWinnerWaitScreen();
     }
 
     if (serverData.gameState === 'SCOREBOARD') {
-        state.ctx.fillStyle = 'rgba(0,0,0,0.85)';
-        state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
-        state.ctx.fillStyle = 'white';
-        state.ctx.font = 'bold 50px Arial';
-        state.ctx.textAlign = 'center';
-        state.ctx.fillText('KOLO SKONČILO', state.canvas.width / 2, state.canvas.height / 2);
+        const ctx = state.ctx;
+        ctx.fillStyle = 'rgba(0,0,0,0.88)';
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 48px "Orbitron",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('KOLO SKONČILO', cw / 2, ch / 2);
     }
 }

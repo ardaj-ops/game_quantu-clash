@@ -5,64 +5,189 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0b0c10">
     <title>Quantum Clash</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E🎯%3C/text%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2290%22%3E⚡%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="index.css">
 </head>
 <body>
-    <noscript>
-        <div style="color: white; text-align: center; padding: 50px; font-family: sans-serif;">
-            <h2>Pro hraní Quantum Clash si musíš zapnout JavaScript! 🚀</h2>
-        </div>
-    </noscript>
 
-    <div id="menu-screen" class="overlay">
-    <div class="panel">
-        <h1 style="color: #45f3ff; text-align: center;">QUANTUM CLASH</h1>
-        <input type="text" id="player-name" placeholder="Tvoje jméno" style="width: 100%; margin-bottom: 10px; padding: 10px;">
-        <input type="color" id="player-color" value="#45f3ff" style="width: 100%; margin-bottom: 10px; height: 40px;">
-        
-        <button id="btn-create-room" style="width: 100%; padding: 10px; background: #45f3ff; font-weight: bold; margin-bottom: 10px; cursor: pointer;">VYTVOŘIT MÍSTNOST</button>
-        
-        <div style="display: flex; gap: 10px;">
-            <input type="text" id="room-code" placeholder="KÓD MÍSTNOSTI" style="flex: 1; padding: 10px;">
-            <button id="btn-join-room" style="padding: 10px; background: #ff2a7a; color: white; border: none; font-weight: bold; cursor: pointer;">PŘIPOJIT</button>
+<!-- ANIMATED BACKGROUND PARTICLES -->
+<canvas id="bg-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
+
+<!-- ===================== MENU SCREEN ===================== -->
+<div id="menu-screen" class="overlay">
+    <div class="menu-container">
+        <!-- Logo -->
+        <div class="logo-block">
+            <div class="logo-icon">⚡</div>
+            <h1 class="logo-title">QUANTUM<br><span class="logo-accent">CLASH</span></h1>
+            <p class="logo-sub">Multiplayer Arena Shooter</p>
+        </div>
+
+        <!-- Form -->
+        <div class="panel menu-panel">
+            <div class="input-group">
+                <label class="input-label">JMÉNO HRÁČE</label>
+                <input type="text" id="player-name" placeholder="Zadej své jméno…" maxlength="24" autocomplete="off">
+            </div>
+
+            <div class="input-group">
+                <label class="input-label">BARVA</label>
+                <div class="color-row">
+                    <input type="color" id="player-color" value="#45f3ff">
+                    <div class="color-presets">
+                        <div class="color-dot" data-color="#45f3ff" style="background:#45f3ff" title="Cyan"></div>
+                        <div class="color-dot" data-color="#ff2a7a" style="background:#ff2a7a" title="Pink"></div>
+                        <div class="color-dot" data-color="#2ed573" style="background:#2ed573" title="Green"></div>
+                        <div class="color-dot" data-color="#f1c40f" style="background:#f1c40f" title="Yellow"></div>
+                        <div class="color-dot" data-color="#a335ee" style="background:#a335ee" title="Purple"></div>
+                        <div class="color-dot" data-color="#ff6348" style="background:#ff6348" title="Orange"></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-create-room" class="btn btn-primary">
+                <span class="btn-icon">🏠</span> VYTVOŘIT MÍSTNOST
+            </button>
+
+            <div class="divider"><span>nebo</span></div>
+
+            <div class="join-row">
+                <input type="text" id="room-code" placeholder="KÓD MÍSTNOSTI" maxlength="8" autocomplete="off" style="text-transform:uppercase;">
+                <button id="btn-join-room" class="btn btn-secondary">PŘIPOJIT</button>
+            </div>
+        </div>
+
+        <p class="footer-hint">WASD pohyb · LMB střelba · RMB dash · F rituál · R přebíjení · TAB skóre</p>
+    </div>
+</div>
+
+<!-- ===================== LOBBY SCREEN ===================== -->
+<div id="lobby-screen" class="overlay" style="display:none;">
+    <div class="lobby-container">
+        <div class="lobby-header">
+            <div class="lobby-back" id="btn-back-to-menu">← Menu</div>
+            <div class="lobby-title-block">
+                <span class="lobby-label">MÍSTNOST</span>
+                <h2 id="lobby-title" class="lobby-code">----</h2>
+                <button class="copy-btn" id="btn-copy-code" title="Zkopírovat kód">📋</button>
+            </div>
+            <div class="lobby-round-info">Kolo 1</div>
+        </div>
+
+        <div class="lobby-body">
+            <div class="lobby-players-panel panel">
+                <h3 class="panel-title">HRÁČI</h3>
+                <div id="player-list"></div>
+            </div>
+
+            <div class="lobby-info-panel">
+                <div class="panel info-card">
+                    <h3 class="panel-title">OVLÁDÁNÍ</h3>
+                    <div class="controls-grid">
+                        <span class="key">W A S D</span><span>Pohyb</span>
+                        <span class="key">LMB</span><span>Střelba</span>
+                        <span class="key">RMB</span><span>Dash</span>
+                        <span class="key">R</span><span>Přebíjení</span>
+                        <span class="key">F</span><span>Rituál (doména)</span>
+                        <span class="key">TAB</span><span>Tabulka skóre</span>
+                    </div>
+                </div>
+
+                <div class="panel info-card">
+                    <h3 class="panel-title">PRAVIDLA</h3>
+                    <ul class="rules-list">
+                        <li>Poslední přeživší vyhrává kolo</li>
+                        <li>Poražení si vyberou vylepšení</li>
+                        <li>Dosáhni <strong id="max-score-display">25</strong> bodů k vítězství</li>
+                        <li>Zničitelné stěny absorbují střely</li>
+                    </ul>
+                </div>
+
+                <button id="btn-ready" class="btn btn-primary btn-ready-big">
+                    PŘIPRAVIT SE
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
-    <div id="lobby-screen" class="overlay" style="display: none;">
-    <div class="panel" style="min-width: 350px;">
-        <h2 id="lobby-title" style="color: #45f3ff; text-align: center;">LOBBY: ----</h2>
-        
-        <div id="player-list" style="margin: 20px 0; min-height: 100px; display: flex; flex-direction: column; gap: 10px;"></div>
-        
-        <button id="btn-ready" style="width: 100%; padding: 15px; background: #45f3ff; font-weight: bold; cursor: pointer;">PŘIPRAVIT SE</button>
+<!-- ===================== GAME SCREEN ===================== -->
+<div id="game-screen" style="display:none; position:relative;">
+    <!-- HTML HUD (ammo + hp, positioned by CSS) -->
+    <div id="html-hud" style="position:absolute;bottom:24px;right:24px;z-index:10;text-align:right;pointer-events:none;font-family:'Orbitron',sans-serif;">
+        <div id="hud-hp-bar-wrap" style="margin-bottom:6px;">
+            <div id="hud-hp-label" style="font-size:11px;color:#888;letter-spacing:1px;margin-bottom:3px;">HP</div>
+            <div style="background:rgba(0,0,0,0.5);border:1px solid #333;border-radius:4px;width:180px;height:10px;overflow:hidden;">
+                <div id="hud-hp-bar" style="height:100%;width:100%;background:#2ed573;transition:width 0.15s;border-radius:4px;"></div>
+            </div>
+            <div id="hud-hp" style="font-size:13px;color:#2ed573;margin-top:2px;">100 / 100</div>
+        </div>
+        <div id="hud-ammo" style="font-size:28px;font-weight:700;color:#45f3ff;letter-spacing:2px;">10 / 10</div>
+    </div>
+    <canvas id="game" style="background:#000;width:100vw;height:100vh;display:block;"></canvas>
+</div>
+
+<!-- ===================== CARD SCREEN ===================== -->
+<div id="card-screen" class="overlay" style="display:none;">
+    <div class="card-screen-inner">
+        <div class="card-screen-header">
+            <h1 class="card-screen-title">⚔️ VÝBĚR VYLEPŠENÍ</h1>
+            <p class="card-screen-sub">Vyber jednu kartu pro příští kolo</p>
+        </div>
+        <div id="card-container"></div>
     </div>
 </div>
-    <div id="game-screen" style="display: none;">
-        <div style="position: absolute; bottom: 20px; right: 20px; z-index: 10; color: white; text-align: right; font-family: sans-serif; text-shadow: 0 0 5px black; pointer-events: none;">
-            <h2 style="margin: 0; font-size: 32px;"><span id="hud-ammo">0 / 0</span></h2>
-            <h3 style="margin: 0; color: #ff2a7a;">HP: <span id="hud-hp">100 / 100</span></h3>
-        </div>
-        <canvas id="game" style="background: #000; width: 100vw; height: 100vh; display: block;"></canvas>
-    </div>
 
-    <div id="card-screen" class="overlay" style="display: none; background: rgba(5, 6, 8, 0.9); backdrop-filter: blur(8px);">
-        <div style="text-align: center; width: 100%;">
-            <h1 style="color: #ff2a7a; font-size: 3rem; margin-bottom: 40px; text-shadow: 0 0 20px rgba(255,42,122,0.5);">VÝBĚR KARET</h1>
-            <div id="card-container" style="display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; max-width: 1200px; margin: 0 auto; perspective: 1000px;"></div>
-        </div>
+<!-- ===================== GAMEOVER SCREEN ===================== -->
+<div id="gameover-screen" class="overlay" style="display:none;">
+    <div class="panel gameover-panel">
+        <div class="gameover-trophy">🏆</div>
+        <h1 class="gameover-title">KONEC HRY</h1>
+        <h2 id="winner-text" style="color:#45f3ff;margin:10px 0 30px;font-family:'Orbitron',sans-serif;"></h2>
+        <button onclick="location.reload()" class="btn btn-primary">↩ Zpět do menu</button>
     </div>
+</div>
 
-    <div id="gameover-screen" class="overlay" style="display: none;">
-        <div class="panel" style="text-align: center;">
-            <h1 style="color: #f1c40f;">KONEC HRY</h1>
-            <h2 id="winner-text" style="color: white; margin-bottom: 20px;"></h2>
-            <button onclick="location.reload()" style="padding: 10px 20px; background: #45f3ff; font-weight: bold; cursor: pointer;">Zpět do menu</button>
-        </div>
-    </div>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="app.js"></script>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script type="module" src="app.js"></script>
+<!-- Background particle animation -->
+<script>
+(function(){
+    const c = document.getElementById('bg-canvas');
+    if(!c) return;
+    const ctx = c.getContext('2d');
+    const particles = [];
+    function resize(){ c.width=innerWidth; c.height=innerHeight; }
+    resize();
+    window.addEventListener('resize', resize);
+    for(let i=0;i<60;i++){
+        particles.push({
+            x: Math.random()*innerWidth,
+            y: Math.random()*innerHeight,
+            r: Math.random()*1.5+0.3,
+            vx: (Math.random()-0.5)*0.3,
+            vy: (Math.random()-0.5)*0.3,
+            a: Math.random()
+        });
+    }
+    function frame(){
+        ctx.clearRect(0,0,c.width,c.height);
+        particles.forEach(p=>{
+            p.x+=p.vx; p.y+=p.vy;
+            if(p.x<0) p.x=c.width; if(p.x>c.width) p.x=0;
+            if(p.y<0) p.y=c.height; if(p.y>c.height) p.y=0;
+            ctx.beginPath();
+            ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+            ctx.fillStyle=`rgba(69,243,255,${p.a*0.4})`;
+            ctx.fill();
+        });
+        requestAnimationFrame(frame);
+    }
+    frame();
+})();
+</script>
 </body>
 </html>
