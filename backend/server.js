@@ -87,6 +87,7 @@ const CONFIG = {
     BASE_AMMO:        loadedConfig.BASE_AMMO        || 10,
     BASE_RELOAD_TIME: loadedConfig.BASE_RELOAD_TIME || 1500,
     PLAYER_RADIUS:    loadedConfig.PLAYER_RADIUS    || 20,
+    DASH_DURATION:    loadedConfig.DASH_DURATION    || 200,
     BULLET_RADIUS:    5
 };
 
@@ -97,16 +98,10 @@ const rooms     = {};
 // ---------------------------------------------------------------------------
 // HELPERS
 // ---------------------------------------------------------------------------
-
 function isValidNumber(v) {
     return typeof v === 'number' && isFinite(v) && !isNaN(v);
 }
 
-/**
- * Reset a single player's hp/ammo/state and assign a safe spawn point.
- * usedPositions is mutated — the new spawn is pushed to it so subsequent
- * calls within the same round don't overlap.
- */
 function resetPlayer(p, room, usedPositions = []) {
     p.hp          = p.maxHp;
     p.ammo        = p.isRussianRoulette ? 6 : p.maxAmmo;
@@ -114,17 +109,13 @@ function resetPlayer(p, room, usedPositions = []) {
     p.isInvisible = false;
     p.domainActive = false;
     p.domainTimer  = 0;
-    // domainCooldown intentionally NOT reset — dying shouldn't skip the cooldown
 
     const playerIndex = Object.keys(room.players).indexOf(p.id);
     const spawn = gameHelper.getValidSpawnPoint
         ? gameHelper.getValidSpawnPoint(
-            playerIndex,
-            CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
-            room.map?.obstacles  || [],
-            room.map?.breakables || [],
-            p.playerRadius || CONFIG.PLAYER_RADIUS,
-            usedPositions   // ← pass already-used spots so no two players share one
+            playerIndex, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
+            room.map?.obstacles || [], room.map?.breakables || [],
+            p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions
           )
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
 
@@ -133,39 +124,26 @@ function resetPlayer(p, room, usedPositions = []) {
     usedPositions.push({ x: spawn.x, y: spawn.y });
 }
 
-/**
- * Reset all players for a new round, assigning unique spawn points.
- */
 function resetAllPlayers(room) {
     const usedPositions = [];
     Object.values(room.players).forEach(p => resetPlayer(p, room, usedPositions));
 }
 
 // ---------------------------------------------------------------------------
-// CARD SELECTION  (LOSERS ONLY)
+// CARD SELECTION — LOSERS ONLY
 // ---------------------------------------------------------------------------
-/**
- * NEW MECHANIC: Only players who DIED during the round get to pick a card.
- * The winner keeps their build as-is (they earned it by surviving).
- *
- * room.loserIds  — Set of socket IDs that died this round (populated in bulletHitPlayer)
- * room.loserCardsPicked — Set of IDs that have already picked this phase
- */
 function initiateCardSelection(room) {
-    if (room.gameState === 'CARD_SELECTION') return; // prevent double-trigger
+    if (room.gameState === 'CARD_SELECTION') return;
     room.gameState        = 'CARD_SELECTION';
     room.loserCardsPicked = new Set();
 
     const loserIds = room.loserIds || new Set();
-
     if (loserIds.size === 0) {
-        // No one died (shouldn't normally happen) — skip straight to new round
-        console.log('⚠️ initiateCardSelection: nikdo nezemřel, přeskočení výběru karet.');
         setTimeout(() => startNewRound(room), 500);
         return;
     }
 
-    // Send card selection ONLY to losers
+    // Send cards only to losers
     loserIds.forEach(id => {
         const player = room.players[id];
         if (!player) return;
@@ -175,20 +153,24 @@ function initiateCardSelection(room) {
         io.to(id).emit('showCardSelection', selection);
     });
 
-    // Tell everyone the state changed (so winner sees a "waiting" screen)
+    // FIX: Tell everyone about the card selection phase, including who the losers are
+    // so the winner can display a proper waiting screen
+    const loserNames = [...loserIds]
+        .map(id => room.players[id]?.name || '?')
+        .filter(Boolean);
+
     io.to(room.id).emit('gameStateChanged', {
         state:       'CARD_SELECTION',
-        losersCount: loserIds.size
+        losersCount: loserIds.size,
+        loserNames,
+        pickedCount: 0
     });
 }
 
-// ---------------------------------------------------------------------------
-// NEW ROUND
-// ---------------------------------------------------------------------------
 function startNewRound(room) {
-    room.round        = (room.round || 1) + 1;
-    room.gameState    = 'PLAYING';
-    room.loserIds     = new Set(); // reset for the new round
+    room.round            = (room.round || 1) + 1;
+    room.gameState        = 'PLAYING';
+    room.loserIds         = new Set();
     room.loserCardsPicked = new Set();
 
     room.map = gameHelper.generateMap
@@ -199,11 +181,46 @@ function startNewRound(room) {
 
     io.to(room.id).emit('mapUpdate', room.map);
     io.to(room.id).emit('gameStateChanged', {
-        state:     'PLAYING',
-        round:     room.round,
-        obstacles: room.map.obstacles,
-        breakables:room.map.breakables
+        state: 'PLAYING', round: room.round,
+        obstacles: room.map.obstacles, breakables: room.map.breakables
     });
+}
+
+// Helper: build the leanPlayer object to broadcast
+function buildLean(p) {
+    return {
+        id:           p.id,
+        name:         p.name,
+        color:        p.color,
+        team:         p.team,
+        x:            p.x,
+        y:            p.y,
+        hp:           Math.round(p.hp),
+        maxHp:        p.maxHp,
+        aimAngle:     p.aimAngle,
+        ammo:         p.ammo,
+        maxAmmo:      p.maxAmmo,
+        isReloading:  p.isReloading,
+        isInvisible:  p.isInvisible,          // FIX: was missing — needed for invisOnDash
+        domainActive: p.domainActive,
+        domainType:   p.domainType,
+        domainCooldown: p.domainCooldown,
+        domainRadius: p.domainRadius,
+        score:        p.score,
+        moveSpeed:    p.moveSpeed,
+        damage:       p.damage,
+        fireRate:     p.fireRate,
+        bulletSpeed:  p.bulletSpeed,
+        bounces:      p.bounces,
+        pierce:       p.pierce,
+        lifesteal:    p.lifesteal,
+        playerRadius: p.playerRadius,
+        bulletSize:   p.bulletSize,
+        multishot:    p.multishot,
+        spread:       p.spread,
+        isJackpotActive: p.isJackpotActive,
+        pickedCards:  p.pickedCards || []     // FIX: send card history for scoreboard
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,21 +229,25 @@ function startNewRound(room) {
 io.on('connection', (socket) => {
 
     socket.on('createRoom', (data) => {
-        const roomId    = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const roomId     = Math.random().toString(36).substring(2, 7).toUpperCase();
         const initialMap = gameHelper.generateMap
             ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
             : { obstacles: [], breakables: [] };
 
         rooms[roomId] = {
-            id: roomId,
-            players:      {},
-            gameState:    'LOBBY',
-            round:        1,
-            map:          initialMap,
-            teamScores:   { blue: 0, red: 0 },
-            settings:     { maxRounds: CONFIG.MAX_SCORE, gameMode: 'FFA' },
-            loserIds:     new Set(),   // tracks who died THIS round
-            loserCardsPicked: new Set()
+            id:        roomId,
+            creatorId: socket.id,          // FIX: track who created the room
+            players:   {},
+            gameState: 'LOBBY',
+            round:     1,
+            map:       initialMap,
+            settings:  {
+                maxRounds:   CONFIG.MAX_SCORE,
+                gameMode:    'FFA',
+                startingHp:  CONFIG.BASE_HP,
+            },
+            loserIds:          new Set(),
+            loserCardsPicked:  new Set()
         };
         socket.emit('roomCreated', { roomId });
         joinRoom(socket, roomId, data);
@@ -251,46 +272,61 @@ io.on('connection', (socket) => {
         const safeColor = /^#[0-9A-Fa-f]{6}$/.test(data.color) ? data.color : '#45f3ff';
 
         room.players[socket.id] = {
-            id:       socket.id,
-            name:     safeName,
-            color:    safeColor,
-            cosmetic: 'none',
-            team:     Object.keys(room.players).length % 2 === 0 ? 'blue' : 'red',
+            id: socket.id, name: safeName, color: safeColor, cosmetic: 'none',
+            team: Object.keys(room.players).length % 2 === 0 ? 'blue' : 'red',
             x: 0, y: 0,
-            hp: CONFIG.BASE_HP,  maxHp: CONFIG.BASE_HP,
+            hp: room.settings.startingHp || CONFIG.BASE_HP,
+            maxHp: room.settings.startingHp || CONFIG.BASE_HP,
             ammo: CONFIG.BASE_AMMO, maxAmmo: CONFIG.BASE_AMMO,
-            moveSpeed:   CONFIG.BASE_MOVE_SPEED,
-            damage:      CONFIG.BASE_DAMAGE,
-            fireRate:    CONFIG.BASE_FIRE_RATE,
-            bulletSpeed: CONFIG.BASE_BULLET_SPEED,
-            reloadTime:  CONFIG.BASE_RELOAD_TIME,
+            moveSpeed: CONFIG.BASE_MOVE_SPEED, damage: CONFIG.BASE_DAMAGE,
+            fireRate: CONFIG.BASE_FIRE_RATE, bulletSpeed: CONFIG.BASE_BULLET_SPEED,
+            reloadTime: CONFIG.BASE_RELOAD_TIME,
             lifesteal: 0, bounces: 0, pierce: 0,
-            playerRadius: CONFIG.PLAYER_RADIUS,
-            bulletSize:   CONFIG.BULLET_RADIUS,
+            playerRadius: CONFIG.PLAYER_RADIUS, bulletSize: CONFIG.BULLET_RADIUS,
             multishot: 1, spread: 0,
-            score: 0, isReady: false,
-            hpRegen: 0,
-            isRussianRoulette: false,
-            domainType:   null,
-            domainActive: false,
-            domainCooldown: 0,
-            domainTimer:  0,
-            domainRadius: 200,
-            isJackpotActive: false,
-            jackpotTimer: 0,
-            jackpotPity:  0,
-            baseSpeed:    CONFIG.BASE_MOVE_SPEED,
-            _lastSyncTime: 0
+            score: 0, isReady: false, hpRegen: 0,
+            isRussianRoulette: false, invisOnDash: false, cloneOnDash: false,
+            domainType: null, domainActive: false, domainCooldown: 0,
+            domainTimer: 0, domainRadius: 200, isJackpotActive: false,
+            jackpotTimer: 0, jackpotPity: 0, baseSpeed: CONFIG.BASE_MOVE_SPEED,
+            isInvisible: false, _lastSyncTime: 0,
+            pickedCards: []      // FIX: track cards this player has chosen
         };
 
         const usedPositions = Object.values(room.players)
             .filter(p => p.id !== socket.id && p.x !== 0)
             .map(p => ({ x: p.x, y: p.y }));
-
         resetPlayer(room.players[socket.id], room, usedPositions);
+
+        // Tell the joining player if they are the creator (so UI shows settings)
+        socket.emit('roomInfo', {
+            isCreator: room.creatorId === socket.id,
+            settings:  room.settings
+        });
+
         io.to(roomId).emit('updatePlayerList', Object.values(room.players));
         io.to(roomId).emit('mapUpdate', room.map);
     }
+
+    // FIX: Creator can change match settings
+    socket.on('changeSettings', (newSettings) => {
+        const room = rooms[socket.roomId];
+        if (!room || room.creatorId !== socket.id) return;
+        if (room.gameState !== 'LOBBY') return;
+
+        if (isValidNumber(newSettings.maxRounds) && newSettings.maxRounds >= 1 && newSettings.maxRounds <= 100) {
+            room.settings.maxRounds = newSettings.maxRounds;
+        }
+        if (['FFA', 'TDM'].includes(newSettings.gameMode)) {
+            room.settings.gameMode = newSettings.gameMode;
+        }
+        if (isValidNumber(newSettings.startingHp) && newSettings.startingHp >= 30 && newSettings.startingHp <= 600) {
+            room.settings.startingHp = newSettings.startingHp;
+        }
+
+        // Broadcast new settings to all players
+        io.to(room.id).emit('settingsChanged', room.settings);
+    });
 
     socket.on('playerReady', () => {
         const room = rooms[socket.roomId];
@@ -305,37 +341,39 @@ io.on('connection', (socket) => {
             room.gameState = 'PLAYING';
             room.loserIds  = new Set();
             io.to(room.id).emit('gameStateChanged', {
-                state:      'PLAYING',
+                state: 'PLAYING',
                 obstacles:  room.map.obstacles,
                 breakables: room.map.breakables
             });
         }
     });
 
-    // CARD SELECTION — only losers can pick; winner's selectCard is ignored
+    // FIX: Only losers pick cards; track progress; broadcast who picked
     socket.on('selectCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'CARD_SELECTION') return;
+        if (!room.loserIds?.has(socket.id)) return; // winner can't pick
+        if (room.loserCardsPicked?.has(socket.id)) return; // no double-pick
 
-        // Only losers may pick a card
-        if (!room.loserIds || !room.loserIds.has(socket.id)) {
-            console.log(`⚠️ selectCard od výherce ${socket.id} — ignorováno.`);
-            return;
-        }
-
-        // Prevent double-picking
         if (!room.loserCardsPicked) room.loserCardsPicked = new Set();
-        if (room.loserCardsPicked.has(socket.id)) return;
         room.loserCardsPicked.add(socket.id);
 
         const player = room.players[socket.id];
         const card   = availableCards.find(c => c.name === cardName);
         if (player && card && typeof card.apply === 'function') {
             card.apply(player);
-            console.log(`✅ ${player.name} zvolil kartu: ${cardName}`);
+            // FIX: Record card in player's history for scoreboard
+            player.pickedCards.push({ name: card.name, rarity: card.rarity });
+            console.log(`✅ ${player.name} → ${cardName}`);
         }
 
-        // Start next round when ALL losers have picked
+        // FIX: Broadcast pick progress to all (winner sees "X/Y players chose")
+        io.to(room.id).emit('cardPickProgress', {
+            pickedCount: room.loserCardsPicked.size,
+            totalCount:  room.loserIds.size,
+            pickerName:  player?.name || '?'
+        });
+
         if (room.loserCardsPicked.size >= room.loserIds.size) {
             startNewRound(room);
         }
@@ -348,24 +386,19 @@ io.on('connection', (socket) => {
         if (p.hp <= 0) return;
 
         const now = Date.now();
-        // Rate-limit: max 120 syncs/sec
         if (now - (p._lastSyncTime || 0) < 8) return;
         p._lastSyncTime = now;
 
         if (isValidNumber(data.x) && isValidNumber(data.y)) {
-            // Clamp to map bounds server-side
             const r = p.playerRadius || CONFIG.PLAYER_RADIUS;
             p.x = Math.max(r, Math.min(CONFIG.MAP_WIDTH  - r, data.x));
             p.y = Math.max(r, Math.min(CONFIG.MAP_HEIGHT - r, data.y));
         }
         if (isValidNumber(data.aimAngle)) p.aimAngle = data.aimAngle;
 
-        // Ritual — rising edge only
-        if (data.ritualRequested && DomainManager && typeof DomainManager.activateDomain === 'function') {
+        if (data.ritualRequested && DomainManager?.activateDomain) {
             DomainManager.activateDomain(p);
         }
-
-        // Reload
         if (data.isReloading && !p.isReloading) {
             const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
             if (p.ammo < fullAmmo) {
@@ -378,12 +411,20 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Dash — server just rebroadcasts for visual effect; movement is client-side
+    // FIX: Handle invisOnDash card effect server-side
     socket.on('Dash', () => {
         const room = rooms[socket.roomId];
-        if (room && room.players[socket.id]?.hp > 0) {
-            socket.to(socket.roomId).emit('enemyDash', socket.id);
+        if (!room || !room.players[socket.id]?.hp) return;
+        const p = room.players[socket.id];
+
+        if (p.invisOnDash) {
+            p.isInvisible = true;
+            setTimeout(() => {
+                const rp = rooms[socket.roomId]?.players[socket.id];
+                if (rp) rp.isInvisible = false;
+            }, CONFIG.DASH_DURATION || 200);
         }
+        socket.to(socket.roomId).emit('enemyDash', socket.id);
     });
 
     socket.on('reload', () => {
@@ -391,7 +432,6 @@ io.on('connection', (socket) => {
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         if (p.hp <= 0 || p.isReloading) return;
-
         const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
         if (p.ammo < fullAmmo) {
             p.isReloading = true;
@@ -407,7 +447,6 @@ io.on('connection', (socket) => {
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         if (p.hp <= 0) return;
-
         const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
         if (p.ammo > 0 && !p.isReloading) {
             p.ammo--;
@@ -422,10 +461,26 @@ io.on('connection', (socket) => {
         if (bullets) socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
+    // FIX: Handle breakable wall damage from bullets
+    socket.on('bulletHitWall', (data) => {
+        const room = rooms[socket.roomId];
+        if (!room || !room.map?.breakables) return;
+        const wall = room.map.breakables.find(w => w.id === data.wallId && !w.destroyed);
+        if (!wall) return;
+
+        wall.hp = Math.max(0, (wall.hp || 1) - 1);
+        if (wall.hp <= 0) {
+            wall.destroyed = true;
+            wall.hp = 0;
+        }
+
+        // Broadcast updated state to all players in room
+        io.to(room.id).emit('breakableUpdate', [{ id: wall.id, hp: wall.hp, destroyed: wall.destroyed }]);
+    });
+
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
-
         const target  = room.players[data.targetId];
         const shooter = room.players[socket.id];
         if (!target || target.hp <= 0) return;
@@ -437,7 +492,6 @@ io.on('connection', (socket) => {
         } else {
             dmg = Math.min(Number(data.damage) || 20, 9999);
         }
-
         target.hp = Math.max(0, target.hp - dmg);
 
         if (shooter && isValidNumber(data.lifesteal) && data.lifesteal > 0) {
@@ -446,19 +500,13 @@ io.on('connection', (socket) => {
 
         if (target.hp <= 0) {
             if (shooter) shooter.score++;
-
-            // CARD MECHANIC: register this player as a loser for this round
             if (!room.loserIds) room.loserIds = new Set();
             room.loserIds.add(target.id);
-
-            // Move dead player off-screen
             target.x = -9999;
             target.y = -9999;
 
-            // Check if only 0 or 1 players remain alive
-            const alivePlayers = Object.values(room.players).filter(p => p.hp > 0);
-            if (alivePlayers.length <= 1 && room.gameState === 'PLAYING') {
-                // Small delay so the killing blow renders on all clients
+            const alive = Object.values(room.players).filter(p => p.hp > 0);
+            if (alive.length <= 1 && room.gameState === 'PLAYING') {
                 setTimeout(() => initiateCardSelection(room), 800);
             }
         }
@@ -468,11 +516,10 @@ io.on('connection', (socket) => {
         const room = rooms[socket.roomId];
         if (!room) return;
         delete room.players[socket.id];
-        if (room.loserIds) room.loserIds.delete(socket.id);
+        room.loserIds?.delete(socket.id);
         io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
         if (Object.keys(room.players).length === 0) {
             delete rooms[socket.roomId];
-            console.log(`🗑️ Místnost ${socket.roomId} smazána.`);
         }
     });
 });
@@ -486,56 +533,18 @@ setInterval(() => {
         if (room.gameState !== 'PLAYING') continue;
 
         const allPlayers = Object.values(room.players);
-
-        if (DomainManager && typeof DomainManager.updateDomains === 'function') {
+        if (DomainManager?.updateDomains) {
             DomainManager.updateDomains(room.players, allPlayers, [], TICK_RATE);
         }
 
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
-
-            // HP regen (Ještěří krev card)
             if (p.hpRegen > 0 && p.hp > 0 && p.hp < p.maxHp) {
                 p.hp = Math.min(p.maxHp, p.hp + p.hpRegen * (TICK_RATE / 1000));
             }
-
-            // Jackpot: infinite ammo during buff
-            if (p.isJackpotActive) {
-                p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
-            }
-
-            leanPlayers[id] = {
-                id:           p.id,
-                name:         p.name,
-                color:        p.color,
-                team:         p.team,
-                x:            p.x,
-                y:            p.y,
-                hp:           Math.round(p.hp),
-                maxHp:        p.maxHp,
-                aimAngle:     p.aimAngle,
-                ammo:         p.ammo,
-                maxAmmo:      p.maxAmmo,
-                isReloading:  p.isReloading,
-                domainActive: p.domainActive,
-                domainType:   p.domainType,
-                domainCooldown: p.domainCooldown,  // ← needed for HUD
-                domainRadius: p.domainRadius,      // ← needed for domain ring
-                score:        p.score,
-                moveSpeed:    p.moveSpeed,
-                damage:       p.damage,
-                fireRate:     p.fireRate,
-                bulletSpeed:  p.bulletSpeed,
-                bounces:      p.bounces,
-                pierce:       p.pierce,
-                lifesteal:    p.lifesteal,
-                playerRadius: p.playerRadius,
-                bulletSize:   p.bulletSize,
-                multishot:    p.multishot,
-                spread:       p.spread,
-                isJackpotActive: p.isJackpotActive
-            };
+            if (p.isJackpotActive) p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
+            leanPlayers[id] = buildLean(p);
         }
 
         io.to(room.id).volatile.emit('gameUpdate', {
@@ -550,5 +559,4 @@ setInterval(() => {
 
 server.listen(PORT, () => {
     console.log(`\n🚀 SERVER QUANTUM CLASH BĚŽÍ NA PORTU ${PORT}`);
-    console.log(`----------------------------------------`);
 });
