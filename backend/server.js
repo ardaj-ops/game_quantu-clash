@@ -1,11 +1,9 @@
 // server.js
 process.on('uncaughtException', (err) => {
-    console.error('\n🚨 NEOŠETŘENÁ KRITICKÁ CHYBA SERVERU:');
-    console.error(err.name, ':', err.message);
-    console.error(err.stack);
+    console.error('\n🚨 SERVER CRASH:', err.name, err.message, err.stack);
 });
 process.on('unhandledRejection', (reason) => {
-    console.error('\n🚨 NEOŠETŘENÝ PROMISE REJECTION:', reason);
+    console.error('\n🚨 PROMISE REJECTION:', reason);
 });
 
 const express = require('express');
@@ -20,9 +18,9 @@ let gameHelper = {};
 try {
     DomainManager = require('./domainManager.js');
     gameHelper    = require('./gameHelper.js') || {};
-    console.log('✅ DomainManager a gameHelper načteny.');
+    console.log('✅ Helpery načteny.');
 } catch (err) {
-    console.error('🚨 CHYBA PŘI NAČÍTÁNÍ HELPERŮ:', err.message);
+    console.error('🚨 HELPERY:', err.message);
 }
 
 const app = express();
@@ -32,36 +30,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
-    pingInterval: 2000,
-    pingTimeout: 5000
+    pingInterval: 2000, pingTimeout: 5000
 });
 
-// ---------------------------------------------------------------------------
-// SHARED FILE LOADER
-// ---------------------------------------------------------------------------
+// ─── SHARED FILE LOADER ──────────────────────────────────────────────────────
 const loadSharedFile = (fileName, expectedVar) => {
-    const pathsToTry = [
+    const paths = [
         path.join(__dirname, 'public', fileName),
         path.join(__dirname, 'public', 'game', fileName),
         path.join(__dirname, fileName)
     ];
-    for (const p of pathsToTry) {
+    for (const p of paths) {
         if (!fs.existsSync(p)) continue;
         try {
-            const raw = fs.readFileSync(p, 'utf-8');
-            const sanitized = raw
+            const sanitized = fs.readFileSync(p, 'utf-8')
                 .replace(/^\s*export\s+(const|let|var|function|class)\s+/gm, '$1 ')
                 .replace(/^\s*export\s+default\s+/gm, '')
                 .replace(/^\s*export\s*\{[^}]*\}\s*;?\s*$/gm, '')
                 .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '');
-            const fn = new Function(`
-                ${sanitized}
-                if (typeof ${expectedVar} !== 'undefined') return ${expectedVar};
-                return null;
-            `);
+            const fn = new Function(`${sanitized}\nif(typeof ${expectedVar}!=='undefined')return ${expectedVar};return null;`);
             return fn();
         } catch (e) {
-            console.error(`❌ loadSharedFile error in ${p}:`, e.message);
+            console.error(`❌ loadSharedFile ${p}:`, e.message);
             return null;
         }
     }
@@ -71,7 +61,7 @@ const loadSharedFile = (fileName, expectedVar) => {
 const loadedConfig   = loadSharedFile('gameConfig.js', 'CONFIG') || {};
 const rawCards       = loadSharedFile('cards.js', 'availableCards');
 const availableCards = Array.isArray(rawCards) ? rawCards : [];
-console.log(`✅ Načteno ${availableCards.length} karet.`);
+console.log(`✅ ${availableCards.length} karet načteno.`);
 
 const CONFIG = {
     MAP_WIDTH:        loadedConfig.MAP_WIDTH        || 1920,
@@ -95,47 +85,78 @@ const PORT      = process.env.PORT || 3000;
 const TICK_RATE = 1000 / CONFIG.FPS;
 const rooms     = {};
 
-// ---------------------------------------------------------------------------
-// HELPERS
-// ---------------------------------------------------------------------------
-function isValidNumber(v) {
-    return typeof v === 'number' && isFinite(v) && !isNaN(v);
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function isValidNumber(v) { return typeof v === 'number' && isFinite(v) && !isNaN(v); }
+
+function makeDefaultPlayer(id, name, color, room) {
+    return {
+        id, name, color, cosmetic: 'none',
+        team: Object.keys(room.players).length % 2 === 0 ? 'blue' : 'red',
+        x: 0, y: 0,
+        hp: room.settings.startingHp, maxHp: room.settings.startingHp,
+        ammo: CONFIG.BASE_AMMO, maxAmmo: CONFIG.BASE_AMMO,
+        moveSpeed: CONFIG.BASE_MOVE_SPEED, damage: CONFIG.BASE_DAMAGE,
+        fireRate: CONFIG.BASE_FIRE_RATE, bulletSpeed: CONFIG.BASE_BULLET_SPEED,
+        reloadTime: CONFIG.BASE_RELOAD_TIME,
+        lifesteal: 0, bounces: 0, pierce: 0,
+        playerRadius: CONFIG.PLAYER_RADIUS, bulletSize: CONFIG.BULLET_RADIUS,
+        multishot: 1, spread: 0,
+        score: 0, isReady: false, hpRegen: 0,
+        isRussianRoulette: false, invisOnDash: false, cloneOnDash: false,
+        domainType: null, domainActive: false, domainCooldown: 0,
+        domainTimer: 0, domainRadius: 200, isJackpotActive: false,
+        jackpotTimer: 0, jackpotPity: 0, baseSpeed: CONFIG.BASE_MOVE_SPEED,
+        isInvisible: false, _lastSyncTime: 0,
+        pickedCards: []  // card history — shown in scoreboard
+    };
 }
 
 function resetPlayer(p, room, usedPositions = []) {
-    p.hp          = p.maxHp;
-    p.ammo        = p.isRussianRoulette ? 6 : p.maxAmmo;
-    p.isReloading = false;
-    p.isInvisible = false;
-    p.domainActive = false;
-    p.domainTimer  = 0;
+    p.hp = p.maxHp;
+    p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
+    p.isReloading = false; p.isInvisible = false;
+    p.domainActive = false; p.domainTimer = 0;
 
-    const playerIndex = Object.keys(room.players).indexOf(p.id);
+    const idx = Object.keys(room.players).indexOf(p.id);
     const spawn = gameHelper.getValidSpawnPoint
-        ? gameHelper.getValidSpawnPoint(
-            playerIndex, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
+        ? gameHelper.getValidSpawnPoint(idx, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
             room.map?.obstacles || [], room.map?.breakables || [],
-            p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions
-          )
+            p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions)
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
-
-    p.x = spawn.x;
-    p.y = spawn.y;
+    p.x = spawn.x; p.y = spawn.y;
     usedPositions.push({ x: spawn.x, y: spawn.y });
 }
 
 function resetAllPlayers(room) {
-    const usedPositions = [];
-    Object.values(room.players).forEach(p => resetPlayer(p, room, usedPositions));
+    const used = [];
+    Object.values(room.players).forEach(p => resetPlayer(p, room, used));
 }
 
-// ---------------------------------------------------------------------------
-// CARD SELECTION — LOSERS ONLY
-// ---------------------------------------------------------------------------
+function buildLean(p) {
+    return {
+        id: p.id, name: p.name, color: p.color, team: p.team,
+        x: p.x, y: p.y, hp: Math.round(p.hp), maxHp: p.maxHp,
+        aimAngle: p.aimAngle, ammo: p.ammo, maxAmmo: p.maxAmmo,
+        isReloading: p.isReloading, isInvisible: p.isInvisible,
+        domainActive: p.domainActive, domainType: p.domainType,
+        domainCooldown: p.domainCooldown, domainRadius: p.domainRadius,
+        score: p.score, moveSpeed: p.moveSpeed, damage: p.damage,
+        fireRate: p.fireRate, bulletSpeed: p.bulletSpeed,
+        bounces: p.bounces, pierce: p.pierce, lifesteal: p.lifesteal,
+        playerRadius: p.playerRadius, bulletSize: p.bulletSize,
+        multishot: p.multishot, spread: p.spread,
+        isJackpotActive: p.isJackpotActive,
+        pickedCards: p.pickedCards || []
+    };
+}
+
+// ─── CARD SELECTION ───────────────────────────────────────────────────────────
 function initiateCardSelection(room) {
     if (room.gameState === 'CARD_SELECTION') return;
     room.gameState        = 'CARD_SELECTION';
     room.loserCardsPicked = new Set();
+    // Track which cards each loser is currently being shown (for spectator view)
+    room.loserCardOptions = {};
 
     const loserIds = room.loserIds || new Set();
     if (loserIds.size === 0) {
@@ -143,26 +164,31 @@ function initiateCardSelection(room) {
         return;
     }
 
-    // Send cards only to losers
     loserIds.forEach(id => {
         const player = room.players[id];
         if (!player) return;
         const selection = gameHelper.generateCardsForPlayer
             ? gameHelper.generateCardsForPlayer(player, availableCards)
             : availableCards.slice(0, 3);
+
+        // Store the selection so spectators (winner) can see the options
+        room.loserCardOptions[id] = selection;
         io.to(id).emit('showCardSelection', selection);
     });
 
-    // FIX: Tell everyone about the card selection phase, including who the losers are
-    // so the winner can display a proper waiting screen
-    const loserNames = [...loserIds]
-        .map(id => room.players[id]?.name || '?')
-        .filter(Boolean);
+    // Broadcast state + loser card options so all players know what's happening
+    const loserData = [...loserIds].map(id => ({
+        id,
+        name:    room.players[id]?.name || '?',
+        color:   room.players[id]?.color || '#fff',
+        options: room.loserCardOptions[id] || [],
+        picked:  false
+    }));
 
     io.to(room.id).emit('gameStateChanged', {
-        state:       'CARD_SELECTION',
-        losersCount: loserIds.size,
-        loserNames,
+        state:     'CARD_SELECTION',
+        loserData,  // ← winner sees these options in real time
+        totalLosers: loserIds.size,
         pickedCount: 0
     });
 }
@@ -172,6 +198,7 @@ function startNewRound(room) {
     room.gameState        = 'PLAYING';
     room.loserIds         = new Set();
     room.loserCardsPicked = new Set();
+    room.loserCardOptions = {};
 
     room.map = gameHelper.generateMap
         ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
@@ -186,46 +213,7 @@ function startNewRound(room) {
     });
 }
 
-// Helper: build the leanPlayer object to broadcast
-function buildLean(p) {
-    return {
-        id:           p.id,
-        name:         p.name,
-        color:        p.color,
-        team:         p.team,
-        x:            p.x,
-        y:            p.y,
-        hp:           Math.round(p.hp),
-        maxHp:        p.maxHp,
-        aimAngle:     p.aimAngle,
-        ammo:         p.ammo,
-        maxAmmo:      p.maxAmmo,
-        isReloading:  p.isReloading,
-        isInvisible:  p.isInvisible,          // FIX: was missing — needed for invisOnDash
-        domainActive: p.domainActive,
-        domainType:   p.domainType,
-        domainCooldown: p.domainCooldown,
-        domainRadius: p.domainRadius,
-        score:        p.score,
-        moveSpeed:    p.moveSpeed,
-        damage:       p.damage,
-        fireRate:     p.fireRate,
-        bulletSpeed:  p.bulletSpeed,
-        bounces:      p.bounces,
-        pierce:       p.pierce,
-        lifesteal:    p.lifesteal,
-        playerRadius: p.playerRadius,
-        bulletSize:   p.bulletSize,
-        multishot:    p.multishot,
-        spread:       p.spread,
-        isJackpotActive: p.isJackpotActive,
-        pickedCards:  p.pickedCards || []     // FIX: send card history for scoreboard
-    };
-}
-
-// ---------------------------------------------------------------------------
-// SOCKET HANDLERS
-// ---------------------------------------------------------------------------
+// ─── SOCKET HANDLERS ─────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
 
     socket.on('createRoom', (data) => {
@@ -235,19 +223,20 @@ io.on('connection', (socket) => {
             : { obstacles: [], breakables: [] };
 
         rooms[roomId] = {
-            id:        roomId,
-            creatorId: socket.id,          // FIX: track who created the room
-            players:   {},
+            id: roomId,
+            creatorId: socket.id,
+            players: {},
             gameState: 'LOBBY',
-            round:     1,
-            map:       initialMap,
-            settings:  {
-                maxRounds:   CONFIG.MAX_SCORE,
-                gameMode:    'FFA',
-                startingHp:  CONFIG.BASE_HP,
+            round: 1,
+            map: initialMap,
+            settings: {
+                maxRounds:  CONFIG.MAX_SCORE,  // points to win
+                gameMode:   'FFA',
+                startingHp: CONFIG.BASE_HP
             },
-            loserIds:          new Set(),
-            loserCardsPicked:  new Set()
+            loserIds: new Set(),
+            loserCardsPicked: new Set(),
+            loserCardOptions: {}
         };
         socket.emit('roomCreated', { roomId });
         joinRoom(socket, roomId, data);
@@ -271,34 +260,14 @@ io.on('connection', (socket) => {
         const safeName  = String(data.name  || 'Hráč').replace(/</g, '').substring(0, 24);
         const safeColor = /^#[0-9A-Fa-f]{6}$/.test(data.color) ? data.color : '#45f3ff';
 
-        room.players[socket.id] = {
-            id: socket.id, name: safeName, color: safeColor, cosmetic: 'none',
-            team: Object.keys(room.players).length % 2 === 0 ? 'blue' : 'red',
-            x: 0, y: 0,
-            hp: room.settings.startingHp || CONFIG.BASE_HP,
-            maxHp: room.settings.startingHp || CONFIG.BASE_HP,
-            ammo: CONFIG.BASE_AMMO, maxAmmo: CONFIG.BASE_AMMO,
-            moveSpeed: CONFIG.BASE_MOVE_SPEED, damage: CONFIG.BASE_DAMAGE,
-            fireRate: CONFIG.BASE_FIRE_RATE, bulletSpeed: CONFIG.BASE_BULLET_SPEED,
-            reloadTime: CONFIG.BASE_RELOAD_TIME,
-            lifesteal: 0, bounces: 0, pierce: 0,
-            playerRadius: CONFIG.PLAYER_RADIUS, bulletSize: CONFIG.BULLET_RADIUS,
-            multishot: 1, spread: 0,
-            score: 0, isReady: false, hpRegen: 0,
-            isRussianRoulette: false, invisOnDash: false, cloneOnDash: false,
-            domainType: null, domainActive: false, domainCooldown: 0,
-            domainTimer: 0, domainRadius: 200, isJackpotActive: false,
-            jackpotTimer: 0, jackpotPity: 0, baseSpeed: CONFIG.BASE_MOVE_SPEED,
-            isInvisible: false, _lastSyncTime: 0,
-            pickedCards: []      // FIX: track cards this player has chosen
-        };
+        room.players[socket.id] = makeDefaultPlayer(socket.id, safeName, safeColor, room);
 
-        const usedPositions = Object.values(room.players)
+        const used = Object.values(room.players)
             .filter(p => p.id !== socket.id && p.x !== 0)
             .map(p => ({ x: p.x, y: p.y }));
-        resetPlayer(room.players[socket.id], room, usedPositions);
+        resetPlayer(room.players[socket.id], room, used);
 
-        // Tell the joining player if they are the creator (so UI shows settings)
+        // Tell the joining player whether they are the creator + current settings
         socket.emit('roomInfo', {
             isCreator: room.creatorId === socket.id,
             settings:  room.settings
@@ -308,31 +277,32 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('mapUpdate', room.map);
     }
 
-    // FIX: Creator can change match settings
+    // ── MATCH SETTINGS (creator only) ────────────────────────────────────────
     socket.on('changeSettings', (newSettings) => {
         const room = rooms[socket.roomId];
-        if (!room || room.creatorId !== socket.id) return;
-        if (room.gameState !== 'LOBBY') return;
+        if (!room || room.creatorId !== socket.id || room.gameState !== 'LOBBY') return;
 
-        if (isValidNumber(newSettings.maxRounds) && newSettings.maxRounds >= 1 && newSettings.maxRounds <= 100) {
-            room.settings.maxRounds = newSettings.maxRounds;
-        }
-        if (['FFA', 'TDM'].includes(newSettings.gameMode)) {
+        if (isValidNumber(newSettings.maxRounds) && newSettings.maxRounds >= 1 && newSettings.maxRounds <= 100)
+            room.settings.maxRounds = Math.floor(newSettings.maxRounds);
+
+        if (['FFA', 'TDM'].includes(newSettings.gameMode))
             room.settings.gameMode = newSettings.gameMode;
-        }
+
         if (isValidNumber(newSettings.startingHp) && newSettings.startingHp >= 30 && newSettings.startingHp <= 600) {
-            room.settings.startingHp = newSettings.startingHp;
+            room.settings.startingHp = Math.floor(newSettings.startingHp);
+            // Apply to all players already in lobby
+            Object.values(room.players).forEach(p => {
+                p.hp = p.maxHp = room.settings.startingHp;
+            });
         }
 
-        // Broadcast new settings to all players
+        // Broadcast new settings to everyone in the room
         io.to(room.id).emit('settingsChanged', room.settings);
     });
 
     socket.on('playerReady', () => {
         const room = rooms[socket.roomId];
-        if (!room || !room.players[socket.id]) return;
-        if (room.gameState !== 'LOBBY') return;
-
+        if (!room || !room.players[socket.id] || room.gameState !== 'LOBBY') return;
         room.players[socket.id].isReady = !room.players[socket.id].isReady;
         io.to(room.id).emit('updatePlayerList', Object.values(room.players));
 
@@ -348,30 +318,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    // FIX: Only losers pick cards; track progress; broadcast who picked
+    // ── CARD PICK ─────────────────────────────────────────────────────────────
     socket.on('selectCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || room.gameState !== 'CARD_SELECTION') return;
-        if (!room.loserIds?.has(socket.id)) return; // winner can't pick
-        if (room.loserCardsPicked?.has(socket.id)) return; // no double-pick
-
-        if (!room.loserCardsPicked) room.loserCardsPicked = new Set();
+        if (!room.loserIds?.has(socket.id)) return;
+        if (room.loserCardsPicked?.has(socket.id)) return;
         room.loserCardsPicked.add(socket.id);
 
         const player = room.players[socket.id];
         const card   = availableCards.find(c => c.name === cardName);
         if (player && card && typeof card.apply === 'function') {
             card.apply(player);
-            // FIX: Record card in player's history for scoreboard
             player.pickedCards.push({ name: card.name, rarity: card.rarity });
-            console.log(`✅ ${player.name} → ${cardName}`);
         }
 
-        // FIX: Broadcast pick progress to all (winner sees "X/Y players chose")
+        // Broadcast pick progress + which card was chosen (so spectators see it)
         io.to(room.id).emit('cardPickProgress', {
+            pickerId:    socket.id,
+            pickerName:  player?.name || '?',
+            pickerColor: player?.color || '#fff',
+            cardName:    card?.name || '?',
+            cardRarity:  card?.rarity || 'common',
             pickedCount: room.loserCardsPicked.size,
-            totalCount:  room.loserIds.size,
-            pickerName:  player?.name || '?'
+            totalLosers: room.loserIds.size
         });
 
         if (room.loserCardsPicked.size >= room.loserIds.size) {
@@ -396,27 +366,25 @@ io.on('connection', (socket) => {
         }
         if (isValidNumber(data.aimAngle)) p.aimAngle = data.aimAngle;
 
-        if (data.ritualRequested && DomainManager?.activateDomain) {
+        if (data.ritualRequested && DomainManager?.activateDomain)
             DomainManager.activateDomain(p);
-        }
+
         if (data.isReloading && !p.isReloading) {
-            const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
-            if (p.ammo < fullAmmo) {
+            const full = p.isRussianRoulette ? 6 : p.maxAmmo;
+            if (p.ammo < full) {
                 p.isReloading = true;
                 setTimeout(() => {
                     const rp = rooms[socket.roomId]?.players[socket.id];
-                    if (rp) { rp.ammo = fullAmmo; rp.isReloading = false; }
+                    if (rp) { rp.ammo = full; rp.isReloading = false; }
                 }, p.reloadTime || 1500);
             }
         }
     });
 
-    // FIX: Handle invisOnDash card effect server-side
     socket.on('Dash', () => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]?.hp) return;
         const p = room.players[socket.id];
-
         if (p.invisOnDash) {
             p.isInvisible = true;
             setTimeout(() => {
@@ -432,12 +400,12 @@ io.on('connection', (socket) => {
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         if (p.hp <= 0 || p.isReloading) return;
-        const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
-        if (p.ammo < fullAmmo) {
+        const full = p.isRussianRoulette ? 6 : p.maxAmmo;
+        if (p.ammo < full) {
             p.isReloading = true;
             setTimeout(() => {
                 const rp = rooms[socket.roomId]?.players[socket.id];
-                if (rp) { rp.ammo = fullAmmo; rp.isReloading = false; }
+                if (rp) { rp.ammo = full; rp.isReloading = false; }
             }, p.reloadTime || 1500);
         }
     });
@@ -447,35 +415,32 @@ io.on('connection', (socket) => {
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         if (p.hp <= 0) return;
-        const fullAmmo = p.isRussianRoulette ? 6 : p.maxAmmo;
+        const full = p.isRussianRoulette ? 6 : p.maxAmmo;
         if (p.ammo > 0 && !p.isReloading) {
             p.ammo--;
             if (p.ammo <= 0) {
                 p.isReloading = true;
                 setTimeout(() => {
                     const rp = rooms[socket.roomId]?.players[socket.id];
-                    if (rp) { rp.ammo = fullAmmo; rp.isReloading = false; }
+                    if (rp) { rp.ammo = full; rp.isReloading = false; }
                 }, p.reloadTime || 1500);
             }
         }
         if (bullets) socket.to(socket.roomId).emit('enemyShot', bullets);
     });
 
-    // FIX: Handle breakable wall damage from bullets
+    // ── BREAKABLE WALL HIT ───────────────────────────────────────────────────
     socket.on('bulletHitWall', (data) => {
         const room = rooms[socket.roomId];
-        if (!room || !room.map?.breakables) return;
+        if (!room?.map?.breakables) return;
         const wall = room.map.breakables.find(w => w.id === data.wallId && !w.destroyed);
         if (!wall) return;
 
-        wall.hp = Math.max(0, (wall.hp || 1) - 1);
-        if (wall.hp <= 0) {
-            wall.destroyed = true;
-            wall.hp = 0;
-        }
+        // FIX: 1-hit destruction — any bullet destroys it immediately
+        wall.hp = 0;
+        wall.destroyed = true;
 
-        // Broadcast updated state to all players in room
-        io.to(room.id).emit('breakableUpdate', [{ id: wall.id, hp: wall.hp, destroyed: wall.destroyed }]);
+        io.to(room.id).emit('breakableUpdate', [{ id: wall.id, hp: 0, destroyed: true }]);
     });
 
     socket.on('bulletHitPlayer', (data) => {
@@ -483,32 +448,25 @@ io.on('connection', (socket) => {
         if (!room) return;
         const target  = room.players[data.targetId];
         const shooter = room.players[socket.id];
-        if (!target || target.hp <= 0) return;
-        if (target.isJackpotActive) return;
+        if (!target || target.hp <= 0 || target.isJackpotActive) return;
 
-        let dmg;
-        if (shooter?.isRussianRoulette) {
-            dmg = Math.random() < (1 / 6) ? 150 : 1;
-        } else {
-            dmg = Math.min(Number(data.damage) || 20, 9999);
-        }
+        let dmg = shooter?.isRussianRoulette
+            ? (Math.random() < 1/6 ? 150 : 1)
+            : Math.min(Number(data.damage) || 20, 9999);
+
         target.hp = Math.max(0, target.hp - dmg);
-
-        if (shooter && isValidNumber(data.lifesteal) && data.lifesteal > 0) {
+        if (shooter && isValidNumber(data.lifesteal) && data.lifesteal > 0)
             shooter.hp = Math.min(shooter.maxHp, shooter.hp + dmg * Math.min(data.lifesteal, 1));
-        }
 
         if (target.hp <= 0) {
             if (shooter) shooter.score++;
             if (!room.loserIds) room.loserIds = new Set();
             room.loserIds.add(target.id);
-            target.x = -9999;
-            target.y = -9999;
+            target.x = -9999; target.y = -9999;
 
             const alive = Object.values(room.players).filter(p => p.hp > 0);
-            if (alive.length <= 1 && room.gameState === 'PLAYING') {
+            if (alive.length <= 1 && room.gameState === 'PLAYING')
                 setTimeout(() => initiateCardSelection(room), 800);
-            }
         }
     });
 
@@ -518,45 +476,37 @@ io.on('connection', (socket) => {
         delete room.players[socket.id];
         room.loserIds?.delete(socket.id);
         io.to(socket.roomId).emit('updatePlayerList', Object.values(room.players));
-        if (Object.keys(room.players).length === 0) {
-            delete rooms[socket.roomId];
-        }
+        if (Object.keys(room.players).length === 0) delete rooms[socket.roomId];
     });
 });
 
-// ---------------------------------------------------------------------------
-// GAME LOOP
-// ---------------------------------------------------------------------------
+// ─── GAME LOOP ───────────────────────────────────────────────────────────────
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
         if (room.gameState !== 'PLAYING') continue;
 
         const allPlayers = Object.values(room.players);
-        if (DomainManager?.updateDomains) {
+        if (DomainManager?.updateDomains)
             DomainManager.updateDomains(room.players, allPlayers, [], TICK_RATE);
-        }
 
         const leanPlayers = {};
         for (const id in room.players) {
             const p = room.players[id];
-            if (p.hpRegen > 0 && p.hp > 0 && p.hp < p.maxHp) {
+            if (p.hpRegen > 0 && p.hp > 0 && p.hp < p.maxHp)
                 p.hp = Math.min(p.maxHp, p.hp + p.hpRegen * (TICK_RATE / 1000));
-            }
-            if (p.isJackpotActive) p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
+            if (p.isJackpotActive)
+                p.ammo = p.isRussianRoulette ? 6 : p.maxAmmo;
             leanPlayers[id] = buildLean(p);
         }
 
         io.to(room.id).volatile.emit('gameUpdate', {
             players:    leanPlayers,
             maxScore:   room.settings.maxRounds,
-            teamScores: room.teamScores,
             gameState:  room.gameState,
             gameMode:   room.settings.gameMode
         });
     }
 }, TICK_RATE);
 
-server.listen(PORT, () => {
-    console.log(`\n🚀 SERVER QUANTUM CLASH BĚŽÍ NA PORTU ${PORT}`);
-});
+server.listen(PORT, () => console.log(`\n🚀 SERVER QUANTUM CLASH : ${PORT}\n`));

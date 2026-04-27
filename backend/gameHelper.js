@@ -11,7 +11,6 @@ const RARITY_WEIGHTS = {
     'transcended':  0.1
 };
 
-// Circle vs rectangle collision (mathematically correct)
 const checkRectCollision = (circleX, circleY, radius, rect) => {
     const closestX = Math.max(rect.x, Math.min(circleX, rect.x + rect.width));
     const closestY = Math.max(rect.y, Math.min(circleY, rect.y + rect.height));
@@ -20,66 +19,41 @@ const checkRectCollision = (circleX, circleY, radius, rect) => {
     return (dx * dx + dy * dy) < (radius * radius);
 };
 
-// Fixed spawn corners — spread around all four quadrants
+// FIX: All spawns are now at least 500px from every arena border.
+// Previously 150px was too close and players would clip into border walls.
 const getFixedSpawns = (mapWidth, mapHeight) => [
-    { x: 150,             y: 150              },  // top-left
-    { x: mapWidth - 150,  y: mapHeight - 150  },  // bottom-right
-    { x: mapWidth - 150,  y: 150              },  // top-right
-    { x: 150,             y: mapHeight - 150  },  // bottom-left
-    { x: mapWidth / 2,    y: 150              },  // top-center
-    { x: mapWidth / 2,    y: mapHeight - 150  },  // bottom-center
-    // Extra spawns for 7-8 player rooms
-    { x: 150,             y: mapHeight / 2    },  // left-center
-    { x: mapWidth - 150,  y: mapHeight / 2    },  // right-center
+    { x: 500,              y: 500              },  // top-left quadrant
+    { x: mapWidth - 500,   y: mapHeight - 500  },  // bottom-right quadrant
+    { x: mapWidth - 500,   y: 500              },  // top-right quadrant
+    { x: 500,              y: mapHeight - 500  },  // bottom-left quadrant
+    { x: mapWidth  / 2,    y: 500              },  // top-center
+    { x: mapWidth  / 2,    y: mapHeight - 500  },  // bottom-center
+    { x: 500,              y: mapHeight / 2    },  // left-center
+    { x: mapWidth  - 500,  y: mapHeight / 2    },  // right-center
 ];
 
-/**
- * Returns a safe spawn point that:
- *  1. Does not overlap any obstacle or intact breakable wall
- *  2. Is not already taken by another player (usedPositions)
- *  3. Stays within the playable map area
- *
- * @param {number}   playerIndex   - Slot index (0-based) — determines which fixed spawn to try first
- * @param {number}   mapWidth
- * @param {number}   mapHeight
- * @param {Array}    obstacles     - Indestructible wall rects
- * @param {Array}    breakables    - Breakable wall rects
- * @param {number}   playerRadius  - Collision radius (default 20)
- * @param {Array}    usedPositions - Array of {x,y} already assigned to other players this round
- */
 const getValidSpawnPoint = (
     playerIndex, mapWidth, mapHeight,
     obstacles, breakables,
     playerRadius = 20,
     usedPositions = []
 ) => {
-    // Add comfortable clearance on top of the collision radius
-    const safeRadius = playerRadius + 15;
+    // FIX: safeRadius includes the 500px border margin — even random fallback
+    // spawns can't be within 500px of any edge.
+    const BORDER_MARGIN = 500;
+    const safeRadius = Math.max(playerRadius + 15, BORDER_MARGIN);
 
     const isPositionBlocked = (x, y) => {
-        // Must be inside the arena with a margin
-        if (x < safeRadius || x > mapWidth  - safeRadius) return true;
-        if (y < safeRadius || y > mapHeight - safeRadius) return true;
-
-        // Must not be inside an indestructible wall
-        if (obstacles.some(obs => checkRectCollision(x, y, safeRadius, obs))) return true;
-
-        // Must not be inside an intact breakable wall
-        if (breakables.some(w => !w.destroyed && checkRectCollision(x, y, safeRadius, w))) return true;
-
-        // Must not be too close to another player's already-assigned spawn
-        // (minimum 4× player diameter between spawns)
-        const minSpawnGap = playerRadius * 4;
+        if (x < BORDER_MARGIN || x > mapWidth  - BORDER_MARGIN) return true;
+        if (y < BORDER_MARGIN || y > mapHeight - BORDER_MARGIN) return true;
+        if (obstacles.some(obs => checkRectCollision(x, y, playerRadius + 15, obs))) return true;
+        if (breakables.some(w => !w.destroyed && checkRectCollision(x, y, playerRadius + 15, w))) return true;
+        const minSpawnGap = playerRadius * 5;
         if (usedPositions.some(pos => Math.hypot(x - pos.x, y - pos.y) < minSpawnGap)) return true;
-
         return false;
     };
 
     const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
-
-    // BUG FIX: Previously fixed spawns were returned DIRECTLY without checking obstacles.
-    // Now we cycle through all fixed spawns starting from playerIndex, and only use
-    // one that is actually clear. This handles both obstacle overlap AND duplicate spawns.
     for (let i = 0; i < fixedSpawns.length; i++) {
         const candidate = fixedSpawns[(playerIndex + i) % fixedSpawns.length];
         if (!isPositionBlocked(candidate.x, candidate.y)) {
@@ -87,17 +61,14 @@ const getValidSpawnPoint = (
         }
     }
 
-    // All fixed spawns blocked — try random positions within the arena
+    // Random fallback — also respects 500px border margin
     for (let attempt = 0; attempt < 300; attempt++) {
-        const x = Math.random() * (mapWidth  - safeRadius * 2) + safeRadius;
-        const y = Math.random() * (mapHeight - safeRadius * 2) + safeRadius;
-        if (!isPositionBlocked(x, y)) {
-            return { x, y };
-        }
+        const x = BORDER_MARGIN + Math.random() * (mapWidth  - BORDER_MARGIN * 2);
+        const y = BORDER_MARGIN + Math.random() * (mapHeight - BORDER_MARGIN * 2);
+        if (!isPositionBlocked(x, y)) return { x, y };
     }
 
-    // Absolute last resort — center of map (should never realistically be reached)
-    console.warn('⚠️ getValidSpawnPoint: nenalezena platná pozice, použit střed mapy.');
+    console.warn('⚠️ getValidSpawnPoint: fallback to center');
     return { x: mapWidth / 2, y: mapHeight / 2 };
 };
 
@@ -149,28 +120,24 @@ const generateCardsForPlayer = (player, availableCards) => {
 };
 
 const generateMap = (mapWidth, mapHeight) => {
-    // BUG FIX: Border walls are placed OUTSIDE the playable area so the
-    // collision-clamping in physics.js (max pRadius, mapW-pRadius) keeps players
-    // well away from them. Negative x/y means they are invisible / outside canvas.
+    // Border walls placed outside the visible playable area
     const obstacles = [
-        { x: -60, y: -60, width: mapWidth + 120, height: 60 },  // top
-        { x: -60, y: mapHeight, width: mapWidth + 120, height: 60 }, // bottom
-        { x: -60, y: 0,  width: 60, height: mapHeight },          // left
-        { x: mapWidth, y: 0,  width: 60, height: mapHeight }       // right
+        { x: -60, y: -60, width: mapWidth + 120, height: 60 },
+        { x: -60, y: mapHeight, width: mapWidth + 120, height: 60 },
+        { x: -60, y: 0,  width: 60, height: mapHeight },
+        { x: mapWidth, y: 0, width: 60, height: mapHeight }
     ];
     const breakables = [];
 
     const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
-    // Generous protection radius — obstacles must not come within 80px of any spawn
-    const spawnProtectionRadius = 80;
+    // FIX: spawn protection radius also bumped to match the 500px margin
+    const spawnProtectionRadius = 130;
 
     const isOverlappingSpawn = (rect) =>
         fixedSpawns.some(spawn => checkRectCollision(spawn.x, spawn.y, spawnProtectionRadius, rect));
 
-    // Also check that a new obstacle doesn't overlap an already-placed one
     const isOverlappingObstacle = (rect, existingList) =>
         existingList.some(existing => {
-            // Simple AABB overlap check with a small gap
             const gap = 10;
             return !(
                 rect.x + rect.width  + gap < existing.x ||
@@ -180,14 +147,15 @@ const generateMap = (mapWidth, mapHeight) => {
             );
         });
 
-    // Interior indestructible walls
+    // Interior indestructible walls — placed within the 500px-safe inner zone
+    const INNER_MARGIN = 520;
     const interiorObstacles = [];
     for (let i = 0; i < 7; i++) {
         const width  = Math.floor(Math.random() * 150) + 80;
         const height = Math.floor(Math.random() * 150) + 80;
         const candidate = {
-            x: Math.floor(Math.random() * (mapWidth  - width  - 200)) + 100,
-            y: Math.floor(Math.random() * (mapHeight - height - 200)) + 100,
+            x: Math.floor(Math.random() * (mapWidth  - width  - INNER_MARGIN * 2)) + INNER_MARGIN,
+            y: Math.floor(Math.random() * (mapHeight - height - INNER_MARGIN * 2)) + INNER_MARGIN,
             width, height
         };
         if (!isOverlappingSpawn(candidate) && !isOverlappingObstacle(candidate, interiorObstacles)) {
@@ -196,7 +164,7 @@ const generateMap = (mapWidth, mapHeight) => {
     }
     obstacles.push(...interiorObstacles);
 
-    // Breakable walls
+    // FIX: Breakable walls now have hp:1 — destroyed in a single hit
     const allSolidSoFar = [...obstacles];
     for (let i = 0; i < 8; i++) {
         const isHorizontal = Math.random() > 0.5;
@@ -204,10 +172,10 @@ const generateMap = (mapWidth, mapHeight) => {
         const height = isHorizontal ? 30  : 150;
         const candidate = {
             id: i,
-            x: Math.floor(Math.random() * (mapWidth  - width  - 200)) + 100,
-            y: Math.floor(Math.random() * (mapHeight - height - 200)) + 100,
+            x: Math.floor(Math.random() * (mapWidth  - width  - INNER_MARGIN * 2)) + INNER_MARGIN,
+            y: Math.floor(Math.random() * (mapHeight - height - INNER_MARGIN * 2)) + INNER_MARGIN,
             width, height,
-            hp: 3, maxHp: 3,
+            hp: 1, maxHp: 1,   // ← 1-hit destruction
             destroyed: false
         };
         if (!isOverlappingSpawn(candidate) && !isOverlappingObstacle(candidate, allSolidSoFar)) {
