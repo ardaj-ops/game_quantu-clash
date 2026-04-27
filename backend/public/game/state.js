@@ -17,7 +17,6 @@ export const state = {
     // Raw mouse position (screen space)
     currentMouseX: 0,
     currentMouseY: 0,
-    // Mouse in world/map space
     worldMouseX: 0,
     worldMouseY: 0,
 
@@ -33,7 +32,9 @@ export const state = {
     lastShotTime: 0,
 
     // Smooth interpolated positions for rendering (keyed by player id).
-    // Physics and server sync always read latestServerData.players directly.
-    // render.js draws from interpolatedPlayers so remote players never snap.
-    interpolatedPlayers: {}
+    interpolatedPlayers: {},
+
+    // FIX: Store card selection phase data so render.js can show it to the winner.
+    // Set when server emits gameStateChanged { state: 'CARD_SELECTION', loserData }
+    cardSelectionData: null  // { loserData, pickedCount, totalLosers }
 };
