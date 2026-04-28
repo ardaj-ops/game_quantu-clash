@@ -544,3 +544,64 @@ input[type="color"] {
    HIDDEN UTILITY
 ========================================== */
 .hidden { display:none !important; }
+/* ==========================================
+   MATCH SETTINGS PANEL (lobby creator)
+========================================== */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px 12px;
+    align-items: center;
+}
+
+.setting-label {
+    font-size: 13px;
+    color: var(--muted, #6b7280);
+}
+
+.setting-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.setting-input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(69,243,255,0.2);
+    border-radius: 8px;
+    color: var(--text, #e8eaf0);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    padding: 6px 10px;
+    outline: none;
+    width: 80px;
+    transition: border-color 0.15s;
+}
+
+.setting-input:focus {
+    border-color: #45f3ff;
+    box-shadow: 0 0 0 2px rgba(69,243,255,0.12);
+}
+
+select.setting-input {
+    width: 160px;
+    cursor: pointer;
+}
+
+.setting-unit {
+    font-size: 11px;
+    color: var(--muted, #6b7280);
+    white-space: nowrap;
+}
+
+/* Hide the redundant display panel for creator (shown only to guests) */
+#settings-display { display: block; }
+
+/* ==========================================
+   WINNER-WAIT OVERLAY (shown during card pick)
+========================================== */
+#winner-wait-overlay {
+    font-family: 'Orbitron', sans-serif;
+}
+#winner-pick-log::-webkit-scrollbar { width: 4px; }
+#winner-pick-log::-webkit-scrollbar-thumb { background: rgba(69,243,255,0.4); border-radius: 2px; }

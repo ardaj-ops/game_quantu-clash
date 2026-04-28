@@ -271,19 +271,18 @@ function drawBullets() {
     }
 
     if (state.remoteBullets) {
-        const now = Date.now();
-        state.remoteBullets = state.remoteBullets.filter(b => now - b.createdAt < 3000);
+        // FIX: physics.js (updateRemoteBullets) now simulates remote bullets each tick
+        // with proper wall/border collision. We just draw at their current position.
+        // The old code added a dead-reckoning age offset (b.x + vx*age*60) which
+        // double-counted the movement and made bullets appear to fly into infinity.
         state.remoteBullets.forEach(b => {
-            const age = (now - b.createdAt) / 1000;
-            const rx  = b.x + (b.vx || 0) * age * 60;
-            const ry  = b.y + (b.vy || 0) * age * 60;
             ctx.beginPath();
-            ctx.arc(rx, ry, b.radius || 5, 0, TWO_PI);
-            ctx.fillStyle  = b.color || '#ff4757';
+            ctx.arc(b.x, b.y, b.radius || 5, 0, TWO_PI);
+            ctx.fillStyle   = b.color || '#ff4757';
             ctx.shadowColor = b.color || '#ff4757';
             ctx.shadowBlur  = 8;
             ctx.fill();
-            ctx.shadowBlur = 0;
+            ctx.shadowBlur  = 0;
             ctx.closePath();
         });
     }
@@ -329,7 +328,7 @@ function drawCrosshair() {
 
 function drawTabMenu(playersData) {
     const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
-    const w = 520, rowH = 44, headerH = 60;
+    const w = 600, rowH = 60, headerH = 60;
     const h = headerH + sorted.length * rowH + 16;
     const ctx = state.ctx;
 
@@ -338,12 +337,11 @@ function drawTabMenu(playersData) {
     const x = (state.canvas.width  - w) / 2;
     const y = (state.canvas.height - h) / 2;
 
-    // Panel
+    // Panel background
     ctx.fillStyle = 'rgba(9,10,15,0.94)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = 'rgba(69,243,255,0.5)';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.shadowBlur = 0;
@@ -352,8 +350,15 @@ function drawTabMenu(playersData) {
     ctx.fillStyle = '#45f3ff';
     ctx.font = 'bold 14px "Orbitron",sans-serif';
     ctx.textAlign = 'center';
-    ctx.letterSpacing = '3px';
     ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, y + 36);
+
+    // Column headers
+    ctx.fillStyle = '#555';
+    ctx.font = '10px "Inter",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('HRÁČ', x + 48, y + 54);
+    ctx.textAlign = 'right';
+    ctx.fillText('KARTY', x + w - 20, y + 54);
 
     let ry = y + headerH;
     sorted.forEach((p, i) => {
@@ -361,21 +366,53 @@ function drawTabMenu(playersData) {
             ctx.fillStyle = 'rgba(255,255,255,0.03)';
             ctx.fillRect(x + 1, ry, w - 2, rowH);
         }
+
         // Colour dot
         ctx.beginPath();
-        ctx.arc(x + 28, ry + rowH / 2, 8, 0, TWO_PI);
+        ctx.arc(x + 22, ry + rowH / 2 - 6, 8, 0, TWO_PI);
         ctx.fillStyle = p.color || '#fff';
         ctx.fill();
 
+        // Name
         ctx.fillStyle = p.hp > 0 ? '#e8eaf0' : '#555';
-        ctx.font      = '14px "Inter",sans-serif';
+        ctx.font = '14px "Inter",sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`${p.hp > 0 ? '' : '💀 '}${p.name || 'Hráč'}${p.id===socket?.id?' (TY)':''}`, x + 48, ry + rowH / 2 + 5);
+        ctx.fillText(`${p.hp > 0 ? '' : '💀 '}${p.name || 'Hráč'}${p.id === socket?.id ? ' (TY)' : ''}`, x + 40, ry + 22);
 
+        // Score
         ctx.fillStyle = '#f1c40f';
-        ctx.font      = 'bold 15px "Orbitron",sans-serif';
+        ctx.font = 'bold 15px "Orbitron",sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`${p.score || 0}`, x + w - 20, ry + rowH / 2 + 5);
+        ctx.fillText(`${p.score || 0}`, x + w - 20, ry + 22);
+
+        // FIX: Show pickedCards history (small tags below name)
+        const cards = p.pickedCards || [];
+        if (cards.length > 0) {
+            const RARITY_COLORS = {
+                common: '#9e9e9e', uncommon: '#2ed573', rare: '#2a9df4',
+                epic: '#a335ee', legendary: '#ffaa00', mythic: '#ff4757',
+                exotic: '#eccc68', transcended: '#ff2a7a'
+            };
+            let cx = x + 40;
+            const maxCards = 8; // don't overflow the row
+            cards.slice(-maxCards).forEach(card => {
+                const col = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
+                ctx.fillStyle = `${col}33`; // 20% opacity bg
+                const tw = Math.min(ctx.measureText(card.name).width + 8, 120);
+                ctx.fillRect(cx, ry + 30, tw, 16);
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 0.8;
+                ctx.strokeRect(cx + 0.5, ry + 30.5, tw - 1, 15);
+                ctx.fillStyle = col;
+                ctx.font = '9px "Inter",sans-serif';
+                ctx.textAlign = 'left';
+                // Truncate long names
+                const display = card.name.length > 14 ? card.name.substring(0, 13) + '…' : card.name;
+                ctx.fillText(display, cx + 4, ry + 41);
+                cx += tw + 4;
+            });
+        }
+
         ry += rowH;
     });
     ctx.restore();
@@ -468,17 +505,77 @@ function drawWinnerWaitScreen() {
     const ctx = state.ctx;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Dimmed overlay
     ctx.fillStyle = 'rgba(0,0,0,0.78)';
     ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
+
+    const cx = state.canvas.width / 2;
+    let cy = state.canvas.height / 2 - 80;
+
+    // Trophy title
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f1c40f';
-    ctx.font = 'bold 52px "Orbitron",sans-serif';
+    ctx.font = 'bold 48px "Orbitron",sans-serif';
     ctx.shadowColor = '#f1c40f'; ctx.shadowBlur = 28;
-    ctx.fillText('🏆 VÍTĚZ KOLA!', state.canvas.width / 2, state.canvas.height / 2 - 20);
+    ctx.fillText('🏆 VÍTĚZ KOLA!', cx, cy);
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '20px "Inter",sans-serif';
-    ctx.fillText('Ostatní hráči vybírají vylepšení…', state.canvas.width / 2, state.canvas.height / 2 + 30);
+    cy += 50;
+
+    // FIX: Show real-time loser card pick status from state.cardSelectionData
+    const csd = state.cardSelectionData;
+    if (csd) {
+        const picked = csd.pickedCount || 0;
+        const total  = csd.totalLosers || 0;
+
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '18px "Inter",sans-serif';
+        ctx.fillText(`${picked} / ${total} hráčů vybralo vylepšení`, cx, cy);
+        cy += 36;
+
+        // Progress bar
+        const bw = 340, bh = 8;
+        const bx = cx - bw / 2;
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(bx, cy, bw, bh);
+        ctx.fillStyle = '#45f3ff';
+        ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 8;
+        ctx.fillRect(bx, cy, bw * (total > 0 ? picked / total : 0), bh);
+        ctx.shadowBlur = 0;
+        cy += 30;
+
+        // Per-loser status (name + card they chose if already picked)
+        const RARITY_COLORS = {
+            common: '#9e9e9e', uncommon: '#2ed573', rare: '#2a9df4',
+            epic: '#a335ee', legendary: '#ffaa00', mythic: '#ff4757',
+            exotic: '#eccc68', transcended: '#ff2a7a'
+        };
+
+        (csd.loserData || []).forEach(loser => {
+            const status = loser.picked
+                ? `✔  ${loser.chosenCard || '?'}`
+                : '⏳ vybírá…';
+            const col = loser.picked
+                ? (RARITY_COLORS[loser.chosenRarity?.toLowerCase()] || '#45f3ff')
+                : '#6b7280';
+
+            ctx.fillStyle = loser.color || '#fff';
+            ctx.font = 'bold 13px "Inter",sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(loser.name + ':', cx - 8, cy);
+
+            ctx.fillStyle = col;
+            ctx.font = '13px "Inter",sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(status, cx + 8, cy);
+            cy += 24;
+        });
+    } else {
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '18px "Inter",sans-serif';
+        ctx.fillText('Hráči vybírají vylepšení…', cx, cy);
+    }
+
     ctx.restore();
 }
 
@@ -539,7 +636,16 @@ export function drawGame(serverData) {
 
     if (serverData.gameState === 'CARD_SELECTION') {
         const me = socket && playersData[socket.id];
-        if (me && me.hp > 0) drawWinnerWaitScreen();
+        const isWinner = me && me.hp > 0;
+        if (isWinner) {
+            // FIX: Winner can still hold TAB to see the score table during card pick
+            if (state.playerInputs?.tab) {
+                drawTabMenu(playersData);
+            } else {
+                drawWinnerWaitScreen();
+            }
+        }
+        // Losers see the HTML card selection overlay (handled in network.js)
     }
 
     if (serverData.gameState === 'SCOREBOARD') {
