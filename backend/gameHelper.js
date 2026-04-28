@@ -8,7 +8,7 @@ const RARITY_WEIGHTS = {
     'legendary':    5,
     'mythic':       2,
     'exotic':       0.8,
-    'transcended':  100
+    'transcended':  10000
 };
 
 const checkRectCollision = (circleX, circleY, radius, rect) => {
