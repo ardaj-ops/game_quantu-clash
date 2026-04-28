@@ -7,7 +7,7 @@ const RARITY_WEIGHTS = {
     'epic':        0,
     'legendary':    0,
     'mythic':       0,
-    'exotic':       0,
+    'exotic':       100,
     'transcended':  100
 };
 
