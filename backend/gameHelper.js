@@ -1,14 +1,14 @@
 // gameHelper.js
 
 const RARITY_WEIGHTS = {
-    'common':     100,
-    'uncommon':    70,
-    'rare':        40,
-    'epic':        15,
-    'legendary':    5,
-    'mythic':       2,
-    'exotic':       0.8,
-    'transcended':  0.1
+    'common':     0,
+    'uncommon':    0,
+    'rare':        0,
+    'epic':       0,
+    'legendary':    0,
+    'mythic':       0,
+    'exotic':       0,
+    'transcended':  100
 };
 
 const checkRectCollision = (circleX, circleY, radius, rect) => {
