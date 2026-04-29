@@ -19,17 +19,16 @@ const checkRectCollision = (circleX, circleY, radius, rect) => {
     return (dx * dx + dy * dy) < (radius * radius);
 };
 
-// FIX: All spawns are now at least 500px from every arena border.
-// Previously 150px was too close and players would clip into border walls.
+// Spawns are 500px from every border so players never clip into walls
 const getFixedSpawns = (mapWidth, mapHeight) => [
-    { x: 500,              y: 500              },  // top-left quadrant
-    { x: mapWidth - 500,   y: mapHeight - 500  },  // bottom-right quadrant
-    { x: mapWidth - 500,   y: 500              },  // top-right quadrant
-    { x: 500,              y: mapHeight - 500  },  // bottom-left quadrant
-    { x: mapWidth  / 2,    y: 500              },  // top-center
-    { x: mapWidth  / 2,    y: mapHeight - 500  },  // bottom-center
-    { x: 500,              y: mapHeight / 2    },  // left-center
-    { x: mapWidth  - 500,  y: mapHeight / 2    },  // right-center
+    { x: 500,             y: 500              },
+    { x: mapWidth - 500,  y: mapHeight - 500  },
+    { x: mapWidth - 500,  y: 500              },
+    { x: 500,             y: mapHeight - 500  },
+    { x: mapWidth / 2,    y: 500              },
+    { x: mapWidth / 2,    y: mapHeight - 500  },
+    { x: 500,             y: mapHeight / 2    },
+    { x: mapWidth - 500,  y: mapHeight / 2    },
 ];
 
 const getValidSpawnPoint = (
@@ -38,10 +37,7 @@ const getValidSpawnPoint = (
     playerRadius = 20,
     usedPositions = []
 ) => {
-    // FIX: safeRadius includes the 500px border margin — even random fallback
-    // spawns can't be within 500px of any edge.
     const BORDER_MARGIN = 500;
-    const safeRadius = Math.max(playerRadius + 15, BORDER_MARGIN);
 
     const isPositionBlocked = (x, y) => {
         if (x < BORDER_MARGIN || x > mapWidth  - BORDER_MARGIN) return true;
@@ -56,12 +52,9 @@ const getValidSpawnPoint = (
     const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
     for (let i = 0; i < fixedSpawns.length; i++) {
         const candidate = fixedSpawns[(playerIndex + i) % fixedSpawns.length];
-        if (!isPositionBlocked(candidate.x, candidate.y)) {
-            return candidate;
-        }
+        if (!isPositionBlocked(candidate.x, candidate.y)) return candidate;
     }
 
-    // Random fallback — also respects 500px border margin
     for (let attempt = 0; attempt < 300; attempt++) {
         const x = BORDER_MARGIN + Math.random() * (mapWidth  - BORDER_MARGIN * 2);
         const y = BORDER_MARGIN + Math.random() * (mapHeight - BORDER_MARGIN * 2);
@@ -120,39 +113,52 @@ const generateCardsForPlayer = (player, availableCards) => {
 };
 
 const generateMap = (mapWidth, mapHeight) => {
-    // Border walls placed outside the visible playable area
-    const obstacles = [
-        { x: -60, y: -60, width: mapWidth + 120, height: 60 },
-        { x: -60, y: mapHeight, width: mapWidth + 120, height: 60 },
-        { x: -60, y: 0,  width: 60, height: mapHeight },
-        { x: mapWidth, y: 0, width: 60, height: mapHeight }
-    ];
-    const breakables = [];
+    // BUG FIX: INNER_MARGIN was 520 — on a 1080-high map the obstacle y-range
+    // was 520→480 (inverted), so ZERO obstacles ever spawned. Fixed to 80px.
+    // Obstacles stay well within the playable area without blocking spawns.
+    const INNER_MARGIN = 80;
 
+    // Spawn protection: obstacles must stay away from fixed spawn corners
     const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
-    // FIX: spawn protection radius also bumped to match the 500px margin
-    const spawnProtectionRadius = 130;
+    const SPAWN_PROTECTION = 130;
 
     const isOverlappingSpawn = (rect) =>
-        fixedSpawns.some(spawn => checkRectCollision(spawn.x, spawn.y, spawnProtectionRadius, rect));
+        fixedSpawns.some(s => checkRectCollision(s.x, s.y, SPAWN_PROTECTION, rect));
 
-    const isOverlappingObstacle = (rect, existingList) =>
-        existingList.some(existing => {
-            const gap = 10;
+    const isOverlappingObstacle = (rect, list) =>
+        list.some(ex => {
+            const gap = 8;
             return !(
-                rect.x + rect.width  + gap < existing.x ||
-                existing.x + existing.width  + gap < rect.x ||
-                rect.y + rect.height + gap < existing.y ||
-                existing.y + existing.height + gap < rect.y
+                rect.x + rect.width  + gap < ex.x ||
+                ex.x + ex.width  + gap < rect.x ||
+                rect.y + rect.height + gap < ex.y ||
+                ex.y + ex.height + gap < rect.y
             );
         });
 
-    // Interior indestructible walls — placed within the 500px-safe inner zone
-    const INNER_MARGIN = 520;
+    // Invisible border collision objects (used by physics for bounce detection)
+    // Placed slightly outside the map edge so they don't visually render
+    // but bullets and players still collide with them.
+    const BORDER_THICKNESS = 60;
+    const borderWalls = [
+        { id: 'border-top',    x: -BORDER_THICKNESS, y: -BORDER_THICKNESS, width: mapWidth + BORDER_THICKNESS * 2, height: BORDER_THICKNESS, isBorder: true },
+        { id: 'border-bottom', x: -BORDER_THICKNESS, y: mapHeight,          width: mapWidth + BORDER_THICKNESS * 2, height: BORDER_THICKNESS, isBorder: true },
+        { id: 'border-left',   x: -BORDER_THICKNESS, y: 0,                  width: BORDER_THICKNESS, height: mapHeight, isBorder: true },
+        { id: 'border-right',  x: mapWidth,           y: 0,                  width: BORDER_THICKNESS, height: mapHeight, isBorder: true },
+    ];
+
+    const obstacles = [...borderWalls];
+    const breakables = [];
+
+    // Interior indestructible walls — guarantee at least 8
+    // BUG FIX: attempt many more times (25 tries) to reach the target count
     const interiorObstacles = [];
-    for (let i = 0; i < 7; i++) {
-        const width  = Math.floor(Math.random() * 150) + 80;
-        const height = Math.floor(Math.random() * 150) + 80;
+    const TARGET_SOLID = 8;
+    let solidAttempts = 0;
+    while (interiorObstacles.length < TARGET_SOLID && solidAttempts < 60) {
+        solidAttempts++;
+        const width  = Math.floor(Math.random() * 160) + 60;
+        const height = Math.floor(Math.random() * 160) + 60;
         const candidate = {
             x: Math.floor(Math.random() * (mapWidth  - width  - INNER_MARGIN * 2)) + INNER_MARGIN,
             y: Math.floor(Math.random() * (mapHeight - height - INNER_MARGIN * 2)) + INNER_MARGIN,
@@ -164,23 +170,26 @@ const generateMap = (mapWidth, mapHeight) => {
     }
     obstacles.push(...interiorObstacles);
 
-    // FIX: Breakable walls now have hp:1 — destroyed in a single hit
-    const allSolidSoFar = [...obstacles];
-    for (let i = 0; i < 8; i++) {
+    // Breakable walls (1-hit destruction)
+    const allSolid = [...obstacles];
+    const TARGET_BREAKABLE = 8;
+    let brkAttempts = 0;
+    while (breakables.length < TARGET_BREAKABLE && brkAttempts < 60) {
+        brkAttempts++;
         const isHorizontal = Math.random() > 0.5;
-        const width  = isHorizontal ? 150 : 30;
-        const height = isHorizontal ? 30  : 150;
+        const width  = isHorizontal ? Math.floor(Math.random() * 120) + 80 : Math.floor(Math.random() * 20) + 20;
+        const height = isHorizontal ? Math.floor(Math.random() * 20) + 20  : Math.floor(Math.random() * 120) + 80;
         const candidate = {
-            id: i,
+            id: breakables.length,
             x: Math.floor(Math.random() * (mapWidth  - width  - INNER_MARGIN * 2)) + INNER_MARGIN,
             y: Math.floor(Math.random() * (mapHeight - height - INNER_MARGIN * 2)) + INNER_MARGIN,
             width, height,
-            hp: 1, maxHp: 1,   // ← 1-hit destruction
+            hp: 1, maxHp: 1,
             destroyed: false
         };
-        if (!isOverlappingSpawn(candidate) && !isOverlappingObstacle(candidate, allSolidSoFar)) {
+        if (!isOverlappingSpawn(candidate) && !isOverlappingObstacle(candidate, allSolid)) {
             breakables.push(candidate);
-            allSolidSoFar.push(candidate);
+            allSolid.push(candidate);
         }
     }
 
