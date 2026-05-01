@@ -3,9 +3,10 @@ import { state } from './state.js';
 
 export let socket = null;
 
-const REMOTE_LERP = 0.20;
-const LOCAL_LERP  = 0.30;
-const THRESHOLD   = 10;
+const REMOTE_LERP = 0.35;  // Was 0.20 — bumped for 20fps broadcast: remote players
+                             // need to move faster per frame to reach server pos in time.
+const LOCAL_LERP  = 0.40;  // Was 0.30 — same reasoning for local correction easing.
+const THRESHOLD   = 12;    // px — slightly wider to absorb more quantization noise at 20fps
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 function lerpAngle(a, b, t) {

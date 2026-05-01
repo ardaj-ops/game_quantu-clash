@@ -341,89 +341,230 @@ function drawCrosshair() {
 
 // ─── HUDs ────────────────────────────────────────────────────────────────────
 
-function drawTabMenu(playersData) {
-    const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
-    const w = 600, rowH = 60, headerH = 60;
-    const h = headerH + sorted.length * rowH + 16;
-    const ctx = state.ctx;
+// ─── TAB MENU CARD TOOLTIP (HTML overlay, updates on mousemove) ──────────────
+// We store card hit-regions so the mouse handler can show tooltips.
+let _tabCardRegions = []; // [{x,y,w,h,card}] in screen space
 
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const x = (state.canvas.width  - w) / 2;
-    const y = (state.canvas.height - h) / 2;
+function updateTabTooltip(mx, my) {
+    let tooltip = document.getElementById('tab-card-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'tab-card-tooltip';
+        tooltip.style.cssText = [
+            'position:fixed', 'z-index:9999', 'pointer-events:none',
+            'background:rgba(9,10,15,0.97)', 'border:1px solid rgba(69,243,255,0.4)',
+            'border-radius:10px', 'padding:10px 14px', 'max-width:240px',
+            'font-family:"Inter",sans-serif', 'font-size:13px',
+            'color:#e8eaf0', 'display:none', 'line-height:1.5',
+            'box-shadow:0 4px 24px rgba(0,0,0,0.6)'
+        ].join(';');
+        document.body.appendChild(tooltip);
+    }
 
-    ctx.fillStyle = 'rgba(9,10,15,0.94)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(69,243,255,0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = '#45f3ff';
-    ctx.font = 'bold 14px "Orbitron",sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, y + 36);
-
-    ctx.fillStyle = '#555';
-    ctx.font = '10px "Inter",sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('HRÁČ', x + 48, y + 54);
-    ctx.textAlign = 'right';
-    ctx.fillText('KARTY', x + w - 20, y + 54);
-
-    let ry = y + headerH;
-    sorted.forEach((p, i) => {
-        if (i % 2 === 0) {
-            ctx.fillStyle = 'rgba(255,255,255,0.03)';
-            ctx.fillRect(x + 1, ry, w - 2, rowH);
-        }
-
-        ctx.beginPath();
-        ctx.arc(x + 22, ry + rowH / 2 - 6, 8, 0, TWO_PI);
-        ctx.fillStyle = p.color || '#fff';
-        ctx.fill();
-
-        ctx.fillStyle = p.hp > 0 ? '#e8eaf0' : '#555';
-        ctx.font = '14px "Inter",sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(
-            `${p.hp > 0 ? '' : '💀 '}${p.name || 'Hráč'}${p.id === socket?.id ? ' (TY)' : ''}`,
-            x + 40, ry + 22
-        );
-
-        ctx.fillStyle = '#f1c40f';
-        ctx.font = 'bold 15px "Orbitron",sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${p.score || 0}`, x + w - 20, ry + 22);
-
-        // Picked card tags
+    const hit = _tabCardRegions.find(r =>
+        mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h
+    );
+    if (hit) {
         const RARITY_COLORS = {
             common:'#9e9e9e', uncommon:'#2ed573', rare:'#2a9df4',
             epic:'#a335ee', legendary:'#ffaa00', mythic:'#ff4757',
             exotic:'#eccc68', transcended:'#ff2a7a'
         };
-        const cards = p.pickedCards || [];
-        if (cards.length > 0) {
-            let cx = x + 40;
-            cards.slice(-8).forEach(card => {
-                const col = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
-                const tw  = Math.min(ctx.measureText(card.name).width + 8, 120);
-                ctx.fillStyle = `${col}33`;
-                ctx.fillRect(cx, ry + 30, tw, 16);
-                ctx.strokeStyle = col; ctx.lineWidth = 0.8;
-                ctx.strokeRect(cx + 0.5, ry + 30.5, tw - 1, 15);
-                ctx.fillStyle = col;
-                ctx.font = '9px "Inter",sans-serif';
-                ctx.textAlign = 'left';
-                const display = card.name.length > 14 ? card.name.substring(0, 13) + '…' : card.name;
-                ctx.fillText(display, cx + 4, ry + 41);
-                cx += tw + 4;
-            });
+        const col = RARITY_COLORS[hit.card.rarity?.toLowerCase()] || '#888';
+        tooltip.innerHTML = `
+            <div style="color:${col};font-size:10px;font-weight:700;letter-spacing:1.5px;margin-bottom:4px;">
+                ${(hit.card.rarity || 'COMMON').toUpperCase()}
+            </div>
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px;">${hit.card.name}</div>
+            <div style="color:#9ca3af;font-size:12px;">${hit.card.description || '—'}</div>`;
+        tooltip.style.display = 'block';
+        const pad = 14;
+        let tx = mx + 18, ty = my - 20;
+        if (tx + 240 > window.innerWidth)  tx = mx - 240 - 18;
+        if (ty + 120 > window.innerHeight) ty = window.innerHeight - 130;
+        tooltip.style.left = tx + 'px';
+        tooltip.style.top  = ty + 'px';
+    } else {
+        tooltip.style.display = 'none';
+    }
+}
+
+function hideTabTooltip() {
+    const t = document.getElementById('tab-card-tooltip');
+    if (t) t.style.display = 'none';
+    _tabCardRegions = [];
+}
+
+// Register mousemove listener once
+if (typeof window !== 'undefined') {
+    window.addEventListener('mousemove', (e) => {
+        if (state.playerInputs?.tab) updateTabTooltip(e.clientX, e.clientY);
+    });
+}
+
+// ─── DRAW TAB MENU ───────────────────────────────────────────────────────────
+function drawTabMenu(playersData) {
+    const RARITY_COLORS = {
+        common:'#9e9e9e', uncommon:'#2ed573', rare:'#2a9df4',
+        epic:'#a335ee', legendary:'#ffaa00', mythic:'#ff4757',
+        exotic:'#eccc68', transcended:'#ff2a7a'
+    };
+
+    const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
+    const ctx    = state.ctx;
+
+    // Row height scales with card count — players with many cards get taller rows
+    const maxCards  = Math.max(1, ...sorted.map(p => (p.pickedCards || []).length));
+    // Each row: name+stats block (50px) + card row that grows with count
+    // Cards displayed as small dots/chips, max 12 per visual row, then wrap
+    const CARD_CHIP_W   = 22; // width of each chip
+    const CARD_CHIP_H   = 16;
+    const CARDS_PER_ROW = 12;
+    const cardRows      = Math.max(1, Math.ceil(maxCards / CARDS_PER_ROW));
+    const rowH          = 54 + cardRows * (CARD_CHIP_H + 3);
+
+    const STAT_W   = 200; // right column: stat bars
+    const w        = 700;
+    const headerH  = 58;
+    const h        = headerH + sorted.length * rowH + 12;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const px = (state.canvas.width  - w) / 2;
+    const py = (state.canvas.height - h) / 2;
+
+    // Panel
+    ctx.fillStyle = 'rgba(9,10,15,0.96)';
+    ctx.fillRect(px, py, w, h);
+    ctx.strokeStyle = 'rgba(69,243,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
+    ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+    ctx.shadowBlur = 0;
+
+    // Header
+    ctx.fillStyle = '#45f3ff';
+    ctx.font = 'bold 13px "Orbitron",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, py + 34);
+
+    // Column headers
+    ctx.fillStyle = '#444';
+    ctx.font = '10px "Inter",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('HRÁČ  ·  BODY', px + 48, py + 50);
+    ctx.textAlign = 'right';
+    ctx.fillText('STATY', px + w - STAT_W - 8, py + 50);
+    ctx.fillText('KARTY', px + w - 10, py + 50);
+
+    _tabCardRegions = []; // reset hit regions
+
+    let ry = py + headerH;
+
+    sorted.forEach((p, i) => {
+        if (i % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.025)';
+            ctx.fillRect(px + 1, ry, w - 2, rowH);
         }
+
+        // ── Colour dot ──────────────────────────────────────────────────────
+        ctx.beginPath();
+        ctx.arc(px + 20, ry + 20, 8, 0, TWO_PI);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.fill();
+
+        // ── Name + score ─────────────────────────────────────────────────────
+        const dead = p.hp <= 0;
+        ctx.fillStyle = dead ? '#555' : '#e8eaf0';
+        ctx.font = '13px "Inter",sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(
+            `${dead ? '💀 ' : ''}${p.name || 'Hráč'}${p.id === socket?.id ? ' (TY)' : ''}`,
+            px + 36, ry + 20
+        );
+        ctx.fillStyle = '#f1c40f';
+        ctx.font = 'bold 13px "Orbitron",sans-serif';
+        ctx.fillText(`${p.score || 0} bodů`, px + 36, ry + 36);
+
+        // ── STAT BARS (right section before cards) ────────────────────────────
+        const statX  = px + w - STAT_W - 130;
+        const barLen = 90;
+        const barH   = 5;
+
+        // Define stats to show with their max reference values
+        const stats = [
+            { label: 'DMG',    val: p.damage      || 20,  max: 999, col: '#ff4757' },
+            { label: 'SPD',    val: p.moveSpeed   || 0.8, max: 3.5, col: '#45f3ff' },
+            { label: 'AMMO',   val: p.maxAmmo     || 10,  max: 30,  col: '#f1c40f' },
+        ];
+
+        stats.forEach((s, si) => {
+            const bx = statX + si * (barLen + 28);
+            const by = ry + 8;
+            const ratio = Math.min(1, s.val / s.max);
+
+            ctx.fillStyle = '#222';
+            ctx.fillRect(bx, by + 12, barLen, barH);
+            ctx.fillStyle = s.col;
+            ctx.fillRect(bx, by + 12, barLen * ratio, barH);
+
+            ctx.fillStyle = '#555';
+            ctx.font = '8px "Inter",sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(s.label, bx, by + 9);
+
+            ctx.fillStyle = s.col;
+            ctx.font = 'bold 9px "Inter",sans-serif';
+            const display = s.label === 'SPD' ? s.val.toFixed(1)
+                          : s.label === 'DMG' ? Math.round(s.val)
+                          : Math.round(s.val);
+            ctx.fillText(display, bx + barLen + 3, by + 16);
+        });
+
+        // HP bar
+        const hpBx  = statX;
+        const hpBy  = ry + 30;
+        const hpRat = Math.max(0, (p.hp || 0) / (p.maxHp || 100));
+        const hpCol = hpRat > 0.5 ? '#2ed573' : hpRat > 0.25 ? '#f1c40f' : '#ff4757';
+        ctx.fillStyle = '#222';
+        ctx.fillRect(hpBx, hpBy, (barLen + 28) * 3 - 28, barH);
+        ctx.fillStyle = hpCol;
+        ctx.fillRect(hpBx, hpBy, ((barLen + 28) * 3 - 28) * hpRat, barH);
+        ctx.fillStyle = '#555'; ctx.font = '8px "Inter",sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(`HP ${Math.round(p.hp||0)}/${p.maxHp||100}`, hpBx, hpBy - 2);
+
+        // ── CARD CHIPS (scale with count, hover to see description) ───────────
+        const cards    = p.pickedCards || [];
+        const chipArea = px + w - 124; // start x of card chips
+        const chipY0   = ry + 6;
+
+        cards.forEach((card, ci) => {
+            const col  = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
+            const row  = Math.floor(ci / CARDS_PER_ROW);
+            const col2 = ci % CARDS_PER_ROW;
+            const cx2  = chipArea + col2 * (CARD_CHIP_W + 2);
+            const cy2  = chipY0   + row  * (CARD_CHIP_H + 2);
+
+            ctx.fillStyle = `${col}28`;
+            ctx.fillRect(cx2, cy2, CARD_CHIP_W, CARD_CHIP_H);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(cx2 + 0.5, cy2 + 0.5, CARD_CHIP_W - 1, CARD_CHIP_H - 1);
+
+            // First letter of card name as icon
+            ctx.fillStyle = col;
+            ctx.font = 'bold 9px "Inter",sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((card.name || '?')[0].toUpperCase(), cx2 + CARD_CHIP_W / 2, cy2 + 11);
+
+            // Store region in screen space for tooltip hit-testing
+            const scaleX  = state.gameOffsetX; // we are already in setTransform(1,0,0,1,0,0)
+            _tabCardRegions.push({ x: cx2, y: cy2, w: CARD_CHIP_W, h: CARD_CHIP_H, card });
+        });
 
         ry += rowH;
     });
+
     ctx.restore();
 }
 
@@ -622,6 +763,7 @@ export function drawGame(serverData) {
         if (state.playerInputs?.tab) {
             drawTabMenu(playersData);
         } else {
+            hideTabTooltip();
             drawCrosshair();
             drawDomainHUD(serverData);
             drawDashHUD();
@@ -634,6 +776,7 @@ export function drawGame(serverData) {
             if (state.playerInputs?.tab) {
                 drawTabMenu(playersData);
             } else {
+                hideTabTooltip();
                 drawWinnerWaitScreen();
             }
         }
