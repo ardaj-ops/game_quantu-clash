@@ -193,5 +193,34 @@ socket.on('gameStateChanged', (data) => {
         }
     }
 
-    if (data.state === 'GAMEOVER') showScreen('gameover');
+    if (data.state === 'BOSS_PICKING') {
+        // Boss mode: show which boss is picking, show card UI to boss
+        const bossStatusEl = document.getElementById('boss-picking-banner');
+        if (bossStatusEl) {
+            bossStatusEl.style.display = 'block';
+            bossStatusEl.textContent = data.bossName + ' (BOSS) vybírá karty…';
+            bossStatusEl.style.color = data.bossColor || '#ff2a7a';
+        }
+    }
+
+    if (data.state === 'GAMEOVER') {
+        // BUG FIX: Populate winner name and final scores before showing gameover screen.
+        // Previously showScreen was called but winner-text was never set.
+        const winnerEl = document.getElementById('winner-text');
+        if (winnerEl && data.winnerName) {
+            winnerEl.style.color = data.winnerColor || '#45f3ff';
+            winnerEl.textContent = data.winnerName + ' vyhrál hru!';
+        }
+        // Show final scoreboard if element exists
+        const scoreListEl = document.getElementById('gameover-scores');
+        if (scoreListEl && data.scores) {
+            scoreListEl.innerHTML = data.scores
+                .sort((a, b) => (b.score || 0) - (a.score || 0))
+                .map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:rgba(255,255,255,0.04);border-left:3px solid ${p.color};border-radius:6px;margin-bottom:4px;">
+                    <span style="color:${p.color};font-weight:600;">${escHtml(p.name)}</span>
+                    <span style="color:#f1c40f;font-family:'Orbitron',sans-serif;font-size:13px;">${p.score} bodů</span>
+                </div>`).join('');
+        }
+        showScreen('gameover');
+    }
 });

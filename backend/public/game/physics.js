@@ -89,8 +89,7 @@ export function updateRemoteBullets() {
         if (b.y + r > mapH) { b.y = mapH - r;  b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
         if (hitBoundary) {
-            if ((b.bouncesLeft || 0) > 0) b.bouncesLeft--;
-            else { state.remoteBullets.splice(i, 1); continue; }
+            // FIX: Arena borders always bounce remote bullets for free too.
         }
 
         if (allWalls.length > 0) {
@@ -236,8 +235,9 @@ export function updateLocalGame() {
         if (b.y + b.radius > mapH) { b.y = mapH - b.radius; b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
         if (hitBoundary) {
-            if (b.bouncesLeft > 0) b.bouncesLeft--;
-            else { state.localBullets.splice(i, 1); continue; }
+            // FIX: Arena borders ALWAYS bounce bullets for free (no bouncesLeft consumed).
+            // Interior walls still consume bounces. This makes the arena border a permanent
+            // bounce surface regardless of the player's bounce upgrade count.
         }
 
         // Interior wall collision

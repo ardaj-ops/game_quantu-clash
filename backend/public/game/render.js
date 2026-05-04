@@ -50,6 +50,214 @@ function drawBackground() {
     ctx.shadowBlur = 0;
 }
 
+
+// ─── DOMAIN MAP EFFECTS ───────────────────────────────────────────────────────
+// Renders full-arena visual overlays when a domain is active.
+// Called inside the scaled ctx (world space), before players are drawn.
+// Each domain type has a distinct visual signature; clashing domains blend them.
+
+let _domainTime = 0; // animation clock
+
+function drawDomainMapEffect(mapEffect) {
+    if (!mapEffect) return;
+    const W   = CONFIG.MAP_WIDTH  || 1920;
+    const H   = CONFIG.MAP_HEIGHT || 1080;
+    const ctx = state.ctx;
+    _domainTime += 0.05;
+
+    const effects = mapEffect.type === 'CLASH' ? mapEffect.effects : [mapEffect];
+
+    effects.forEach(fx => {
+        if (!fx) return;
+        ctx.save();
+
+        switch (fx.type) {
+
+            case 'QUANTUM_PRISON': {
+                // Pulsing blue grid distortion overlay
+                const pulse = 0.5 + 0.5 * Math.sin(_domainTime * 2);
+                ctx.strokeStyle = `rgba(42,157,244,${0.12 + pulse * 0.08})`;
+                ctx.lineWidth = 1;
+                const gs = 80;
+                for (let x = 0; x <= W; x += gs) {
+                    ctx.beginPath();
+                    ctx.moveTo(x + Math.sin(_domainTime + x * 0.01) * 4, 0);
+                    ctx.lineTo(x + Math.sin(_domainTime + x * 0.01 + 3) * 4, H);
+                    ctx.stroke();
+                }
+                for (let y = 0; y <= H; y += gs) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y + Math.cos(_domainTime + y * 0.01) * 4);
+                    ctx.lineTo(W, y + Math.cos(_domainTime + y * 0.01 + 3) * 4);
+                    ctx.stroke();
+                }
+                // Full tint
+                ctx.fillStyle = fx.tint || 'rgba(42,157,244,0.10)';
+                ctx.fillRect(0, 0, W, H);
+                // Vignette
+                drawVignette(ctx, W, H, fx.vignette || '#2a9df4', 0.35 + pulse * 0.1);
+                break;
+            }
+
+            case 'MADNESS_VEIL': {
+                // Wavy purple corruption
+                const wave = Math.sin(_domainTime * 3) * 0.5;
+                ctx.fillStyle = `rgba(163,53,238,${0.08 + Math.abs(wave) * 0.08})`;
+                ctx.fillRect(0, 0, W, H);
+                // Sinusoidal noise bands
+                ctx.strokeStyle = `rgba(163,53,238,${0.15 + Math.abs(wave) * 0.1})`;
+                ctx.lineWidth = 2;
+                for (let y = 0; y < H; y += 60) {
+                    ctx.beginPath();
+                    for (let x = 0; x <= W; x += 8) {
+                        const oy = Math.sin(_domainTime * 4 + x * 0.015 + y * 0.005) * 12;
+                        if (x === 0) ctx.moveTo(x, y + oy);
+                        else         ctx.lineTo(x, y + oy);
+                    }
+                    ctx.stroke();
+                }
+                drawVignette(ctx, W, H, fx.vignette || '#a335ee', 0.45);
+                break;
+            }
+
+            case 'BLOOD_ALTAR': {
+                // Pulsing red heartbeat
+                const beat = Math.abs(Math.sin(_domainTime * 4));
+                ctx.fillStyle = `rgba(255,0,50,${0.10 + beat * 0.12})`;
+                ctx.fillRect(0, 0, W, H);
+                // Red scan lines
+                ctx.fillStyle = `rgba(200,0,30,${0.06 + beat * 0.04})`;
+                for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
+                drawVignette(ctx, W, H, fx.vignette || '#ff0032', 0.55 + beat * 0.15);
+                break;
+            }
+
+            case 'GRAVITY_COLLAPSE': {
+                // Gravitational lens lines converging on player position
+                const cx2 = fx.cx || W / 2;
+                const cy2 = fx.cy || H / 2;
+                const spin = _domainTime * 0.8;
+                ctx.strokeStyle = `rgba(241,196,15,0.12)`;
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 24; i++) {
+                    const angle = (i / 24) * Math.PI * 2 + spin;
+                    const startX = cx2 + Math.cos(angle) * W;
+                    const startY = cy2 + Math.sin(angle) * H;
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(cx2 + Math.cos(angle + 0.15) * 60, cy2 + Math.sin(angle + 0.15) * 60);
+                    ctx.stroke();
+                }
+                // Central glow
+                const grd = ctx.createRadialGradient(cx2, cy2, 20, cx2, cy2, 350);
+                grd.addColorStop(0, 'rgba(241,196,15,0.25)');
+                grd.addColorStop(1, 'rgba(241,196,15,0)');
+                ctx.fillStyle = grd;
+                ctx.fillRect(0, 0, W, H);
+                drawVignette(ctx, W, H, fx.vignette || '#f1c40f', 0.30);
+                break;
+            }
+
+            case 'MIRROR_SINGULARITY': {
+                // Prism rainbow edges + mirror shimmer
+                const shimmer = 0.5 + 0.5 * Math.sin(_domainTime * 5);
+                const colors = ['rgba(255,0,0,', 'rgba(255,128,0,', 'rgba(255,255,0,',
+                                'rgba(0,255,100,', 'rgba(69,243,255,', 'rgba(163,53,238,'];
+                colors.forEach((col, ci) => {
+                    ctx.strokeStyle = col + (0.06 + shimmer * 0.04) + ')';
+                    ctx.lineWidth = 3;
+                    const offset = ci * 4 + shimmer * 6;
+                    ctx.strokeRect(offset, offset, W - offset*2, H - offset*2);
+                });
+                ctx.fillStyle = `rgba(69,243,255,${0.04 + shimmer * 0.04})`;
+                ctx.fillRect(0, 0, W, H);
+                drawVignette(ctx, W, H, fx.vignette || '#45f3ff', 0.25);
+                break;
+            }
+
+            case 'INFINITE_ARSENAL': {
+                // Golden shells raining across arena
+                const shellCount = 16;
+                ctx.fillStyle = 'rgba(255,170,0,0.55)';
+                for (let i = 0; i < shellCount; i++) {
+                    const t   = ((_domainTime * 0.6 + i / shellCount) % 1);
+                    const sx  = (i / shellCount) * W + Math.sin(_domainTime + i) * 60;
+                    const sy  = t * H;
+                    ctx.save();
+                    ctx.translate(sx, sy);
+                    ctx.rotate(_domainTime + i);
+                    ctx.fillRect(-3, -8, 6, 16);
+                    ctx.restore();
+                }
+                ctx.fillStyle = 'rgba(255,170,0,0.07)';
+                ctx.fillRect(0, 0, W, H);
+                drawVignette(ctx, W, H, fx.vignette || '#ffaa00', 0.28);
+                break;
+            }
+
+            case 'GAMBLER': {
+                // Color-flicker randomized arena hue
+                const hue   = (Math.sin(_domainTime * 7) * 0.5 + 0.5) * 360;
+                const alpha = 0.07 + Math.abs(Math.sin(_domainTime * 6)) * 0.06;
+                ctx.fillStyle = `hsla(${hue},80%,50%,${alpha})`;
+                ctx.fillRect(0, 0, W, H);
+                // Card suit symbols scattered
+                const suits = ['♠','♥','♦','♣'];
+                ctx.font = '28px serif';
+                ctx.globalAlpha = 0.08;
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i / 12) * Math.PI * 2 + _domainTime * 0.4;
+                    const r = 350;
+                    ctx.fillStyle = (i%2===0) ? '#f1c40f' : '#ff4757';
+                    ctx.fillText(suits[i%4], W/2 + Math.cos(angle)*r, H/2 + Math.sin(angle)*r);
+                }
+                ctx.globalAlpha = 1;
+                drawVignette(ctx, W, H, fx.vignette || '#2ed573', 0.22);
+                break;
+            }
+        }
+
+        ctx.restore();
+    });
+
+    // CLASH label overlay (top-center)
+    if (mapEffect.type === 'CLASH' && mapEffect.effects?.length >= 2) {
+        ctx.save();
+        ctx.font = 'bold 16px "Orbitron",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,42,122,0.9)';
+        ctx.shadowColor = '#ff2a7a'; ctx.shadowBlur = 14;
+        const names = mapEffect.effects.map(e => e.label || e.type).join(' ✖ ');
+        ctx.fillText('⚔ DOMAIN CLASH: ' + names, W / 2, 36);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+}
+
+function buildMapEffect(activePlayers) {
+    if (!activePlayers || activePlayers.length === 0) return null;
+    if (activePlayers.length === 1) {
+        const p = activePlayers[0];
+        return { type: p.domainType, tint: 'rgba(0,0,0,0)', cx: p.x, cy: p.y, label: p.domainType.replace(/_/g,' ') };
+    }
+    return { type: 'CLASH', effects: activePlayers.map(p => ({ type: p.domainType, cx: p.x, cy: p.y, label: p.domainType.replace(/_/g,' ') })) };
+}
+
+function drawVignette(ctx, W, H, color, alpha) {
+    const grd = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.75);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(1, color.startsWith('#')
+        ? hexToRgba(color, alpha)
+        : color.replace(/,[^,)]+\)$/, `,${alpha})`));
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function hexToRgba(hex, a) {
+    const n = parseInt(hex.replace('#',''), 16);
+    return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`;
+}
+
 // ─── MAP OBJECTS ─────────────────────────────────────────────────────────────
 
 function drawMapObjects(obstacles = [], breakables = []) {
@@ -557,8 +765,7 @@ function drawTabMenu(playersData) {
             ctx.textAlign = 'center';
             ctx.fillText((card.name || '?')[0].toUpperCase(), cx2 + CARD_CHIP_W / 2, cy2 + 11);
 
-            // Store region in screen space for tooltip hit-testing
-            const scaleX  = state.gameOffsetX; // we are already in setTransform(1,0,0,1,0,0)
+            // Coordinates are in screen space (drawTabMenu uses setTransform(1,0,0,1,0,0))
             _tabCardRegions.push({ x: cx2, y: cy2, w: CARD_CHIP_W, h: CARD_CHIP_H, card });
         });
 
@@ -750,6 +957,14 @@ export function drawGame(serverData) {
     state.ctx.scale(state.gameScale, state.gameScale);
 
     drawBackground();
+    // Draw domain map-wide visual effects (tints, animations, vignettes)
+    if (serverData.players) {
+        const activeDomainPlayers = Object.values(serverData.players).filter(p => p.domainActive);
+        if (activeDomainPlayers.length > 0) {
+            const mapFx = buildMapEffect(activeDomainPlayers);
+            if (mapFx) drawDomainMapEffect(mapFx);
+        }
+    }
     drawMapObjects(state.localObstacles || [], state.localBreakables || []);
 
     if (serverData.gameState !== 'LOBBY') {
