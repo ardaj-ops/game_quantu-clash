@@ -151,9 +151,11 @@ socket.on('gameStateChanged', (data) => {
         showScreen('game');
         initGameEngine();
 
-        // Hide winner overlay when game resumes
+        // Hide winner overlay and boss banner when game resumes
         const wo = document.getElementById('winner-wait-overlay');
         if (wo) wo.style.display = 'none';
+        const bb = document.getElementById('boss-picking-banner');
+        if (bb) bb.style.display = 'none';
     }
 
     // FIX: Show winner overlay to the survivor when card selection starts.
@@ -194,15 +196,9 @@ socket.on('gameStateChanged', (data) => {
     }
 
     if (data.state === 'BOSS_PICKING') {
-        // Boss mode: show which boss is picking, show card UI to boss
-        const bossStatusEl = document.getElementById('boss-picking-banner');
-        if (bossStatusEl) {
-            bossStatusEl.style.display = 'block';
-            bossStatusEl.textContent = data.bossName + ' (BOSS) vybírá karty…';
-            bossStatusEl.style.color = data.bossColor || '#ff2a7a';
-        }
+        const el = document.getElementById('boss-picking-banner');
+        if (el) { el.style.display='flex'; }
     }
-
     if (data.state === 'GAMEOVER') {
         // BUG FIX: Populate winner name and final scores before showing gameover screen.
         // Previously showScreen was called but winner-text was never set.

@@ -51,211 +51,149 @@ function drawBackground() {
 }
 
 
-// ─── DOMAIN MAP EFFECTS ───────────────────────────────────────────────────────
-// Renders full-arena visual overlays when a domain is active.
-// Called inside the scaled ctx (world space), before players are drawn.
-// Each domain type has a distinct visual signature; clashing domains blend them.
+// ─── DOMAIN MAP-WIDE VISUAL EFFECTS ──────────────────────────────────────────
+let _domainTime = 0;
 
-let _domainTime = 0; // animation clock
-
-function drawDomainMapEffect(mapEffect) {
-    if (!mapEffect) return;
-    const W   = CONFIG.MAP_WIDTH  || 1920;
-    const H   = CONFIG.MAP_HEIGHT || 1080;
+function drawDomainMapEffect(activePlayers) {
+    if (!activePlayers || activePlayers.length === 0) return;
+    const W = CONFIG.MAP_WIDTH || 1920, H = CONFIG.MAP_HEIGHT || 1080;
     const ctx = state.ctx;
     _domainTime += 0.05;
 
-    const effects = mapEffect.type === 'CLASH' ? mapEffect.effects : [mapEffect];
+    const clashing = activePlayers.length >= 2;
 
-    effects.forEach(fx => {
-        if (!fx) return;
+    activePlayers.forEach(player => {
         ctx.save();
-
-        switch (fx.type) {
-
+        const beat = 0.5 + 0.5 * Math.sin(_domainTime * 3);
+        switch (player.domainType) {
             case 'QUANTUM_PRISON': {
-                // Pulsing blue grid distortion overlay
-                const pulse = 0.5 + 0.5 * Math.sin(_domainTime * 2);
-                ctx.strokeStyle = `rgba(42,157,244,${0.12 + pulse * 0.08})`;
+                ctx.strokeStyle = `rgba(42,157,244,${0.10 + beat * 0.08})`;
                 ctx.lineWidth = 1;
-                const gs = 80;
-                for (let x = 0; x <= W; x += gs) {
+                for (let x = 0; x <= W; x += 80) {
                     ctx.beginPath();
-                    ctx.moveTo(x + Math.sin(_domainTime + x * 0.01) * 4, 0);
-                    ctx.lineTo(x + Math.sin(_domainTime + x * 0.01 + 3) * 4, H);
+                    ctx.moveTo(x + Math.sin(_domainTime + x*0.01)*5, 0);
+                    ctx.lineTo(x + Math.sin(_domainTime + x*0.01+3)*5, H);
                     ctx.stroke();
                 }
-                for (let y = 0; y <= H; y += gs) {
+                for (let y = 0; y <= H; y += 80) {
                     ctx.beginPath();
-                    ctx.moveTo(0, y + Math.cos(_domainTime + y * 0.01) * 4);
-                    ctx.lineTo(W, y + Math.cos(_domainTime + y * 0.01 + 3) * 4);
+                    ctx.moveTo(0, y + Math.cos(_domainTime + y*0.01)*5);
+                    ctx.lineTo(W, y + Math.cos(_domainTime + y*0.01+3)*5);
                     ctx.stroke();
                 }
-                // Full tint
-                ctx.fillStyle = fx.tint || 'rgba(42,157,244,0.10)';
+                ctx.fillStyle = `rgba(42,157,244,${0.06 + beat*0.04})`;
                 ctx.fillRect(0, 0, W, H);
-                // Vignette
-                drawVignette(ctx, W, H, fx.vignette || '#2a9df4', 0.35 + pulse * 0.1);
+                _drawVignette(ctx, W, H, 42, 157, 244, 0.3 + beat*0.1);
                 break;
             }
-
             case 'MADNESS_VEIL': {
-                // Wavy purple corruption
-                const wave = Math.sin(_domainTime * 3) * 0.5;
-                ctx.fillStyle = `rgba(163,53,238,${0.08 + Math.abs(wave) * 0.08})`;
+                ctx.fillStyle = `rgba(163,53,238,${0.08+beat*0.07})`;
                 ctx.fillRect(0, 0, W, H);
-                // Sinusoidal noise bands
-                ctx.strokeStyle = `rgba(163,53,238,${0.15 + Math.abs(wave) * 0.1})`;
+                ctx.strokeStyle = `rgba(163,53,238,${0.15+beat*0.08})`;
                 ctx.lineWidth = 2;
                 for (let y = 0; y < H; y += 60) {
                     ctx.beginPath();
-                    for (let x = 0; x <= W; x += 8) {
-                        const oy = Math.sin(_domainTime * 4 + x * 0.015 + y * 0.005) * 12;
-                        if (x === 0) ctx.moveTo(x, y + oy);
-                        else         ctx.lineTo(x, y + oy);
+                    for (let x = 0; x <= W; x += 10) {
+                        const oy = Math.sin(_domainTime*4 + x*0.015 + y*0.005)*14;
+                        x === 0 ? ctx.moveTo(x, y+oy) : ctx.lineTo(x, y+oy);
                     }
                     ctx.stroke();
                 }
-                drawVignette(ctx, W, H, fx.vignette || '#a335ee', 0.45);
+                _drawVignette(ctx, W, H, 163, 53, 238, 0.45);
                 break;
             }
-
             case 'BLOOD_ALTAR': {
-                // Pulsing red heartbeat
-                const beat = Math.abs(Math.sin(_domainTime * 4));
-                ctx.fillStyle = `rgba(255,0,50,${0.10 + beat * 0.12})`;
+                const hb = Math.abs(Math.sin(_domainTime * 4));
+                ctx.fillStyle = `rgba(255,0,50,${0.09+hb*0.11})`;
                 ctx.fillRect(0, 0, W, H);
-                // Red scan lines
-                ctx.fillStyle = `rgba(200,0,30,${0.06 + beat * 0.04})`;
+                ctx.fillStyle = `rgba(180,0,30,${0.05+hb*0.04})`;
                 for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
-                drawVignette(ctx, W, H, fx.vignette || '#ff0032', 0.55 + beat * 0.15);
+                _drawVignette(ctx, W, H, 255, 0, 50, 0.50 + hb*0.15);
                 break;
             }
-
             case 'GRAVITY_COLLAPSE': {
-                // Gravitational lens lines converging on player position
-                const cx2 = fx.cx || W / 2;
-                const cy2 = fx.cy || H / 2;
-                const spin = _domainTime * 0.8;
-                ctx.strokeStyle = `rgba(241,196,15,0.12)`;
+                const cx2 = player.x || W/2, cy2 = player.y || H/2;
+                ctx.strokeStyle = 'rgba(241,196,15,0.12)';
                 ctx.lineWidth = 1;
-                for (let i = 0; i < 24; i++) {
-                    const angle = (i / 24) * Math.PI * 2 + spin;
-                    const startX = cx2 + Math.cos(angle) * W;
-                    const startY = cy2 + Math.sin(angle) * H;
+                for (let i = 0; i < 20; i++) {
+                    const ang = (i/20)*Math.PI*2 + _domainTime*0.8;
                     ctx.beginPath();
-                    ctx.moveTo(startX, startY);
-                    ctx.lineTo(cx2 + Math.cos(angle + 0.15) * 60, cy2 + Math.sin(angle + 0.15) * 60);
+                    ctx.moveTo(cx2+Math.cos(ang)*W, cy2+Math.sin(ang)*H);
+                    ctx.lineTo(cx2+Math.cos(ang+0.12)*60, cy2+Math.sin(ang+0.12)*60);
                     ctx.stroke();
                 }
-                // Central glow
-                const grd = ctx.createRadialGradient(cx2, cy2, 20, cx2, cy2, 350);
-                grd.addColorStop(0, 'rgba(241,196,15,0.25)');
-                grd.addColorStop(1, 'rgba(241,196,15,0)');
-                ctx.fillStyle = grd;
-                ctx.fillRect(0, 0, W, H);
-                drawVignette(ctx, W, H, fx.vignette || '#f1c40f', 0.30);
+                const grd = ctx.createRadialGradient(cx2,cy2,20,cx2,cy2,340);
+                grd.addColorStop(0,'rgba(241,196,15,0.22)');
+                grd.addColorStop(1,'rgba(241,196,15,0)');
+                ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+                _drawVignette(ctx, W, H, 241, 196, 15, 0.28);
                 break;
             }
-
             case 'MIRROR_SINGULARITY': {
-                // Prism rainbow edges + mirror shimmer
-                const shimmer = 0.5 + 0.5 * Math.sin(_domainTime * 5);
-                const colors = ['rgba(255,0,0,', 'rgba(255,128,0,', 'rgba(255,255,0,',
-                                'rgba(0,255,100,', 'rgba(69,243,255,', 'rgba(163,53,238,'];
-                colors.forEach((col, ci) => {
-                    ctx.strokeStyle = col + (0.06 + shimmer * 0.04) + ')';
+                const sh = 0.5+0.5*Math.sin(_domainTime*5);
+                const cols = ['255,0,0','255,128,0','255,255,0','0,255,100','69,243,255','163,53,238'];
+                cols.forEach((col,ci) => {
+                    ctx.strokeStyle = `rgba(${col},${0.05+sh*0.04})`;
                     ctx.lineWidth = 3;
-                    const offset = ci * 4 + shimmer * 6;
-                    ctx.strokeRect(offset, offset, W - offset*2, H - offset*2);
+                    const off = ci*4+sh*5;
+                    ctx.strokeRect(off,off,W-off*2,H-off*2);
                 });
-                ctx.fillStyle = `rgba(69,243,255,${0.04 + shimmer * 0.04})`;
-                ctx.fillRect(0, 0, W, H);
-                drawVignette(ctx, W, H, fx.vignette || '#45f3ff', 0.25);
+                ctx.fillStyle = `rgba(69,243,255,${0.04+sh*0.03})`;
+                ctx.fillRect(0,0,W,H);
+                _drawVignette(ctx, W, H, 69, 243, 255, 0.22);
                 break;
             }
-
             case 'INFINITE_ARSENAL': {
-                // Golden shells raining across arena
-                const shellCount = 16;
-                ctx.fillStyle = 'rgba(255,170,0,0.55)';
-                for (let i = 0; i < shellCount; i++) {
-                    const t   = ((_domainTime * 0.6 + i / shellCount) % 1);
-                    const sx  = (i / shellCount) * W + Math.sin(_domainTime + i) * 60;
-                    const sy  = t * H;
-                    ctx.save();
-                    ctx.translate(sx, sy);
-                    ctx.rotate(_domainTime + i);
-                    ctx.fillRect(-3, -8, 6, 16);
-                    ctx.restore();
+                ctx.fillStyle = 'rgba(255,170,0,0.50)';
+                for (let i=0;i<14;i++) {
+                    const t=((_domainTime*0.5+i/14)%1), sx=(i/14)*W+Math.sin(_domainTime+i)*50, sy=t*H;
+                    ctx.save(); ctx.translate(sx,sy); ctx.rotate(_domainTime+i);
+                    ctx.fillRect(-3,-8,6,16); ctx.restore();
                 }
-                ctx.fillStyle = 'rgba(255,170,0,0.07)';
-                ctx.fillRect(0, 0, W, H);
-                drawVignette(ctx, W, H, fx.vignette || '#ffaa00', 0.28);
+                ctx.fillStyle = 'rgba(255,170,0,0.06)'; ctx.fillRect(0,0,W,H);
+                _drawVignette(ctx, W, H, 255, 170, 0, 0.25);
                 break;
             }
-
             case 'GAMBLER': {
-                // Color-flicker randomized arena hue
-                const hue   = (Math.sin(_domainTime * 7) * 0.5 + 0.5) * 360;
-                const alpha = 0.07 + Math.abs(Math.sin(_domainTime * 6)) * 0.06;
-                ctx.fillStyle = `hsla(${hue},80%,50%,${alpha})`;
-                ctx.fillRect(0, 0, W, H);
-                // Card suit symbols scattered
-                const suits = ['♠','♥','♦','♣'];
-                ctx.font = '28px serif';
-                ctx.globalAlpha = 0.08;
-                for (let i = 0; i < 12; i++) {
-                    const angle = (i / 12) * Math.PI * 2 + _domainTime * 0.4;
-                    const r = 350;
-                    ctx.fillStyle = (i%2===0) ? '#f1c40f' : '#ff4757';
-                    ctx.fillText(suits[i%4], W/2 + Math.cos(angle)*r, H/2 + Math.sin(angle)*r);
+                const hue = (Math.sin(_domainTime*6)*0.5+0.5)*360;
+                ctx.fillStyle = `hsla(${hue},80%,50%,${0.06+Math.abs(Math.sin(_domainTime*7))*0.05})`;
+                ctx.fillRect(0,0,W,H);
+                ctx.globalAlpha=0.07;
+                const suits=['♠','♥','♦','♣'];
+                ctx.font='26px serif';
+                for(let i=0;i<10;i++){
+                    const ang=(i/10)*Math.PI*2+_domainTime*0.4,r=320;
+                    ctx.fillStyle=(i%2===0)?'#f1c40f':'#ff4757';
+                    ctx.fillText(suits[i%4],W/2+Math.cos(ang)*r,H/2+Math.sin(ang)*r);
                 }
-                ctx.globalAlpha = 1;
-                drawVignette(ctx, W, H, fx.vignette || '#2ed573', 0.22);
+                ctx.globalAlpha=1;
+                _drawVignette(ctx, W, H, 46, 213, 115, 0.20);
                 break;
             }
         }
-
         ctx.restore();
     });
 
-    // CLASH label overlay (top-center)
-    if (mapEffect.type === 'CLASH' && mapEffect.effects?.length >= 2) {
+    // CLASH label
+    if (clashing) {
         ctx.save();
-        ctx.font = 'bold 16px "Orbitron",sans-serif';
+        ctx.font = 'bold 15px "Orbitron",sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(255,42,122,0.9)';
+        ctx.fillStyle = '#ff2a7a';
         ctx.shadowColor = '#ff2a7a'; ctx.shadowBlur = 14;
-        const names = mapEffect.effects.map(e => e.label || e.type).join(' ✖ ');
-        ctx.fillText('⚔ DOMAIN CLASH: ' + names, W / 2, 36);
+        const names = activePlayers.map(p => p.domainType.replace(/_/g,' ')).join(' ✖ ');
+        ctx.fillText('⚔ DOMAIN CLASH: ' + names, W/2, 34);
         ctx.shadowBlur = 0;
         ctx.restore();
     }
 }
 
-function buildMapEffect(activePlayers) {
-    if (!activePlayers || activePlayers.length === 0) return null;
-    if (activePlayers.length === 1) {
-        const p = activePlayers[0];
-        return { type: p.domainType, tint: 'rgba(0,0,0,0)', cx: p.x, cy: p.y, label: p.domainType.replace(/_/g,' ') };
-    }
-    return { type: 'CLASH', effects: activePlayers.map(p => ({ type: p.domainType, cx: p.x, cy: p.y, label: p.domainType.replace(/_/g,' ') })) };
-}
-
-function drawVignette(ctx, W, H, color, alpha) {
-    const grd = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.75);
-    grd.addColorStop(0, 'rgba(0,0,0,0)');
-    grd.addColorStop(1, color.startsWith('#')
-        ? hexToRgba(color, alpha)
-        : color.replace(/,[^,)]+\)$/, `,${alpha})`));
+function _drawVignette(ctx, W, H, r, g, b, alpha) {
+    const grd = ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.75);
+    grd.addColorStop(0,'rgba(0,0,0,0)');
+    grd.addColorStop(1,`rgba(${r},${g},${b},${alpha})`);
     ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, W, H);
-}
-
-function hexToRgba(hex, a) {
-    const n = parseInt(hex.replace('#',''), 16);
-    return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`;
+    ctx.fillRect(0,0,W,H);
 }
 
 // ─── MAP OBJECTS ─────────────────────────────────────────────────────────────
@@ -450,13 +388,20 @@ function drawPlayers(playersData) {
 
         drawAvatar(p, id, ip, 1);
 
-        // Name tag
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px "Inter",sans-serif';
+        // Name tag (boss gets crown + gold name)
+        const isBossPlayer = p.isBoss || false;
         ctx.textAlign = 'center';
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
         ctx.shadowBlur  = 4;
-        ctx.fillText(p.name || 'Hráč', rx, ry - 30);
+        if (isBossPlayer) {
+            ctx.font = 'bold 12px "Inter",sans-serif';
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillText('👑 ' + (p.name || 'Boss'), rx, ry - 30);
+        } else {
+            ctx.font = '12px "Inter",sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(p.name || 'Hráč', rx, ry - 30);
+        }
         ctx.shadowBlur = 0;
 
         // HP bar
@@ -611,166 +556,189 @@ if (typeof window !== 'undefined') {
 }
 
 // ─── DRAW TAB MENU ───────────────────────────────────────────────────────────
-function drawTabMenu(playersData) {
+function drawTabMenu(playersData, serverData) {
     const RARITY_COLORS = {
         common:'#9e9e9e', uncommon:'#2ed573', rare:'#2a9df4',
         epic:'#a335ee', legendary:'#ffaa00', mythic:'#ff4757',
         exotic:'#eccc68', transcended:'#ff2a7a'
     };
-
     const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
-    const ctx    = state.ctx;
+    const ctx = state.ctx;
 
-    // Row height scales with card count — players with many cards get taller rows
-    const maxCards  = Math.max(1, ...sorted.map(p => (p.pickedCards || []).length));
-    // Each row: name+stats block (50px) + card row that grows with count
-    // Cards displayed as small dots/chips, max 12 per visual row, then wrap
-    const CARD_CHIP_W   = 22; // width of each chip
-    const CARD_CHIP_H   = 16;
-    const CARDS_PER_ROW = 12;
-    const cardRows      = Math.max(1, Math.ceil(maxCards / CARDS_PER_ROW));
-    const rowH          = 54 + cardRows * (CARD_CHIP_H + 3);
+    // Dynamic row height: base 54px + card chips row
+    const CHIP_W = 20, CHIP_H = 15, CHIPS_PER_ROW = 14;
+    const maxCards = Math.max(1, ...sorted.map(p => (p.pickedCards || []).length));
+    const cardRows = Math.max(1, Math.ceil(maxCards / CHIPS_PER_ROW));
+    const rowH = 56 + cardRows * (CHIP_H + 3);
 
-    const STAT_W   = 200; // right column: stat bars
-    const w        = 700;
-    const headerH  = 58;
-    const h        = headerH + sorted.length * rowH + 12;
+    const W = 720, headerH = 62;
+    const H = headerH + sorted.length * rowH + 12;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const px = (state.canvas.width  - w) / 2;
-    const py = (state.canvas.height - h) / 2;
+    const px = (state.canvas.width  - W) / 2;
+    const py = Math.max(10, (state.canvas.height - H) / 2);
 
-    // Panel
+    // Panel background
     ctx.fillStyle = 'rgba(9,10,15,0.96)';
-    ctx.fillRect(px, py, w, h);
+    ctx.fillRect(px, py, W, H);
     ctx.strokeStyle = 'rgba(69,243,255,0.5)';
     ctx.lineWidth = 1.5;
     ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
-    ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+    ctx.strokeRect(px + 0.5, py + 0.5, W - 1, H - 1);
     ctx.shadowBlur = 0;
 
     // Header
     ctx.fillStyle = '#45f3ff';
     ctx.font = 'bold 13px "Orbitron",sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, py + 34);
+    const gameMode = serverData?.gameMode || 'FFA';
+    ctx.fillText('TABULKA SKÓRE  ·  ' + gameMode, state.canvas.width / 2, py + 22);
 
     // Column headers
     ctx.fillStyle = '#444';
-    ctx.font = '10px "Inter",sans-serif';
+    ctx.font = '9px "Inter",sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('HRÁČ  ·  BODY', px + 48, py + 50);
-    ctx.textAlign = 'right';
-    ctx.fillText('STATY', px + w - STAT_W - 8, py + 50);
-    ctx.fillText('KARTY', px + w - 10, py + 50);
+    ctx.fillText('HRÁČ', px + 44, py + 38);
+    ctx.fillText('BODY (KOLA)', px + 200, py + 38);
+    ctx.fillText('STATY', px + 340, py + 38);
+    ctx.fillText('KARTY CELKEM', px + 560, py + 38);
 
-    _tabCardRegions = []; // reset hit regions
+    // Separator line
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 8, py + 44); ctx.lineTo(px + W - 8, py + 44); ctx.stroke();
 
+    _tabCardRegions = [];
     let ry = py + headerH;
 
     sorted.forEach((p, i) => {
         if (i % 2 === 0) {
             ctx.fillStyle = 'rgba(255,255,255,0.025)';
-            ctx.fillRect(px + 1, ry, w - 2, rowH);
+            ctx.fillRect(px + 1, ry, W - 2, rowH);
         }
 
-        // ── Colour dot ──────────────────────────────────────────────────────
-        ctx.beginPath();
-        ctx.arc(px + 20, ry + 20, 8, 0, TWO_PI);
-        ctx.fillStyle = p.color || '#fff';
-        ctx.fill();
+        const isBoss = p.isBoss;
+        const dead   = p.hp <= 0;
 
-        // ── Name + score ─────────────────────────────────────────────────────
-        const dead = p.hp <= 0;
+        // ── Colour dot + boss crown ─────────────────────────────────────
+        ctx.beginPath();
+        ctx.arc(px + 18, ry + 20, 8, 0, TWO_PI);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.shadowColor = p.color; ctx.shadowBlur = isBoss ? 12 : 0;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        if (isBoss) {
+            ctx.fillStyle = '#f1c40f';
+            ctx.font = '11px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('👑', px + 18, ry + 10);
+        }
+
+        // ── Name ────────────────────────────────────────────────────────
         ctx.fillStyle = dead ? '#555' : '#e8eaf0';
-        ctx.font = '13px "Inter",sans-serif';
+        ctx.font = (isBoss ? 'bold ' : '') + '13px "Inter",sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(
-            `${dead ? '💀 ' : ''}${p.name || 'Hráč'}${p.id === socket?.id ? ' (TY)' : ''}`,
-            px + 36, ry + 20
+            (dead ? '💀 ' : '') + (p.name || 'Hráč') + (p.id === socket?.id ? ' (TY)' : ''),
+            px + 32, ry + 22
         );
+
+        // ── Score (rounds won) ───────────────────────────────────────────
         ctx.fillStyle = '#f1c40f';
-        ctx.font = 'bold 13px "Orbitron",sans-serif';
-        ctx.fillText(`${p.score || 0} bodů`, px + 36, ry + 36);
+        ctx.font = 'bold 14px "Orbitron",sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${p.score || 0}`, px + 200, ry + 22);
+        ctx.fillStyle = '#555';
+        ctx.font = '9px "Inter",sans-serif';
+        ctx.fillText('kola', px + 200 + ctx.measureText(`${p.score || 0}`).width + 4, ry + 21);
 
-        // ── STAT BARS (right section before cards) ────────────────────────────
-        const statX  = px + w - STAT_W - 130;
-        const barLen = 90;
-        const barH   = 5;
-
-        // Define stats to show with their max reference values
+        // ── STAT BARS ────────────────────────────────────────────────────
+        const statX  = px + 340;
+        const barLen = 72;
         const stats = [
-            { label: 'DMG',    val: p.damage      || 20,  max: 999, col: '#ff4757' },
-            { label: 'SPD',    val: p.moveSpeed   || 0.8, max: 3.5, col: '#45f3ff' },
-            { label: 'AMMO',   val: p.maxAmmo     || 10,  max: 30,  col: '#f1c40f' },
+            { label:'HP',  val: p.hp||0,          max: p.maxHp||100, color:'#2ed573' },
+            { label:'DMG', val: p.damage||20,      max: 200,          color:'#ff4757' },
+            { label:'SPD', val: p.moveSpeed||0.8,  max: 3.5,          color:'#45f3ff' },
+            { label:'AMO', val: p.maxAmmo||10,     max: 30,           color:'#f1c40f' },
         ];
-
         stats.forEach((s, si) => {
-            const bx = statX + si * (barLen + 28);
-            const by = ry + 8;
+            const bx = statX + si * (barLen + 20);
             const ratio = Math.min(1, s.val / s.max);
-
-            ctx.fillStyle = '#222';
-            ctx.fillRect(bx, by + 12, barLen, barH);
-            ctx.fillStyle = s.col;
-            ctx.fillRect(bx, by + 12, barLen * ratio, barH);
-
+            ctx.fillStyle = '#1a1c24';
+            ctx.fillRect(bx, ry + 6, barLen, 5);
+            ctx.fillStyle = s.color;
+            ctx.fillRect(bx, ry + 6, barLen * ratio, 5);
             ctx.fillStyle = '#555';
             ctx.font = '8px "Inter",sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText(s.label, bx, by + 9);
-
-            ctx.fillStyle = s.col;
-            ctx.font = 'bold 9px "Inter",sans-serif';
-            const display = s.label === 'SPD' ? s.val.toFixed(1)
-                          : s.label === 'DMG' ? Math.round(s.val)
-                          : Math.round(s.val);
-            ctx.fillText(display, bx + barLen + 3, by + 16);
+            ctx.fillText(s.label, bx, ry + 18);
+            ctx.fillStyle = s.color;
+            ctx.font = '8px "Inter",sans-serif';
+            const disp = s.label === 'HP' ? Math.round(s.val)
+                       : s.label === 'SPD' ? s.val.toFixed(1)
+                       : Math.round(s.val);
+            ctx.fillText(disp, bx + barLen + 2, ry + 14);
         });
 
-        // HP bar
-        const hpBx  = statX;
-        const hpBy  = ry + 30;
-        const hpRat = Math.max(0, (p.hp || 0) / (p.maxHp || 100));
-        const hpCol = hpRat > 0.5 ? '#2ed573' : hpRat > 0.25 ? '#f1c40f' : '#ff4757';
-        ctx.fillStyle = '#222';
-        ctx.fillRect(hpBx, hpBy, (barLen + 28) * 3 - 28, barH);
-        ctx.fillStyle = hpCol;
-        ctx.fillRect(hpBx, hpBy, ((barLen + 28) * 3 - 28) * hpRat, barH);
-        ctx.fillStyle = '#555'; ctx.font = '8px "Inter",sans-serif'; ctx.textAlign = 'left';
-        ctx.fillText(`HP ${Math.round(p.hp||0)}/${p.maxHp||100}`, hpBx, hpBy - 2);
+        // Bounce, Pierce, Lifesteal mini-stats
+        const extraStats = [
+            { key:'Bounce', val: p.bounces||0 },
+            { key:'Pierce', val: p.pierce||0 },
+            { key:'Regen',  val: p.hpRegen||0 },
+        ].filter(s => s.val > 0);
+        if (extraStats.length) {
+            ctx.fillStyle = '#444';
+            ctx.font = '9px "Inter",sans-serif';
+            ctx.textAlign = 'left';
+            let ex = statX;
+            extraStats.forEach(s => {
+                ctx.fillText(`${s.key}: ${s.val}`, ex, ry + 30);
+                ex += 70;
+            });
+        }
 
-        // ── CARD CHIPS (scale with count, hover to see description) ───────────
-        const cards    = p.pickedCards || [];
-        const chipArea = px + w - 124; // start x of card chips
-        const chipY0   = ry + 6;
+        // ── PICKED CARDS (all game long) ──────────────────────────────────
+        const cards   = p.pickedCards || [];
+        const chipX0  = px + 556;
+        const chipY0  = ry + 4;
 
-        cards.forEach((card, ci) => {
-            const col  = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
-            const row  = Math.floor(ci / CARDS_PER_ROW);
-            const col2 = ci % CARDS_PER_ROW;
-            const cx2  = chipArea + col2 * (CARD_CHIP_W + 2);
-            const cy2  = chipY0   + row  * (CARD_CHIP_H + 2);
+        if (cards.length === 0) {
+            ctx.fillStyle = '#333';
+            ctx.font = '10px "Inter",sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('žádné karty', chipX0, chipY0 + 12);
+        } else {
+            cards.forEach((card, ci) => {
+                const col  = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
+                const row  = Math.floor(ci / CHIPS_PER_ROW);
+                const col2 = ci % CHIPS_PER_ROW;
+                const cx2  = chipX0 + col2 * (CHIP_W + 2);
+                const cy2  = chipY0 + row  * (CHIP_H + 3);
 
-            ctx.fillStyle = `${col}28`;
-            ctx.fillRect(cx2, cy2, CARD_CHIP_W, CARD_CHIP_H);
-            ctx.strokeStyle = col;
-            ctx.lineWidth = 0.8;
-            ctx.strokeRect(cx2 + 0.5, cy2 + 0.5, CARD_CHIP_W - 1, CARD_CHIP_H - 1);
+                ctx.fillStyle = col + '28';
+                ctx.fillRect(cx2, cy2, CHIP_W, CHIP_H);
+                ctx.strokeStyle = col; ctx.lineWidth = 0.8;
+                ctx.strokeRect(cx2 + 0.5, cy2 + 0.5, CHIP_W - 1, CHIP_H - 1);
+                ctx.fillStyle = col;
+                ctx.font = 'bold 8px "Inter",sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText((card.name || '?')[0].toUpperCase(), cx2 + CHIP_W / 2, cy2 + 10);
 
-            // First letter of card name as icon
-            ctx.fillStyle = col;
-            ctx.font = 'bold 9px "Inter",sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText((card.name || '?')[0].toUpperCase(), cx2 + CARD_CHIP_W / 2, cy2 + 11);
-
-            // Coordinates are in screen space (drawTabMenu uses setTransform(1,0,0,1,0,0))
-            _tabCardRegions.push({ x: cx2, y: cy2, w: CARD_CHIP_W, h: CARD_CHIP_H, card });
-        });
+                // Hit region for tooltip
+                _tabCardRegions.push({ x: cx2, y: cy2, w: CHIP_W, h: CHIP_H, card });
+            });
+        }
 
         ry += rowH;
     });
+
+    // Max score indicator bottom
+    const maxScore = serverData?.maxScore || 25;
+    ctx.fillStyle = '#444';
+    ctx.font = '10px "Inter",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Vítěz při ${maxScore} bodech`, state.canvas.width / 2, py + H - 6);
 
     ctx.restore();
 }
@@ -957,13 +925,10 @@ export function drawGame(serverData) {
     state.ctx.scale(state.gameScale, state.gameScale);
 
     drawBackground();
-    // Draw domain map-wide visual effects (tints, animations, vignettes)
+    // Domain map-wide visual effects
     if (serverData.players) {
         const activeDomainPlayers = Object.values(serverData.players).filter(p => p.domainActive);
-        if (activeDomainPlayers.length > 0) {
-            const mapFx = buildMapEffect(activeDomainPlayers);
-            if (mapFx) drawDomainMapEffect(mapFx);
-        }
+        if (activeDomainPlayers.length > 0) drawDomainMapEffect(activeDomainPlayers);
     }
     drawMapObjects(state.localObstacles || [], state.localBreakables || []);
 
@@ -976,7 +941,7 @@ export function drawGame(serverData) {
 
     if (serverData.gameState === 'PLAYING') {
         if (state.playerInputs?.tab) {
-            drawTabMenu(playersData);
+            drawTabMenu(playersData, serverData);
         } else {
             hideTabTooltip();
             drawCrosshair();
@@ -989,7 +954,7 @@ export function drawGame(serverData) {
         const me = socket && playersData[socket.id];
         if (me && me.hp > 0) {
             if (state.playerInputs?.tab) {
-                drawTabMenu(playersData);
+                drawTabMenu(playersData, serverData);
             } else {
                 hideTabTooltip();
                 drawWinnerWaitScreen();

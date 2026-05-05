@@ -1,6 +1,7 @@
-// server.js — 20/80 SPLIT
-// Server: damage, death, scoring, domains, HP regen, card selection, GAMEOVER
-// Client (80%): movement, bullet physics, collision, rendering at 60fps
+// server.js — 20/80 SPLIT: server handles only authoritative events
+// (damage, death, scoring, card selection, domain effects, HP regen, clone expiry)
+// All movement/bullet physics run on clients at 60fps.
+// Server broadcasts state at 20fps — enough for corrections, not a physics engine.
 
 process.on('uncaughtException', (err) => console.error('🚨 CRASH:', err.message, err.stack));
 process.on('unhandledRejection', (r) => console.error('🚨 REJECTION:', r));
@@ -28,6 +29,7 @@ const io = new Server(server, {
     pingInterval: 2000, pingTimeout: 5000
 });
 
+// ─── SHARED FILE LOADER ──────────────────────────────────────────────────────
 const loadSharedFile = (fileName, expectedVar) => {
     const paths = [
         path.join(__dirname, 'public', fileName),
@@ -71,11 +73,13 @@ const CONFIG = {
     MAX_PLAYERS:      6
 };
 
-const PORT           = process.env.PORT || 3000;
-const PHYSICS_TICK   = 1000 / 60;
-const BROADCAST_TICK = 1000 / 20;   // 20fps broadcast
-const rooms          = {};
+const PORT            = process.env.PORT || 3000;
+// 20/80 SPLIT: server physics tick = 60fps (damage/domain), broadcast = 20fps
+const PHYSICS_TICK    = 1000 / 60;
+const BROADCAST_TICK  = 1000 / 20;  // ← was 60fps, now 20fps (saves 67% server broadcast)
+const rooms           = {};
 
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function isValidNumber(v) { return typeof v === 'number' && isFinite(v) && !isNaN(v); }
 
 function makeDefaultPlayer(id, name, color, room) {
@@ -98,8 +102,7 @@ function makeDefaultPlayer(id, name, color, room) {
         domainTimer: 0, domainRadius: 200, isJackpotActive: false,
         jackpotTimer: 0, jackpotPity: 0, baseSpeed: CONFIG.BASE_MOVE_SPEED,
         isInvisible: false, _lastSyncTime: 0,
-        pickedCards: [], clone: null,
-        isBoss: false
+        pickedCards: [], clone: null
     };
 }
 
@@ -110,12 +113,10 @@ function resetPlayer(p, room, usedPositions = []) {
     p.domainActive = false; p.domainTimer = 0; p.clone = null;
 
     const idx = Object.keys(room.players).indexOf(p.id);
-    // FIX: Only pass interior obstacles (no border walls) to spawn checker.
-    // Border walls sit outside the map; including them blocked the entire 500px margin.
-    const interiorObs = (room.map?.obstacles || []).filter(o => !o.isBorder);
     const spawn = gameHelper.getValidSpawnPoint
         ? gameHelper.getValidSpawnPoint(idx, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
-            interiorObs, room.map?.breakables || [],
+            (room.map?.obstacles || []).filter(o => !o.isBorder),
+            room.map?.breakables || [],
             p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions)
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
     p.x = spawn.x; p.y = spawn.y;
@@ -128,10 +129,7 @@ function resetAllPlayers(room) {
     Object.values(room.players).forEach(p => {
         const bonus = p.maxHp - (p.baseMaxHp || baseHp);
         p.baseMaxHp = baseHp;
-        // Boss mode: boss always gets 3× HP
-        const effectiveBase = (room.settings.gameMode === 'BOSS' && p.isBoss)
-            ? baseHp * 3 : baseHp;
-        p.maxHp = Math.max(30, effectiveBase + bonus);
+        p.maxHp = Math.max(30, baseHp + bonus);
         resetPlayer(p, room, used);
     });
 }
@@ -145,39 +143,16 @@ function buildLean(p) {
         domainActive: p.domainActive, domainType: p.domainType,
         domainCooldown: p.domainCooldown, domainRadius: p.domainRadius,
         score: p.score,
+        // Stats sent for tab menu display
         moveSpeed: p.moveSpeed, damage: p.damage, fireRate: p.fireRate,
         bulletSpeed: p.bulletSpeed, bounces: p.bounces, pierce: p.pierce,
         lifesteal: p.lifesteal, hpRegen: p.hpRegen,
         playerRadius: p.playerRadius, bulletSize: p.bulletSize,
         multishot: p.multishot, spread: p.spread,
         isJackpotActive: p.isJackpotActive,
-        pickedCards: p.pickedCards || [],
-        clone: p.clone || null,
-        isBoss: p.isBoss || false
+        pickedCards: p.pickedCards || [], isBoss: p.isBoss || false,
+        clone: p.clone || null
     };
-}
-
-// ─── BOSS MODE SETUP ─────────────────────────────────────────────────────────
-function initBossMode(room) {
-    // Choose boss: creator if present, otherwise random
-    const playerIds = Object.keys(room.players);
-    const bossId = room.creatorId && room.players[room.creatorId]
-        ? room.creatorId
-        : playerIds[Math.floor(Math.random() * playerIds.length)];
-
-    room.bossId = bossId;
-    Object.values(room.players).forEach(p => { p.isBoss = (p.id === bossId); });
-
-    // Boss gets to pick 3 cards BEFORE the round starts
-    const boss = room.players[bossId];
-    if (boss) {
-        const selection = gameHelper.generateCardsForPlayer
-            ? gameHelper.generateCardsForPlayer(boss, availableCards)
-            : availableCards.slice(0, 3);
-        room.bossPicking = true;
-        io.to(bossId).emit('showBossCardSelection', selection);
-        io.to(room.id).emit('bossPickingCards', { bossName: boss.name, bossColor: boss.color });
-    }
 }
 
 // ─── CARD SELECTION ───────────────────────────────────────────────────────────
@@ -189,6 +164,7 @@ function initiateCardSelection(room) {
 
     const loserIds = room.loserIds || new Set();
     const playerCount = Object.keys(room.players).length;
+    // BUG FIX: If only 1 player or no losers, skip card selection entirely
     if (loserIds.size === 0 || playerCount <= 1) {
         setTimeout(() => startNewRound(room), 500); return;
     }
@@ -215,13 +191,17 @@ function initiateCardSelection(room) {
 }
 
 function startNewRound(room) {
+    // Check for game over first
+    // Previously the game ran forever — GAMEOVER was never triggered.
     const maxScore = room.settings.maxRounds || CONFIG.MAX_SCORE;
     const winner = Object.values(room.players).find(p => (p.score || 0) >= maxScore);
     if (winner) {
         room.gameState = 'GAMEOVER';
         io.to(room.id).emit('gameStateChanged', {
-            state: 'GAMEOVER',
-            winnerId: winner.id, winnerName: winner.name, winnerColor: winner.color,
+            state:       'GAMEOVER',
+            winnerId:    winner.id,
+            winnerName:  winner.name,
+            winnerColor: winner.color,
             scores: Object.values(room.players).map(p => ({ name: p.name, score: p.score, color: p.color }))
         });
         setTimeout(() => { delete rooms[room.id]; }, 30000);
@@ -233,20 +213,36 @@ function startNewRound(room) {
     room.loserIds = new Set();
     room.loserCardsPicked = new Set();
     room.loserCardOptions = {};
-    room.bossPicking = false;
-
+    room.bossId = null; room.bossPicking = false;
     room.map = gameHelper.generateMap
         ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
         : { obstacles: [], breakables: [] };
-
-    // In boss mode, reinitialize boss every round
     if (room.settings.gameMode === 'BOSS') {
         Object.values(room.players).forEach(p => { p.isBoss = false; });
         initBossMode(room);
-        return; // initBossMode will call launchRound after boss picks
+    } else {
+        launchRound(room);
     }
+}
 
-    launchRound(room);
+// ─── BOSS MODE ───────────────────────────────────────────────────────────────
+function initBossMode(room) {
+    const playerIds = Object.keys(room.players);
+    if (playerIds.length === 0) return;
+    const bossId = room.creatorId && room.players[room.creatorId]
+        ? room.creatorId
+        : playerIds[Math.floor(Math.random() * playerIds.length)];
+    room.bossId = bossId;
+    room.bossPicking = true;
+    Object.values(room.players).forEach(p => { p.isBoss = (p.id === bossId); });
+    const boss = room.players[bossId];
+    if (!boss) return;
+    const sel = gameHelper.generateCardsForPlayer
+        ? gameHelper.generateCardsForPlayer(boss, availableCards)
+        : availableCards.slice(0, 3);
+    room.bossCardCount = 0;
+    io.to(bossId).emit('showBossCardSelection', sel);
+    io.to(room.id).emit('bossPickingCards', { bossName: boss.name, bossColor: boss.color });
 }
 
 function launchRound(room) {
@@ -255,8 +251,7 @@ function launchRound(room) {
     io.to(room.id).emit('gameStateChanged', {
         state: 'PLAYING', round: room.round,
         obstacles: room.map.obstacles, breakables: room.map.breakables,
-        gameMode: room.settings.gameMode,
-        bossId: room.bossId || null
+        gameMode: room.settings.gameMode, bossId: room.bossId || null
     });
 }
 
@@ -270,8 +265,7 @@ io.on('connection', (socket) => {
             : { obstacles: [], breakables: [] };
         rooms[roomId] = {
             id: roomId, creatorId: socket.id, players: {},
-            gameState: 'LOBBY', round: 1, map: initialMap, bossId: null,
-            bossPicking: false,
+            gameState: 'LOBBY', round: 1, map: initialMap,
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'FFA', startingHp: CONFIG.BASE_HP },
             loserIds: new Set(), loserCardsPicked: new Set(), loserCardOptions: {}
         };
@@ -283,7 +277,7 @@ io.on('connection', (socket) => {
         const roomId = (data.roomId || '').toUpperCase().trim();
         if (!rooms[roomId]) { socket.emit('errorMsg', 'Místnost neexistuje.'); return; }
         if (Object.keys(rooms[roomId].players).length >= CONFIG.MAX_PLAYERS) {
-            socket.emit('errorMsg', `Plná místnost (max ${CONFIG.MAX_PLAYERS}).`); return;
+            socket.emit('errorMsg', `Místnost je plná (max ${CONFIG.MAX_PLAYERS} hráčů).`); return;
         }
         socket.emit('roomJoined', { roomId });
         joinRoom(socket, roomId, data);
@@ -308,9 +302,7 @@ io.on('connection', (socket) => {
         if (!room || room.creatorId !== socket.id || room.gameState !== 'LOBBY') return;
         if (isValidNumber(s.maxRounds) && s.maxRounds >= 1 && s.maxRounds <= 100)
             room.settings.maxRounds = Math.floor(s.maxRounds);
-        // FIX: Accept FFA, TDM, and BOSS modes
-        if (['FFA', 'TDM', 'BOSS'].includes(s.gameMode))
-            room.settings.gameMode = s.gameMode;
+        if (['FFA', 'TDM', 'BOSS'].includes(s.gameMode)) room.settings.gameMode = s.gameMode;
         if (isValidNumber(s.startingHp) && s.startingHp >= 30 && s.startingHp <= 600) {
             room.settings.startingHp = Math.floor(s.startingHp);
             Object.values(room.players).forEach(p => { p.hp = p.maxHp = p.baseMaxHp = room.settings.startingHp; });
@@ -325,22 +317,14 @@ io.on('connection', (socket) => {
         io.to(room.id).emit('updatePlayerList', Object.values(room.players));
         const allReady = Object.values(room.players).every(p => p.isReady);
         if (allReady && Object.keys(room.players).length >= 1) {
-            room.gameState = 'PLAYING';
-            room.loserIds  = new Set();
-            room.map = gameHelper.generateMap
-                ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
-                : { obstacles: [], breakables: [] };
-
-            if (room.settings.gameMode === 'BOSS') {
-                Object.values(room.players).forEach(p => { p.isBoss = false; });
-                initBossMode(room);
-            } else {
-                launchRound(room);
-            }
+            room.gameState = 'PLAYING'; room.loserIds = new Set();
+            io.to(room.id).emit('gameStateChanged', {
+                state: 'PLAYING', obstacles: room.map.obstacles, breakables: room.map.breakables
+            });
         }
     });
 
-    // Boss picks 3 cards before the round starts
+    // Boss picks 3 starting cards before round begins
     socket.on('selectBossCard', (cardName) => {
         const room = rooms[socket.roomId];
         if (!room || !room.bossPicking || room.bossId !== socket.id) return;
@@ -348,19 +332,18 @@ io.on('connection', (socket) => {
         const card = availableCards.find(c => c.name === cardName);
         if (boss && card && typeof card.apply === 'function') {
             card.apply(boss);
-            boss.pickedCards.push({ name: card.name, rarity: card.rarity, description: card.description });
+            boss.pickedCards.push({ name: card.name, rarity: card.rarity, description: card.description || '' });
         }
-        // Boss picks exactly 3 cards
-        if (boss.pickedCards.length >= 3) {
+        room.bossCardCount = (room.bossCardCount || 0) + 1;
+        if (room.bossCardCount >= 3) {
             room.bossPicking = false;
             launchRound(room);
         } else {
-            // Send next card choice
-            const remaining = 3 - boss.pickedCards.length;
-            const nextSelection = gameHelper.generateCardsForPlayer
+            const nextSel = gameHelper.generateCardsForPlayer
                 ? gameHelper.generateCardsForPlayer(boss, availableCards)
                 : availableCards.slice(0, 3);
-            io.to(socket.id).emit('showBossCardSelection', nextSelection);
+            io.to(socket.id).emit('showBossCardSelection', nextSel);
+            io.to(room.id).emit('bossPickProgress', { picked: room.bossCardCount });
         }
     });
 
@@ -384,13 +367,16 @@ io.on('connection', (socket) => {
         if (room.loserCardsPicked.size >= room.loserIds.size) startNewRound(room);
     });
 
+    // 20/80 SPLIT: clientSync is the main position authority.
+    // Server accepts updates at max 30pps (33ms between updates).
+    // BUG FIX: was 8ms limit (125pps) — pointlessly high, wasted CPU.
     socket.on('clientSync', (data) => {
         const room = rooms[socket.roomId];
         if (!room || !room.players[socket.id]) return;
         const p = room.players[socket.id];
         if (p.hp <= 0) return;
         const now = Date.now();
-        if (now - (p._lastSyncTime || 0) < 33) return;
+        if (now - (p._lastSyncTime || 0) < 33) return;  // 30pps max
         p._lastSyncTime = now;
         if (isValidNumber(data.x) && isValidNumber(data.y)) {
             const r = p.playerRadius || CONFIG.PLAYER_RADIUS;
@@ -477,33 +463,27 @@ io.on('connection', (socket) => {
     socket.on('bulletHitPlayer', (data) => {
         const room = rooms[socket.roomId];
         if (!room) return;
-        const target  = room.players[data.targetId];
+        const target = room.players[data.targetId];
         const shooter = room.players[socket.id];
         if (!target || target.hp <= 0 || target.isJackpotActive) return;
-
         let dmg = shooter?.isRussianRoulette
             ? (Math.random() < 1/6 ? 150 : 1)
             : Math.min(Number(data.damage) || 20, 9999);
         target.hp = Math.max(0, target.hp - dmg);
         if (shooter && isValidNumber(data.lifesteal) && data.lifesteal > 0)
             shooter.hp = Math.min(shooter.maxHp, shooter.hp + dmg * Math.min(data.lifesteal, 1));
-
         if (target.hp <= 0) {
             if (shooter) shooter.score++;
             if (!room.loserIds) room.loserIds = new Set();
             room.loserIds.add(target.id);
             target.x = -9999; target.y = -9999;
-
             const alive = Object.values(room.players).filter(p => p.hp > 0);
-
             if (room.gameState === 'PLAYING') {
                 if (room.settings.gameMode === 'BOSS') {
-                    const bossAlive = room.players[room.bossId]?.hp > 0;
-                    const playersAlive = alive.filter(p => !p.isBoss).length;
-                    if (!bossAlive || playersAlive === 0) {
-                        // Round ends: boss killed, or all challengers dead
+                    const bossAlive = alive.some(p => p.id === room.bossId);
+                    const challengersAlive = alive.filter(p => p.id !== room.bossId).length;
+                    if (!bossAlive || challengersAlive === 0)
                         setTimeout(() => initiateCardSelection(room), 800);
-                    }
                 } else if (alive.length <= 1) {
                     setTimeout(() => initiateCardSelection(room), 800);
                 }
@@ -521,7 +501,8 @@ io.on('connection', (socket) => {
     });
 });
 
-// ─── PHYSICS LOOP (60fps) ────────────────────────────────────────────────────
+// ─── PHYSICS LOOP (60fps) — domain effects, HP regen, clone expiry ─────────
+// 20/80: Server runs domain+regen at 60fps but only BROADCASTS at 20fps.
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -540,7 +521,7 @@ setInterval(() => {
     }
 }, PHYSICS_TICK);
 
-// ─── BROADCAST LOOP (20fps) ─────────────────────────────────────────────────
+// ─── BROADCAST LOOP (20fps) — send lean state to all clients ─────────────────
 setInterval(() => {
     for (const roomId in rooms) {
         const room = rooms[roomId];
@@ -548,11 +529,10 @@ setInterval(() => {
         const leanPlayers = {};
         for (const id in room.players) leanPlayers[id] = buildLean(room.players[id]);
         io.to(room.id).volatile.emit('gameUpdate', {
-            players: leanPlayers, maxScore: room.settings.maxRounds,
-            gameState: room.gameState, gameMode: room.settings.gameMode,
-            bossId: room.bossId || null
+            players: leanPlayers, maxScore: room.settings.maxRounds, bossId: room.bossId || null,
+            gameState: room.gameState, gameMode: room.settings.gameMode
         });
     }
 }, BROADCAST_TICK);
 
-server.listen(PORT, () => console.log(`\n🚀 QUANTUM CLASH : ${PORT}\n`));
+server.listen(PORT, () => console.log(`\n🚀 QUANTUM CLASH : ${PORT} (server 20% | client 80%)\n`));

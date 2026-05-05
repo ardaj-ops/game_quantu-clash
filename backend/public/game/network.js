@@ -205,29 +205,30 @@ export function initNetwork() {
     // Boss mode events
     socket.on('bossPickingCards', (data) => {
         const el = document.getElementById('boss-picking-banner');
-        if (el) { el.style.display='block'; el.textContent = (data.bossName||'Boss') + ' vybírá karty…'; el.style.color = data.bossColor||'#ff2a7a'; }
+        if (el) { el.style.display='flex'; el.textContent=(data.bossName||'Boss')+' vybírá startovní karty…'; el.style.color=data.bossColor||'#ff2a7a'; }
     });
-
+    socket.on('bossPickProgress', (data) => {
+        const el = document.getElementById('boss-picking-banner');
+        if (el) el.textContent='Boss vybírá kartu ' + (data.picked+1) + '/3…';
+    });
     socket.on('showBossCardSelection', (cards) => {
-        const screen    = document.getElementById('card-screen');
+        const screen = document.getElementById('card-screen');
         const container = document.getElementById('card-container');
         if (!screen || !container) return;
         container.innerHTML = '';
         let picked = false;
         const titleEl = document.querySelector('.card-screen-title');
-        if (titleEl) titleEl.textContent = '⚔️ BOSS — VÝBĚR KARTY';
-
+        if (titleEl) titleEl.textContent = '👑 BOSS — VÝBĚR STARTOVNÍ KARTY';
+        const subEl = document.querySelector('.card-screen-sub');
+        if (subEl) subEl.textContent = 'Jako boss si vyber 3 karty před začátkem kola';
         cards.forEach(card => {
             const el = document.createElement('div');
             el.className = 'card ' + card.rarity.toLowerCase();
-            el.innerHTML = '<div class="rarity-tag">' + card.rarity.toUpperCase() + '</div><h3>' + card.name + '</h3><p>' + card.description + '</p>';
+            el.innerHTML = '<div class="rarity-tag">'+card.rarity.toUpperCase()+'</div><h3>'+card.name+'</h3><p>'+card.description+'</p>';
             el.onclick = () => {
-                if (picked) return;
-                picked = true;
+                if (picked) return; picked = true;
                 socket.emit('selectBossCard', card.name);
                 screen.style.display = 'none';
-                const elb = document.getElementById('boss-picking-banner');
-                if (elb) elb.style.display = 'none';
             };
             container.appendChild(el);
         });
