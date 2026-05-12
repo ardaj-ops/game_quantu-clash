@@ -115,8 +115,8 @@ function resetPlayer(p, room, usedPositions = []) {
     const idx = Object.keys(room.players).indexOf(p.id);
     const spawn = gameHelper.getValidSpawnPoint
         ? gameHelper.getValidSpawnPoint(idx, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
-            (room.map?.obstacles || []).filter(o => !o.isBorder),
-            room.map?.breakables || [],
+            (room.map?.obstacles || []).filter(o => !o.isBorder && o.x >= 0 && o.y >= 0),
+            (room.map?.breakables || []).filter(b => !b.destroyed),
             p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions)
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
     p.x = spawn.x; p.y = spawn.y;
@@ -150,7 +150,7 @@ function buildLean(p) {
         playerRadius: p.playerRadius, bulletSize: p.bulletSize,
         multishot: p.multishot, spread: p.spread,
         isJackpotActive: p.isJackpotActive,
-        pickedCards: p.pickedCards || [], isBoss: p.isBoss || false,
+        pickedCards: p.pickedCards || [],
         clone: p.clone || null
     };
 }
@@ -191,7 +191,7 @@ function initiateCardSelection(room) {
 }
 
 function startNewRound(room) {
-    // Check for game over first
+    // BUG FIX: Check if any player reached maxRounds score BEFORE starting next round.
     // Previously the game ran forever — GAMEOVER was never triggered.
     const maxScore = room.settings.maxRounds || CONFIG.MAX_SCORE;
     const winner = Object.values(room.players).find(p => (p.score || 0) >= maxScore);
@@ -213,45 +213,14 @@ function startNewRound(room) {
     room.loserIds = new Set();
     room.loserCardsPicked = new Set();
     room.loserCardOptions = {};
-    room.bossId = null; room.bossPicking = false;
     room.map = gameHelper.generateMap
         ? gameHelper.generateMap(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT)
         : { obstacles: [], breakables: [] };
-    if (room.settings.gameMode === 'BOSS') {
-        Object.values(room.players).forEach(p => { p.isBoss = false; });
-        initBossMode(room);
-    } else {
-        launchRound(room);
-    }
-}
-
-// ─── BOSS MODE ───────────────────────────────────────────────────────────────
-function initBossMode(room) {
-    const playerIds = Object.keys(room.players);
-    if (playerIds.length === 0) return;
-    const bossId = room.creatorId && room.players[room.creatorId]
-        ? room.creatorId
-        : playerIds[Math.floor(Math.random() * playerIds.length)];
-    room.bossId = bossId;
-    room.bossPicking = true;
-    Object.values(room.players).forEach(p => { p.isBoss = (p.id === bossId); });
-    const boss = room.players[bossId];
-    if (!boss) return;
-    const sel = gameHelper.generateCardsForPlayer
-        ? gameHelper.generateCardsForPlayer(boss, availableCards)
-        : availableCards.slice(0, 3);
-    room.bossCardCount = 0;
-    io.to(bossId).emit('showBossCardSelection', sel);
-    io.to(room.id).emit('bossPickingCards', { bossName: boss.name, bossColor: boss.color });
-}
-
-function launchRound(room) {
     resetAllPlayers(room);
     io.to(room.id).emit('mapUpdate', room.map);
     io.to(room.id).emit('gameStateChanged', {
         state: 'PLAYING', round: room.round,
-        obstacles: room.map.obstacles, breakables: room.map.breakables,
-        gameMode: room.settings.gameMode, bossId: room.bossId || null
+        obstacles: room.map.obstacles, breakables: room.map.breakables
     });
 }
 
@@ -321,29 +290,6 @@ io.on('connection', (socket) => {
             io.to(room.id).emit('gameStateChanged', {
                 state: 'PLAYING', obstacles: room.map.obstacles, breakables: room.map.breakables
             });
-        }
-    });
-
-    // Boss picks 3 starting cards before round begins
-    socket.on('selectBossCard', (cardName) => {
-        const room = rooms[socket.roomId];
-        if (!room || !room.bossPicking || room.bossId !== socket.id) return;
-        const boss = room.players[socket.id];
-        const card = availableCards.find(c => c.name === cardName);
-        if (boss && card && typeof card.apply === 'function') {
-            card.apply(boss);
-            boss.pickedCards.push({ name: card.name, rarity: card.rarity, description: card.description || '' });
-        }
-        room.bossCardCount = (room.bossCardCount || 0) + 1;
-        if (room.bossCardCount >= 3) {
-            room.bossPicking = false;
-            launchRound(room);
-        } else {
-            const nextSel = gameHelper.generateCardsForPlayer
-                ? gameHelper.generateCardsForPlayer(boss, availableCards)
-                : availableCards.slice(0, 3);
-            io.to(socket.id).emit('showBossCardSelection', nextSel);
-            io.to(room.id).emit('bossPickProgress', { picked: room.bossCardCount });
         }
     });
 
@@ -478,16 +424,8 @@ io.on('connection', (socket) => {
             room.loserIds.add(target.id);
             target.x = -9999; target.y = -9999;
             const alive = Object.values(room.players).filter(p => p.hp > 0);
-            if (room.gameState === 'PLAYING') {
-                if (room.settings.gameMode === 'BOSS') {
-                    const bossAlive = alive.some(p => p.id === room.bossId);
-                    const challengersAlive = alive.filter(p => p.id !== room.bossId).length;
-                    if (!bossAlive || challengersAlive === 0)
-                        setTimeout(() => initiateCardSelection(room), 800);
-                } else if (alive.length <= 1) {
-                    setTimeout(() => initiateCardSelection(room), 800);
-                }
-            }
+            if (alive.length <= 1 && room.gameState === 'PLAYING')
+                setTimeout(() => initiateCardSelection(room), 800);
         }
     });
 
@@ -529,7 +467,7 @@ setInterval(() => {
         const leanPlayers = {};
         for (const id in room.players) leanPlayers[id] = buildLean(room.players[id]);
         io.to(room.id).volatile.emit('gameUpdate', {
-            players: leanPlayers, maxScore: room.settings.maxRounds, bossId: room.bossId || null,
+            players: leanPlayers, maxScore: room.settings.maxRounds,
             gameState: room.gameState, gameMode: room.settings.gameMode
         });
     }

@@ -88,8 +88,7 @@ export function updateRemoteBullets() {
         if (b.y - r < 0)    { b.y = r;        b.vy =  Math.abs(b.vy); hitBoundary = true; }
         if (b.y + r > mapH) { b.y = mapH - r;  b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
-        // FIX: Arena borders always bounce for free (no bouncesLeft consumed).
-        // Only interior walls consume bounces. Border = permanent reflective surface.
+        // FIX: Arena border free bounce (same as local bullets above).
 
         if (allWalls.length > 0) {
             const res = getWallCollisionResult(b.x, b.y, r, allWalls, state.localBreakables);
@@ -137,21 +136,30 @@ export function updateLocalGame() {
     }
     if (_dashActive && now >= _dashEndTime) _dashActive = false;
 
-    // ── MOVEMENT ─────────────────────────────────────────────────────────────
+    // ── MOVEMENT (smooth diagonal normalisation) ─────────────────────────────
     const baseSpeed  = me.moveSpeed || CONFIG.BASE_MOVE_SPEED || 0.8;
     const dashMult   = _dashActive ? (CONFIG.DASH_SPEED_MULTIPLIER || 4) : 1;
     const pixelSpeed = baseSpeed * 5 * dashMult;
 
-    let nextX = me.x, nextY = me.y;
-    if (state.playerInputs.up)    nextY -= pixelSpeed;
-    if (state.playerInputs.down)  nextY += pixelSpeed;
-    nextY = Math.max(pRadius, Math.min(mapH - pRadius, nextY));
-    if (!checkWallCollision(me.x, nextY, pRadius, allWalls)) me.y = nextY;
+    let dx = 0, dy = 0;
+    if (state.playerInputs.up)    dy -= 1;
+    if (state.playerInputs.down)  dy += 1;
+    if (state.playerInputs.left)  dx -= 1;
+    if (state.playerInputs.right) dx += 1;
 
-    if (state.playerInputs.left)  nextX -= pixelSpeed;
-    if (state.playerInputs.right) nextX += pixelSpeed;
-    nextX = Math.max(pRadius, Math.min(mapW - pRadius, nextX));
-    if (!checkWallCollision(nextX, me.y, pRadius, allWalls)) me.x = nextX;
+    // FIX: Normalise diagonal movement so diagonals are same speed as cardinal
+    if (dx !== 0 && dy !== 0) { const s = 0.7071; dx *= s; dy *= s; }
+
+    const moveX = dx * pixelSpeed;
+    const moveY = dy * pixelSpeed;
+
+    let nextX = me.x, nextY = me.y;
+    // Try full move first, then axis-separate on wall hit for smooth sliding
+    nextY = Math.max(pRadius, Math.min(mapH - pRadius, me.y + moveY));
+    if (moveY !== 0 && !checkWallCollision(me.x, nextY, pRadius, allWalls)) me.y = nextY;
+
+    nextX = Math.max(pRadius, Math.min(mapW - pRadius, me.x + moveX));
+    if (moveX !== 0 && !checkWallCollision(nextX, me.y, pRadius, allWalls)) me.x = nextX;
 
     // ── AIM ───────────────────────────────────────────────────────────────────
     if (state.worldMouseX !== undefined) {
@@ -205,7 +213,7 @@ export function updateLocalGame() {
     // 20/80 SPLIT: sync rate reduced from 30pps to 20pps to match server
     // broadcast rate. No point syncing faster than server broadcasts.
     _syncThrottle++;
-    if (_syncThrottle >= 3) {
+    if (_syncThrottle >= 2) {  // 30pps — better responsiveness without hammering server
         _syncThrottle = 0;
         socket.emit('clientSync', {
             x: me.x, y: me.y, aimAngle: aim,
@@ -233,7 +241,9 @@ export function updateLocalGame() {
         if (b.y - b.radius < 0)    { b.y = b.radius;        b.vy =  Math.abs(b.vy); hitBoundary = true; }
         if (b.y + b.radius > mapH) { b.y = mapH - b.radius; b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
-        // FIX: Arena borders always bounce for free — no bouncesLeft consumed.
+        // FIX: Arena border is always a bounce surface — free bounce, no bouncesLeft cost.
+        // Interior walls still consume bounces. Border = permanent reflective wall.
+        // Without bouncesLeft the bullet still bounces; it only dies when hitting interior walls.
 
         // Interior wall collision
         const res = getWallCollisionResult(b.x, b.y, b.radius, allWalls, state.localBreakables);

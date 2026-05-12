@@ -151,11 +151,9 @@ socket.on('gameStateChanged', (data) => {
         showScreen('game');
         initGameEngine();
 
-        // Hide winner overlay and boss banner when game resumes
+        // Hide winner overlay when game resumes
         const wo = document.getElementById('winner-wait-overlay');
         if (wo) wo.style.display = 'none';
-        const bb = document.getElementById('boss-picking-banner');
-        if (bb) bb.style.display = 'none';
     }
 
     // FIX: Show winner overlay to the survivor when card selection starts.
@@ -195,10 +193,6 @@ socket.on('gameStateChanged', (data) => {
         }
     }
 
-    if (data.state === 'BOSS_PICKING') {
-        const el = document.getElementById('boss-picking-banner');
-        if (el) { el.style.display='flex'; }
-    }
     if (data.state === 'GAMEOVER') {
         // BUG FIX: Populate winner name and final scores before showing gameover screen.
         // Previously showScreen was called but winner-text was never set.
