@@ -17,6 +17,46 @@ function showScreen(name) {
     if (screens[name]) screens[name].style.display = (name === 'game') ? 'block' : 'flex';
 }
 
+// ── SETTINGS PIPELINE (must be registered immediately, not inside game engine) ─────
+// BUG FIX: roomInfo fires when joining lobby. Previously the handler lived inside
+// initNetwork() which only ran when the game started — so the creator never saw the
+// settings panel because the event was already missed by the time the listener registered.
+
+socket.on('roomInfo', (data) => {
+    window._isRoomCreator = data.isCreator;
+    const settingsPanel   = document.getElementById('settings-panel');
+    const settingsDisplay = document.getElementById('settings-display');
+    if (settingsPanel)   settingsPanel.style.display   = data.isCreator ? 'block' : 'none';
+    if (settingsDisplay) settingsDisplay.style.display = data.isCreator ? 'none'  : 'block';
+    _applySettingsToInputs(data.settings);
+    _applySettingsDisplay(data.settings);
+});
+
+socket.on('settingsChanged', (settings) => {
+    _applySettingsToInputs(settings);
+    _applySettingsDisplay(settings);
+});
+
+function _applySettingsToInputs(s) {
+    if (!s) return;
+    const mr = document.getElementById('setting-maxRounds');
+    const hp = document.getElementById('setting-startingHp');
+    const gm = document.getElementById('setting-gameMode');
+    if (mr) mr.value = s.maxRounds;
+    if (hp) hp.value = s.startingHp;
+    if (gm) gm.value = s.gameMode;
+}
+
+function _applySettingsDisplay(s) {
+    if (!s) return;
+    const mr = document.getElementById('disp-maxRounds');
+    const hp = document.getElementById('disp-startingHp');
+    const gm = document.getElementById('disp-gameMode');
+    if (mr) mr.textContent = s.maxRounds;
+    if (hp) hp.textContent = s.startingHp + ' HP';
+    if (gm) gm.textContent = s.gameMode;
+}
+
 // ── PERSIST SETTINGS ────────────────────────────────────────────────────────
 const nameInput  = document.getElementById('player-name');
 const colorInput = document.getElementById('player-color');

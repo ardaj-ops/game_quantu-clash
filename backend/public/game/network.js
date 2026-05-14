@@ -132,27 +132,7 @@ export function initNetwork() {
         }
     });
 
-    // FIX: roomInfo — tells this client if they are the room creator + current settings
-    socket.on('roomInfo', (data) => {
-        window._isRoomCreator = data.isCreator;
-        const settingsPanel   = document.getElementById('settings-panel');
-        const settingsDisplay = document.getElementById('settings-display');
-        if (settingsPanel)   settingsPanel.style.display   = data.isCreator ? 'block' : 'none';
-        if (settingsDisplay) settingsDisplay.style.display = data.isCreator ? 'none'  : 'block';
-        applySettingsDisplay(data.settings);
-    });
-
-    // FIX: settingsChanged — sync displayed settings for all players
-    socket.on('settingsChanged', (settings) => {
-        applySettingsDisplay(settings);
-        // Also update creator inputs so they reflect current values
-        const mr = document.getElementById('setting-maxRounds');
-        const hp = document.getElementById('setting-startingHp');
-        const gm = document.getElementById('setting-gameMode');
-        if (mr) mr.value = settings.maxRounds;
-        if (hp) hp.value = settings.startingHp;
-        if (gm) gm.value = settings.gameMode;
-    });
+    // roomInfo and settingsChanged moved to app.js (must fire at lobby time, not game-start)
 
     // ── showCardSelection ───────────────────────────────────────────────────
     socket.on('showCardSelection', (cards) => {

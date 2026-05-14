@@ -403,195 +403,166 @@ if (typeof window !== 'undefined') {
 }
 
 // ─── DRAW TAB MENU ───────────────────────────────────────────────────────────
-function drawTabMenu(playersData, serverData) {
+function drawTabMenu(playersData) {
     const RARITY_COLORS = {
         common:'#9e9e9e', uncommon:'#2ed573', rare:'#2a9df4',
         epic:'#a335ee', legendary:'#ffaa00', mythic:'#ff4757',
         exotic:'#eccc68', transcended:'#ff2a7a'
     };
-    const sorted = Object.values(playersData).sort((a, b) => (b.score||0) - (a.score||0));
-    const ctx    = state.ctx;
-    const SW     = state.canvas.width;
-    const SH     = state.canvas.height;
-    const MARGIN = 12;
 
-    // ── Left panel: Player list + scores ─────────────────────────────────────
-    const LP_W = 320, LP_H = Math.max(200, 52 + sorted.length * 46 + 20);
-    const LP_X = MARGIN, LP_Y = (SH - LP_H) / 2;
+    const sorted = Object.values(playersData).sort((a, b) => (b.score || 0) - (a.score || 0));
+    const ctx    = state.ctx;
+
+    // Row height scales with card count — players with many cards get taller rows
+    const maxCards  = Math.max(1, ...sorted.map(p => (p.pickedCards || []).length));
+    // Each row: name+stats block (50px) + card row that grows with count
+    // Cards displayed as small dots/chips, max 12 per visual row, then wrap
+    const CARD_CHIP_W   = 22; // width of each chip
+    const CARD_CHIP_H   = 16;
+    const CARDS_PER_ROW = 12;
+    const cardRows      = Math.max(1, Math.ceil(maxCards / CARDS_PER_ROW));
+    const rowH          = 54 + cardRows * (CARD_CHIP_H + 3);
+
+    const STAT_W   = 200; // right column: stat bars
+    const w        = 700;
+    const headerH  = 58;
+    const h        = headerH + sorted.length * rowH + 12;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const px = (state.canvas.width  - w) / 2;
+    const py = (state.canvas.height - h) / 2;
 
-    // Panel background helper
-    function panel(x, y, w, h, title) {
-        ctx.fillStyle = 'rgba(9,10,15,0.96)';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = 'rgba(69,243,255,0.4)';
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 10;
-        ctx.strokeRect(x+0.5, y+0.5, w-1, h-1);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#45f3ff';
-        ctx.font = 'bold 11px "Orbitron",sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(title, x+12, y+20);
-        ctx.strokeStyle = 'rgba(69,243,255,0.15)';
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x+8,y+26); ctx.lineTo(x+w-8,y+26); ctx.stroke();
-    }
+    // Panel
+    ctx.fillStyle = 'rgba(9,10,15,0.96)';
+    ctx.fillRect(px, py, w, h);
+    ctx.strokeStyle = 'rgba(69,243,255,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#45f3ff'; ctx.shadowBlur = 14;
+    ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+    ctx.shadowBlur = 0;
 
-    panel(LP_X, LP_Y, LP_W, LP_H, `SKÓRE  ·  ${serverData?.gameMode||'FFA'}  ·  Cíl: ${serverData?.maxScore||25} kol`);
+    // Header
+    ctx.fillStyle = '#45f3ff';
+    ctx.font = 'bold 13px "Orbitron",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('TABULKA SKÓRE', state.canvas.width / 2, py + 34);
+
+    // Column headers
+    ctx.fillStyle = '#444';
+    ctx.font = '10px "Inter",sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('HRÁČ  ·  BODY', px + 48, py + 50);
+    ctx.textAlign = 'right';
+    ctx.fillText('STATY', px + w - STAT_W - 8, py + 50);
+    ctx.fillText('KARTY', px + w - 10, py + 50);
+
+    _tabCardRegions = []; // reset hit regions
+
+    let ry = py + headerH;
 
     sorted.forEach((p, i) => {
-        const ry = LP_Y + 34 + i * 46;
-        if (i % 2 === 0) { ctx.fillStyle='rgba(255,255,255,0.025)'; ctx.fillRect(LP_X+2,ry,LP_W-4,44); }
-
-        // Colour dot + boss crown
-        ctx.beginPath();
-        ctx.arc(LP_X+20, ry+16, 9, 0, TWO_PI);
-        ctx.fillStyle = p.color||'#fff';
-        ctx.shadowColor = p.color; ctx.shadowBlur = p.isBoss ? 12 : 0;
-        ctx.fill(); ctx.shadowBlur = 0;
-        if (p.isBoss) {
-            ctx.font='10px serif'; ctx.textAlign='center'; ctx.fillStyle='#f1c40f';
-            ctx.fillText('👑', LP_X+20, ry+6);
+        if (i % 2 === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.025)';
+            ctx.fillRect(px + 1, ry, w - 2, rowH);
         }
 
-        // Name
-        ctx.fillStyle = p.hp<=0 ? '#555' : '#e8eaf0';
-        ctx.font = (p.isBoss?'bold ':'')+'12px "Inter",sans-serif';
+        // ── Colour dot ──────────────────────────────────────────────────────
+        ctx.beginPath();
+        ctx.arc(px + 20, ry + 20, 8, 0, TWO_PI);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.fill();
+
+        // ── Name + score ─────────────────────────────────────────────────────
+        const dead = p.hp <= 0;
+        ctx.fillStyle = dead ? '#555' : '#e8eaf0';
+        ctx.font = '13px "Inter",sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText((p.hp<=0?'💀 ':'')+p.name+(p.id===socket?.id?' (TY)':''), LP_X+36, ry+14);
-
-        // Score (rounds won)
+        ctx.fillText(
+            `${dead ? '💀 ' : ''}${p.name || 'Hráč'}${p.id === socket?.id ? ' (TY)' : ''}`,
+            px + 36, ry + 20
+        );
         ctx.fillStyle = '#f1c40f';
-        ctx.font = 'bold 16px "Orbitron",sans-serif';
-        ctx.fillText(p.score||0, LP_X+36, ry+36);
-        ctx.fillStyle = '#555'; ctx.font = '9px "Inter",sans-serif';
-        ctx.fillText('kola', LP_X+36+(String(p.score||0).length*10)+2, ry+35);
+        ctx.font = 'bold 13px "Orbitron",sans-serif';
+        ctx.fillText(`${p.score || 0} bodů`, px + 36, ry + 36);
 
-        // HP mini-bar
-        const hpR = Math.max(0,(p.hp||0)/(p.maxHp||100));
-        const hpC = hpR>0.5?'#2ed573':hpR>0.25?'#f1c40f':'#ff4757';
-        ctx.fillStyle='#1a1c24'; ctx.fillRect(LP_X+90, ry+28, 110, 5);
-        ctx.fillStyle=hpC; ctx.fillRect(LP_X+90, ry+28, 110*hpR, 5);
-        ctx.fillStyle='#555'; ctx.font='8px "Inter",sans-serif'; ctx.textAlign='left';
-        ctx.fillText(`HP ${Math.round(p.hp||0)}/${p.maxHp||100}`, LP_X+205, ry+34);
-    });
+        // ── STAT BARS (right section before cards) ────────────────────────────
+        const statX  = px + w - STAT_W - 130;
+        const barLen = 90;
+        const barH   = 5;
 
-    // ── Right panel: Stats bar ───────────────────────────────────────────────
-    // Show full stats for the local player (with bars), enemy stats in compact form
-    const myId = socket?.id;
-    const me = playersData[myId];
+        // Define stats to show with their max reference values
+        const stats = [
+            { label: 'DMG',    val: p.damage      || 20,  max: 999, col: '#ff4757' },
+            { label: 'SPD',    val: p.moveSpeed   || 0.8, max: 3.5, col: '#45f3ff' },
+            { label: 'AMMO',   val: p.maxAmmo     || 10,  max: 30,  col: '#f1c40f' },
+        ];
 
-    const RP_W = 280, RP_X = SW - MARGIN - RP_W;
-    const ALL_STATS = [
-        { key:'hp',          label:'HP',          max:600,  fmt:v=>`${Math.round(v)}/${me?.maxHp||100}`, color:'#2ed573' },
-        { key:'damage',      label:'Poškození',   max:200,  fmt:v=>Math.round(v),     color:'#ff4757' },
-        { key:'moveSpeed',   label:'Rychlost',    max:3.5,  fmt:v=>v.toFixed(2),      color:'#45f3ff' },
-        { key:'fireRate',    label:'Kadence (ms)',max:1200, fmt:v=>Math.round(v),      color:'#f1c40f', invert:true },
-        { key:'bulletSpeed', label:'Rychlost střely',max:80,fmt:v=>Math.round(v),     color:'#a335ee' },
-        { key:'maxAmmo',     label:'Max munice',  max:30,   fmt:v=>Math.round(v),      color:'#f1c40f' },
-        { key:'reloadTime',  label:'Přebíjení (ms)',max:3000,fmt:v=>Math.round(v),    color:'#ff6348', invert:true },
-        { key:'bounces',     label:'Odrazy',      max:10,   fmt:v=>Math.round(v),      color:'#2a9df4' },
-        { key:'pierce',      label:'Průraz',      max:10,   fmt:v=>Math.round(v),      color:'#a335ee' },
-        { key:'lifesteal',   label:'Lifesteal',   max:0.5,  fmt:v=>(v*100).toFixed(0)+'%', color:'#ff2a7a' },
-        { key:'hpRegen',     label:'HP regen/s',  max:20,   fmt:v=>v.toFixed(1),       color:'#2ed573' },
-        { key:'multishot',   label:'Multishot',   max:5,    fmt:v=>Math.round(v),      color:'#ffaa00' },
-    ];
+        stats.forEach((s, si) => {
+            const bx = statX + si * (barLen + 28);
+            const by = ry + 8;
+            const ratio = Math.min(1, s.val / s.max);
 
-    const RP_H = 36 + ALL_STATS.length * 22 + 20;
-    const RP_Y = Math.max(MARGIN, (SH - RP_H) / 2);
-    panel(RP_X, RP_Y, RP_W, RP_H, 'STATY  ·  MŮJ HRÁČ');
+            ctx.fillStyle = '#222';
+            ctx.fillRect(bx, by + 12, barLen, barH);
+            ctx.fillStyle = s.col;
+            ctx.fillRect(bx, by + 12, barLen * ratio, barH);
 
-    if (me) {
-        ALL_STATS.forEach((s, si) => {
-            const val    = me[s.key] !== undefined ? me[s.key] : 0;
-            const barY   = RP_Y + 34 + si * 22;
-            const barW   = 120;
-            const barX   = RP_X + 130;
-            const ratio  = s.invert
-                ? Math.max(0, 1 - val / s.max)
-                : Math.min(1, val / s.max);
-
-            // Label
-            ctx.fillStyle = '#888';
-            ctx.font = '9px "Inter",sans-serif';
-            ctx.textAlign = 'right';
-            ctx.fillText(s.label, RP_X + 125, barY + 9);
-
-            // Bar background
-            ctx.fillStyle = '#1a1c24';
-            ctx.fillRect(barX, barY, barW, 7);
-
-            // Bar fill
-            ctx.fillStyle = s.color;
-            ctx.shadowColor = s.color; ctx.shadowBlur = 4;
-            ctx.fillRect(barX, barY, barW * ratio, 7);
-            ctx.shadowBlur = 0;
-
-            // Value
-            ctx.fillStyle = s.color;
-            ctx.font = 'bold 9px "Inter",sans-serif';
+            ctx.fillStyle = '#555';
+            ctx.font = '8px "Inter",sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText(s.fmt(val), barX + barW + 5, barY + 8);
+            ctx.fillText(s.label, bx, by + 9);
+
+            ctx.fillStyle = s.col;
+            ctx.font = 'bold 9px "Inter",sans-serif';
+            const display = s.label === 'SPD' ? s.val.toFixed(1)
+                          : s.label === 'DMG' ? Math.round(s.val)
+                          : Math.round(s.val);
+            ctx.fillText(display, bx + barLen + 3, by + 16);
         });
-    } else {
-        ctx.fillStyle = '#555';
-        ctx.font = '11px "Inter",sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('(Nejsi ve hře)', RP_X + RP_W/2, RP_Y + 80);
-    }
 
-    // ── Middle panel: Cards picked this game ─────────────────────────────────
-    const CHIP_W = 20, CHIP_H = 15;
-    const CHIPS_PER_ROW = 10;
-    const MP_W = SW - LP_W - RP_W - MARGIN * 4;
-    const MP_X = LP_X + LP_W + MARGIN;
+        // HP bar
+        const hpBx  = statX;
+        const hpBy  = ry + 30;
+        const hpRat = Math.max(0, (p.hp || 0) / (p.maxHp || 100));
+        const hpCol = hpRat > 0.5 ? '#2ed573' : hpRat > 0.25 ? '#f1c40f' : '#ff4757';
+        ctx.fillStyle = '#222';
+        ctx.fillRect(hpBx, hpBy, (barLen + 28) * 3 - 28, barH);
+        ctx.fillStyle = hpCol;
+        ctx.fillRect(hpBx, hpBy, ((barLen + 28) * 3 - 28) * hpRat, barH);
+        ctx.fillStyle = '#555'; ctx.font = '8px "Inter",sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(`HP ${Math.round(p.hp||0)}/${p.maxHp||100}`, hpBx, hpBy - 2);
 
-    // Calculate height based on player with most cards
-    const maxCards = Math.max(1, ...sorted.map(p => (p.pickedCards||[]).length));
-    const chipRows = Math.max(1, Math.ceil(maxCards / CHIPS_PER_ROW));
-    const perPlayer = 24 + chipRows * (CHIP_H + 3);
-    const MP_H = 36 + sorted.length * perPlayer + 12;
-    const MP_Y = Math.max(MARGIN, (SH - MP_H) / 2);
+        // ── CARD CHIPS (scale with count, hover to see description) ───────────
+        const cards    = p.pickedCards || [];
+        const chipArea = px + w - 124; // start x of card chips
+        const chipY0   = ry + 6;
 
-    if (MP_W > 160) {
-        panel(MP_X, MP_Y, MP_W, MP_H, 'KARTY CELKEM');
+        cards.forEach((card, ci) => {
+            const col  = RARITY_COLORS[card.rarity?.toLowerCase()] || '#888';
+            const row  = Math.floor(ci / CARDS_PER_ROW);
+            const col2 = ci % CARDS_PER_ROW;
+            const cx2  = chipArea + col2 * (CARD_CHIP_W + 2);
+            const cy2  = chipY0   + row  * (CARD_CHIP_H + 2);
 
-        _tabCardRegions = [];
+            ctx.fillStyle = `${col}28`;
+            ctx.fillRect(cx2, cy2, CARD_CHIP_W, CARD_CHIP_H);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(cx2 + 0.5, cy2 + 0.5, CARD_CHIP_W - 1, CARD_CHIP_H - 1);
 
-        sorted.forEach((p, i) => {
-            const ry = MP_Y + 34 + i * perPlayer;
-            if (i % 2 === 0) { ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(MP_X+2,ry,MP_W-4,perPlayer-2); }
+            // First letter of card name as icon
+            ctx.fillStyle = col;
+            ctx.font = 'bold 9px "Inter",sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText((card.name || '?')[0].toUpperCase(), cx2 + CARD_CHIP_W / 2, cy2 + 11);
 
-            // Name dot
-            ctx.beginPath(); ctx.arc(MP_X+14, ry+10, 6, 0, TWO_PI);
-            ctx.fillStyle = p.color||'#fff'; ctx.fill();
-            ctx.fillStyle = '#aaa'; ctx.font='10px "Inter",sans-serif'; ctx.textAlign='left';
-            ctx.fillText(p.name+(p.id===socket?.id?' (TY)':''), MP_X+24, ry+14);
-
-            const cards = p.pickedCards || [];
-            if (cards.length === 0) {
-                ctx.fillStyle='#333'; ctx.font='9px "Inter",sans-serif';
-                ctx.fillText('žádné karty', MP_X+14, ry+28);
-            } else {
-                cards.forEach((card, ci) => {
-                    const col = RARITY_COLORS[card.rarity?.toLowerCase()]||'#888';
-                    const cr  = Math.floor(ci / CHIPS_PER_ROW);
-                    const cc  = ci % CHIPS_PER_ROW;
-                    const cx2 = MP_X + 14 + cc * (CHIP_W + 2);
-                    const cy2 = ry + 18 + cr * (CHIP_H + 3);
-                    ctx.fillStyle = col+'28'; ctx.fillRect(cx2, cy2, CHIP_W, CHIP_H);
-                    ctx.strokeStyle = col; ctx.lineWidth = 0.8;
-                    ctx.strokeRect(cx2+0.5, cy2+0.5, CHIP_W-1, CHIP_H-1);
-                    ctx.fillStyle = col; ctx.font='bold 7px "Inter",sans-serif'; ctx.textAlign='center';
-                    ctx.fillText((card.name||'?')[0].toUpperCase(), cx2+CHIP_W/2, cy2+10);
-                    _tabCardRegions.push({ x: cx2, y: cy2, w: CHIP_W, h: CHIP_H, card });
-                });
-            }
+            // Coordinates are in screen space (drawTabMenu uses setTransform(1,0,0,1,0,0))
+            _tabCardRegions.push({ x: cx2, y: cy2, w: CARD_CHIP_W, h: CARD_CHIP_H, card });
         });
-    }
+
+        ry += rowH;
+    });
 
     ctx.restore();
 }
@@ -789,7 +760,7 @@ export function drawGame(serverData) {
 
     if (serverData.gameState === 'PLAYING') {
         if (state.playerInputs?.tab) {
-            drawTabMenu(playersData, serverData);
+            drawTabMenu(playersData);
         } else {
             hideTabTooltip();
             drawCrosshair();
@@ -802,7 +773,7 @@ export function drawGame(serverData) {
         const me = socket && playersData[socket.id];
         if (me && me.hp > 0) {
             if (state.playerInputs?.tab) {
-                drawTabMenu(playersData, serverData);
+                drawTabMenu(playersData);
             } else {
                 hideTabTooltip();
                 drawWinnerWaitScreen();

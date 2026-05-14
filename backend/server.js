@@ -116,7 +116,7 @@ function resetPlayer(p, room, usedPositions = []) {
     const spawn = gameHelper.getValidSpawnPoint
         ? gameHelper.getValidSpawnPoint(idx, CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT,
             (room.map?.obstacles || []).filter(o => !o.isBorder && o.x >= 0 && o.y >= 0),
-            (room.map?.breakables || []).filter(b => !b.destroyed),
+            room.map?.breakables || [],
             p.playerRadius || CONFIG.PLAYER_RADIUS, usedPositions)
         : { x: CONFIG.MAP_WIDTH / 2, y: CONFIG.MAP_HEIGHT / 2 };
     p.x = spawn.x; p.y = spawn.y;
