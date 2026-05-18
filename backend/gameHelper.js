@@ -1,15 +1,19 @@
 // gameHelper.js
 
-const RARITY_WEIGHTS = {
-    'common':     100,
-    'uncommon':    70,
-    'rare':        40,
-    'epic':        15,
-    'legendary':    5,
-    'mythic':       2,
-    'exotic':       0.8,
-    'transcended':  0.1
+// Exact percentage chances per rarity (must sum to 100)
+// common=40%, uncommon=25%, rare=18%, epic=10%, legendary=4.5%, mythic=1.5%, exotic=0.8%, transcended=0.2%
+const RARITY_CHANCES = {
+    'common':     40.0,
+    'uncommon':   25.0,
+    'rare':       18.0,
+    'epic':       10.0,
+    'legendary':   4.5,
+    'mythic':      1.5,
+    'exotic':      0.8,
+    'transcended': 0.2
 };
+// Keep alias for any code referencing RARITY_WEIGHTS
+const RARITY_WEIGHTS = RARITY_CHANCES;
 
 const checkRectCollision = (circleX, circleY, radius, rect) => {
     const closestX = Math.max(rect.x, Math.min(circleX, rect.x + rect.width));
@@ -90,20 +94,33 @@ const generateCardsForPlayer = (player, availableCards) => {
         const unpicked = validCards.filter(c => !pickedIndices.has(c.originalIndex));
         if (unpicked.length === 0) break;
 
-        let totalWeight = 0;
-        const weighted = unpicked.map(c => {
-            const w = RARITY_WEIGHTS[(c.data.rarity || 'common').toLowerCase()] || 10;
-            totalWeight += w;
-            return { card: c, weight: w };
-        });
-
-        let pick = Math.random() * totalWeight;
-        let cum  = 0;
-        let selected = weighted[weighted.length - 1].card;
-        for (const item of weighted) {
-            cum += item.weight;
-            if (pick <= cum) { selected = item.card; break; }
+        // Percentage-based rarity selection:
+        // 1. Roll a rarity using exact percentage chances
+        // 2. Pick a random card of that rarity (or fall back to closest available)
+        const roll = Math.random() * 100;
+        let cumPct = 0;
+        let targetRarity = 'common';
+        const rarityOrder = ['transcended','exotic','mythic','legendary','epic','rare','uncommon','common'];
+        // Roll from rarest to most common so high rolls land on common
+        const rarityOrderAsc = ['common','uncommon','rare','epic','legendary','mythic','exotic','transcended'];
+        for (const rar of rarityOrderAsc) {
+            cumPct += RARITY_CHANCES[rar] || 0;
+            if (roll < cumPct) { targetRarity = rar; break; }
         }
+
+        // Find cards of the rolled rarity among unpicked
+        let rarityMatch = unpicked.filter(c => (c.data.rarity||'common').toLowerCase() === targetRarity);
+        // Fallback: if none of that rarity, try one step lower, then pick any
+        if (rarityMatch.length === 0) {
+            const idx = rarityOrderAsc.indexOf(targetRarity);
+            for (let fi = idx - 1; fi >= 0; fi--) {
+                rarityMatch = unpicked.filter(c => (c.data.rarity||'common').toLowerCase() === rarityOrderAsc[fi]);
+                if (rarityMatch.length > 0) break;
+            }
+        }
+        if (rarityMatch.length === 0) rarityMatch = unpicked;
+
+        let selected = rarityMatch[Math.floor(Math.random() * rarityMatch.length)];
 
         pickedIndices.add(selected.originalIndex);
         cardsToSend.push({ ...selected.data, globalIndex: selected.originalIndex });

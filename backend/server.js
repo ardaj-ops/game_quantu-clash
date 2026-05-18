@@ -1,3 +1,12 @@
+// ============================================================
+//  QUANTUM CLASH — server.js  (20% server authority)
+//  PATCH v17 (2026-05-18):
+//    ✨ patchNotes.js integration — printed on startup, served on request
+//  PATCH v16: Performance broadcast 20fps, domain tick 60fps
+//  PATCH v15: BOSS mode in changeSettings, spawn filter fixes
+//  PATCH v14: GAMEOVER check, solo-play card skip
+//  See patchNotes.js for full history.
+// ============================================================
 // server.js — 20/80 SPLIT: server handles only authoritative events
 // (damage, death, scoring, card selection, domain effects, HP regen, clone expiry)
 // All movement/bullet physics run on clients at 60fps.
@@ -13,7 +22,8 @@ const path    = require('path');
 const fs      = require('fs');
 const cors    = require('cors');
 
-let DomainManager, gameHelper = {};
+let DomainManager, gameHelper = {}, patchNotes = {};
+try { patchNotes = require('./patchNotes.js'); } catch(e) {}
 try {
     DomainManager = require('./domainManager.js');
     gameHelper    = require('./gameHelper.js') || {};
@@ -427,6 +437,11 @@ io.on('connection', (socket) => {
             if (alive.length <= 1 && room.gameState === 'PLAYING')
                 setTimeout(() => initiateCardSelection(room), 800);
         }
+    });
+
+    socket.on('requestPatchNotes', () => {
+        const notes = patchNotes.formatPatchNotes ? patchNotes.formatPatchNotes(3) : [];
+        socket.emit('patchNotes', notes);
     });
 
     socket.on('disconnect', () => {

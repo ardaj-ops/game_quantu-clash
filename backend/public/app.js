@@ -1,3 +1,11 @@
+// ============================================================
+//  QUANTUM CLASH — app.js
+//  PATCH v17 (2026-05-18):
+//    ✨ Patch notes fetched from server and displayed in lobby
+//  PATCH v15: roomInfo/settingsChanged moved to top-level (lobby-time fix)
+//  PATCH v14: GAMEOVER handler populates winner text + scoreboard
+//  See patchNotes.js for full history.
+// ============================================================
 // app.js
 import { initGameEngine } from './game/main.js';
 
@@ -56,6 +64,33 @@ function _applySettingsDisplay(s) {
     if (hp) hp.textContent = s.startingHp + ' HP';
     if (gm) gm.textContent = s.gameMode;
 }
+
+// ── PATCH NOTES ─────────────────────────────────────────────────────────────
+socket.on('patchNotes', (notes) => {
+    const body = document.getElementById('patch-notes-body');
+    if (!body || !notes?.length) return;
+    const TYPE_ICONS = { feature:'✨', fix:'🐛', perf:'⚡', balance:'⚖' };
+    body.innerHTML = notes.map(v => `
+        <div style="margin-bottom:10px;">
+            <div style="color:#45f3ff;font-family:'Orbitron',sans-serif;font-size:10px;margin-bottom:4px;">
+                ${v.version} <span style="color:#555;">${v.date}</span>
+            </div>
+            ${v.summary.slice(0,8).map(s => `<div style="margin-bottom:2px;">${s}</div>`).join('')}
+            ${v.summary.length > 8 ? `<div style="color:#555;">…a ${v.summary.length-8} dalších</div>` : ''}
+        </div>`).join('<hr style="border-color:#1e2130;margin:8px 0;">');
+});
+
+// Toggle patch notes panel
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('patch-notes-toggle')?.addEventListener('click', () => {
+        const body = document.getElementById('patch-notes-body');
+        const toggle = document.getElementById('patch-notes-toggle')?.querySelector('span');
+        if (!body) return;
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        if (toggle) toggle.textContent = open ? '▼ zobrazit' : '▲ skrýt';
+    });
+});
 
 // ── PERSIST SETTINGS ────────────────────────────────────────────────────────
 const nameInput  = document.getElementById('player-name');
@@ -147,10 +182,12 @@ lobbyCode?.addEventListener('click', () => btnCopy?.click());
 socket.on('roomCreated', ({ roomId }) => {
     if (lobbyCode) lobbyCode.innerText = roomId;
     showScreen('lobby');
+    socket.emit('requestPatchNotes');
 });
 socket.on('roomJoined', ({ roomId }) => {
     if (lobbyCode) lobbyCode.innerText = roomId;
     showScreen('lobby');
+    socket.emit('requestPatchNotes');
 });
 
 socket.on('updatePlayerList', (players) => {
