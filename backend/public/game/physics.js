@@ -1,3 +1,12 @@
+// ============================================================
+//  QUANTUM CLASH — physics.js  (80% client physics)
+//  PATCH v15 (2026-05-17):
+//    🐛 Arena border always bounces for free (no bouncesLeft consumed)
+//    🐛 Diagonal movement normalised (0.7071 factor)
+//    🐛 Border walls filtered from allWalls (wrong push-out normals)
+//  PATCH v10: clientSync at 20pps to match 20fps broadcast
+//  See patchNotes.js for full history.
+// ============================================================
 // game/physics.js — 80% CLIENT SIDE
 // This file handles ALL real-time physics:
 //  • Local player movement + wall collision
@@ -88,7 +97,11 @@ export function updateRemoteBullets() {
         if (b.y - r < 0)    { b.y = r;        b.vy =  Math.abs(b.vy); hitBoundary = true; }
         if (b.y + r > mapH) { b.y = mapH - r;  b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
-        // FIX: Arena border always bounces for free (remote bullets same as local).
+        // FIX v18: Border bounce only if bouncesLeft >= 1 (remote same as local).
+        if (hitBoundary) {
+            if ((b.bouncesLeft || 0) > 0) b.bouncesLeft--;
+            else { state.remoteBullets.splice(i, 1); continue; }
+        }
 
         if (allWalls.length > 0) {
             const res = getWallCollisionResult(b.x, b.y, r, allWalls, state.localBreakables);
@@ -238,8 +251,12 @@ export function updateLocalGame() {
         if (b.y - b.radius < 0)    { b.y = b.radius;        b.vy =  Math.abs(b.vy); hitBoundary = true; }
         if (b.y + b.radius > mapH) { b.y = mapH - b.radius; b.vy = -Math.abs(b.vy); hitBoundary = true; }
 
-        // FIX: Arena border always bounces for free — no bouncesLeft consumed.
-        // Only interior walls spend bounces. Border = permanent reflective surface.
+        // FIX v18: Border bounce only if player has bounce upgrades (bouncesLeft >= 1).
+        // Without upgrades bullets are destroyed on border hit.
+        if (hitBoundary) {
+            if (b.bouncesLeft > 0) { /* already reflected above, just count it */ b.bouncesLeft--; }
+            else { state.localBullets.splice(i, 1); continue; }
+        }
 
         // Interior wall collision
         const res = getWallCollisionResult(b.x, b.y, b.radius, allWalls, state.localBreakables);

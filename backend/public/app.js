@@ -65,32 +65,43 @@ function _applySettingsDisplay(s) {
     if (gm) gm.textContent = s.gameMode;
 }
 
-// ── PATCH NOTES ─────────────────────────────────────────────────────────────
-socket.on('patchNotes', (notes) => {
-    const body = document.getElementById('patch-notes-body');
-    if (!body || !notes?.length) return;
-    const TYPE_ICONS = { feature:'✨', fix:'🐛', perf:'⚡', balance:'⚖' };
-    body.innerHTML = notes.map(v => `
+// ── PATCH NOTES (read from window.PATCH_NOTES injected by patchNotes.js <script>) ──
+// No socket request needed — the data is embedded in the page.
+function _renderPatchNotes(elementId) {
+    const body = document.getElementById(elementId);
+    if (!body) return;
+    const fmt = window.formatPatchNotes ? window.formatPatchNotes(4) : [];
+    if (!fmt.length) { body.innerHTML = '<div style="color:#555;">Patch notes nejsou k dispozici.</div>'; return; }
+    body.innerHTML = fmt.map(v => `
         <div style="margin-bottom:10px;">
-            <div style="color:#45f3ff;font-family:'Orbitron',sans-serif;font-size:10px;margin-bottom:4px;">
+            <div style="color:#45f3ff;font-family:Orbitron,sans-serif;font-size:10px;margin-bottom:4px;letter-spacing:1px;">
                 ${v.version} <span style="color:#555;">${v.date}</span>
             </div>
-            ${v.summary.slice(0,8).map(s => `<div style="margin-bottom:2px;">${s}</div>`).join('')}
-            ${v.summary.length > 8 ? `<div style="color:#555;">…a ${v.summary.length-8} dalších</div>` : ''}
+            ${v.summary.slice(0,6).map(s => `<div style="margin-bottom:3px;">${s}</div>`).join('')}
+            ${v.summary.length>6?`<div style="color:#555;">…a ${v.summary.length-6} dalších změn</div>`:''}
         </div>`).join('<hr style="border-color:#1e2130;margin:8px 0;">');
-});
+}
 
-// Toggle patch notes panel
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('patch-notes-toggle')?.addEventListener('click', () => {
-        const body = document.getElementById('patch-notes-body');
-        const toggle = document.getElementById('patch-notes-toggle')?.querySelector('span');
+// Toggle helper for any collapsible patch notes panel
+function _initPatchToggle(toggleId, bodyId) {
+    document.getElementById(toggleId)?.addEventListener('click', () => {
+        const body   = document.getElementById(bodyId);
+        const toggle = document.getElementById(toggleId)?.querySelector('span');
         if (!body) return;
         const open = body.style.display !== 'none';
         body.style.display = open ? 'none' : 'block';
         if (toggle) toggle.textContent = open ? '▼ zobrazit' : '▲ skrýt';
+        if (!open) _renderPatchNotes(bodyId); // lazy render on first open
     });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    _initPatchToggle('patch-notes-toggle-menu', 'patch-notes-body-menu');  // main menu
+    _initPatchToggle('patch-notes-toggle-lobby', 'patch-notes-body-lobby'); // lobby
 });
+
+// Legacy handler kept for compatibility (server still sends this, just ignore it now)
+socket.on('patchNotes', () => {});
 
 // ── PERSIST SETTINGS ────────────────────────────────────────────────────────
 const nameInput  = document.getElementById('player-name');
@@ -182,12 +193,10 @@ lobbyCode?.addEventListener('click', () => btnCopy?.click());
 socket.on('roomCreated', ({ roomId }) => {
     if (lobbyCode) lobbyCode.innerText = roomId;
     showScreen('lobby');
-    socket.emit('requestPatchNotes');
 });
 socket.on('roomJoined', ({ roomId }) => {
     if (lobbyCode) lobbyCode.innerText = roomId;
     showScreen('lobby');
-    socket.emit('requestPatchNotes');
 });
 
 socket.on('updatePlayerList', (players) => {

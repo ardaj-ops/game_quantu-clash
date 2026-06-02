@@ -246,7 +246,7 @@ io.on('connection', (socket) => {
             id: roomId, creatorId: socket.id, players: {},
             gameState: 'LOBBY', round: 1, map: initialMap,
             settings: { maxRounds: CONFIG.MAX_SCORE, gameMode: 'FFA', startingHp: CONFIG.BASE_HP },
-            loserIds: new Set(), loserCardsPicked: new Set(), loserCardOptions: {}
+            loserIds: new Set(), loserCardsPicked: new Set(), loserCardOptions: {}, bossId: null
         };
         socket.emit('roomCreated', { roomId });
         joinRoom(socket, roomId, data);
@@ -434,8 +434,38 @@ io.on('connection', (socket) => {
             room.loserIds.add(target.id);
             target.x = -9999; target.y = -9999;
             const alive = Object.values(room.players).filter(p => p.hp > 0);
-            if (alive.length <= 1 && room.gameState === 'PLAYING')
-                setTimeout(() => initiateCardSelection(room), 800);
+            if (room.gameState === 'PLAYING') {
+                const mode = room.settings.gameMode || 'FFA';
+                if (mode === 'BOSS') {
+                    // Boss mode: round ends when boss dies OR all challengers dead
+                    const bossAlive = alive.some(p => p.id === room.bossId);
+                    const challengersAlive = alive.filter(p => p.id !== room.bossId).length;
+                    if (!bossAlive) {
+                        // Challengers win: each living challenger gets a point
+                        alive.filter(p => p.id !== room.bossId).forEach(p => p.score++);
+                        if (shooter && shooter.id !== room.bossId) shooter.score = Math.max(0, (shooter.score||1)-1); // already counted above
+                        setTimeout(() => initiateCardSelection(room), 800);
+                    } else if (challengersAlive === 0) {
+                        // Boss wins: boss gets a point
+                        const boss = room.players[room.bossId];
+                        if (boss) boss.score++;
+                        setTimeout(() => initiateCardSelection(room), 800);
+                    }
+                } else if (mode === 'TDM') {
+                    // TDM: round ends when all players on one team are dead
+                    const teamsAlive = { blue: 0, red: 0 };
+                    alive.forEach(p => { if (p.team) teamsAlive[p.team] = (teamsAlive[p.team]||0) + 1; });
+                    if (teamsAlive.blue === 0 || teamsAlive.red === 0) {
+                        // Winning team each gets a point
+                        const winTeam = teamsAlive.blue > 0 ? 'blue' : 'red';
+                        Object.values(room.players).forEach(p => { if (p.team === winTeam) p.score++; });
+                        setTimeout(() => initiateCardSelection(room), 800);
+                    }
+                } else {
+                    // FFA: last player standing wins the round
+                    if (alive.length <= 1) setTimeout(() => initiateCardSelection(room), 800);
+                }
+            }
         }
     });
 

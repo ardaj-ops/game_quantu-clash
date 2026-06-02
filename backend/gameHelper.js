@@ -1,19 +1,25 @@
+// ============================================================
+//  QUANTUM CLASH — gameHelper.js
+//  PATCH v16 (2026-05-18):
+//    ✨ Card rarity: exact percentage system (common 40%, uncommon 25%,
+//       rare 18%, epic 10%, legendary 4.5%, mythic 1.5%, exotic 0.8%,
+//       transcended 0.2%) instead of arbitrary weight pool
+//    🐛 Rarity fallback now steps down one tier at a time
+//  PATCH v9: INNER_MARGIN 520→80, obstacle count guarantee
+//  See patchNotes.js for full history.
+// ============================================================
 // gameHelper.js
 
-// Exact percentage chances per rarity (must sum to 100)
-// common=40%, uncommon=25%, rare=18%, epic=10%, legendary=4.5%, mythic=1.5%, exotic=0.8%, transcended=0.2%
-const RARITY_CHANCES = {
-    'common':     40.0,
-    'uncommon':   25.0,
-    'rare':       18.0,
-    'epic':       10.0,
-    'legendary':   4.5,
-    'mythic':      1.5,
-    'exotic':      0.8,
-    'transcended': 0.2
+const RARITY_WEIGHTS = {
+    'common':     100,
+    'uncommon':    70,
+    'rare':        40,
+    'epic':        15,
+    'legendary':    5,
+    'mythic':       2,
+    'exotic':       0.8,
+    'transcended':  0.1
 };
-// Keep alias for any code referencing RARITY_WEIGHTS
-const RARITY_WEIGHTS = RARITY_CHANCES;
 
 const checkRectCollision = (circleX, circleY, radius, rect) => {
     const closestX = Math.max(rect.x, Math.min(circleX, rect.x + rect.width));
@@ -35,38 +41,50 @@ const getFixedSpawns = (mapWidth, mapHeight) => [
     { x: mapWidth - 500,  y: mapHeight / 2    },
 ];
 
+// FIX v18: Fully random spawns — no fixed corner points.
+// Each spawn is rolled randomly and checked for: border clearance,
+// obstacle overlap, and minimum gap from already-spawned players.
+// This prevents players always spawning in the same corners every round.
 const getValidSpawnPoint = (
     playerIndex, mapWidth, mapHeight,
     obstacles, breakables,
     playerRadius = 20,
     usedPositions = []
 ) => {
-    const BORDER_MARGIN = 500;
+    const BORDER_MARGIN   = 80;   // stay at least 80px from arena edge
+    const OBSTACLE_CLEAR  = playerRadius + 40;  // clearance from obstacle surfaces
+    const MIN_PLAYER_GAP  = playerRadius * 6;   // min distance between two spawns
 
-    const isPositionBlocked = (x, y) => {
+    const isBlocked = (x, y) => {
         if (x < BORDER_MARGIN || x > mapWidth  - BORDER_MARGIN) return true;
         if (y < BORDER_MARGIN || y > mapHeight - BORDER_MARGIN) return true;
-        if (obstacles.some(obs => checkRectCollision(x, y, playerRadius + 15, obs))) return true;
-        if (breakables.some(w => !w.destroyed && checkRectCollision(x, y, playerRadius + 15, w))) return true;
-        const minSpawnGap = playerRadius * 5;
-        if (usedPositions.some(pos => Math.hypot(x - pos.x, y - pos.y) < minSpawnGap)) return true;
+        if (obstacles.some(obs => checkRectCollision(x, y, OBSTACLE_CLEAR, obs))) return true;
+        if (breakables.some(w => !w.destroyed && checkRectCollision(x, y, OBSTACLE_CLEAR, w))) return true;
+        if (usedPositions.some(p => Math.hypot(x - p.x, y - p.y) < MIN_PLAYER_GAP)) return true;
         return false;
     };
 
-    const fixedSpawns = getFixedSpawns(mapWidth, mapHeight);
-    for (let i = 0; i < fixedSpawns.length; i++) {
-        const candidate = fixedSpawns[(playerIndex + i) % fixedSpawns.length];
-        if (!isPositionBlocked(candidate.x, candidate.y)) return candidate;
-    }
-
-    for (let attempt = 0; attempt < 300; attempt++) {
+    // Try 500 random positions — should always find one on a 1920×1080 map
+    for (let attempt = 0; attempt < 500; attempt++) {
         const x = BORDER_MARGIN + Math.random() * (mapWidth  - BORDER_MARGIN * 2);
         const y = BORDER_MARGIN + Math.random() * (mapHeight - BORDER_MARGIN * 2);
-        if (!isPositionBlocked(x, y)) return { x, y };
+        if (!isBlocked(x, y)) return { x, y };
     }
 
-    console.warn('⚠️ getValidSpawnPoint: fallback to center');
-    return { x: mapWidth / 2, y: mapHeight / 2 };
+    // Absolute fallback: widen gap constraints progressively
+    for (let relax = 0; relax < 3; relax++) {
+        const factor = 1 - relax * 0.3;
+        for (let attempt = 0; attempt < 200; attempt++) {
+            const x = BORDER_MARGIN + Math.random() * (mapWidth  - BORDER_MARGIN * 2);
+            const y = BORDER_MARGIN + Math.random() * (mapHeight - BORDER_MARGIN * 2);
+            if (!obstacles.some(obs => checkRectCollision(x, y, OBSTACLE_CLEAR * factor, obs)) &&
+                !usedPositions.some(p => Math.hypot(x - p.x, y - p.y) < MIN_PLAYER_GAP * factor))
+                return { x, y };
+        }
+    }
+
+    console.warn('⚠️ getValidSpawnPoint: hard fallback');
+    return { x: mapWidth / 2 + (Math.random()-0.5)*200, y: mapHeight / 2 + (Math.random()-0.5)*200 };
 };
 
 const generateCardsForPlayer = (player, availableCards) => {
@@ -94,33 +112,20 @@ const generateCardsForPlayer = (player, availableCards) => {
         const unpicked = validCards.filter(c => !pickedIndices.has(c.originalIndex));
         if (unpicked.length === 0) break;
 
-        // Percentage-based rarity selection:
-        // 1. Roll a rarity using exact percentage chances
-        // 2. Pick a random card of that rarity (or fall back to closest available)
-        const roll = Math.random() * 100;
-        let cumPct = 0;
-        let targetRarity = 'common';
-        const rarityOrder = ['transcended','exotic','mythic','legendary','epic','rare','uncommon','common'];
-        // Roll from rarest to most common so high rolls land on common
-        const rarityOrderAsc = ['common','uncommon','rare','epic','legendary','mythic','exotic','transcended'];
-        for (const rar of rarityOrderAsc) {
-            cumPct += RARITY_CHANCES[rar] || 0;
-            if (roll < cumPct) { targetRarity = rar; break; }
-        }
+        let totalWeight = 0;
+        const weighted = unpicked.map(c => {
+            const w = RARITY_WEIGHTS[(c.data.rarity || 'common').toLowerCase()] || 10;
+            totalWeight += w;
+            return { card: c, weight: w };
+        });
 
-        // Find cards of the rolled rarity among unpicked
-        let rarityMatch = unpicked.filter(c => (c.data.rarity||'common').toLowerCase() === targetRarity);
-        // Fallback: if none of that rarity, try one step lower, then pick any
-        if (rarityMatch.length === 0) {
-            const idx = rarityOrderAsc.indexOf(targetRarity);
-            for (let fi = idx - 1; fi >= 0; fi--) {
-                rarityMatch = unpicked.filter(c => (c.data.rarity||'common').toLowerCase() === rarityOrderAsc[fi]);
-                if (rarityMatch.length > 0) break;
-            }
+        let pick = Math.random() * totalWeight;
+        let cum  = 0;
+        let selected = weighted[weighted.length - 1].card;
+        for (const item of weighted) {
+            cum += item.weight;
+            if (pick <= cum) { selected = item.card; break; }
         }
-        if (rarityMatch.length === 0) rarityMatch = unpicked;
-
-        let selected = rarityMatch[Math.floor(Math.random() * rarityMatch.length)];
 
         pickedIndices.add(selected.originalIndex);
         cardsToSend.push({ ...selected.data, globalIndex: selected.originalIndex });
